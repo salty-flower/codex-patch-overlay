@@ -149,7 +149,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          cargo build --release --locked --target "$TARGET" --bin bwrap
+          cargo build --release --target "$TARGET" --bin bwrap
           bwrap_path="target/${TARGET}/release/bwrap"
           digest="$(sha256sum "$bwrap_path" | awk '{print $1}')"
           echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
@@ -161,7 +161,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          cargo build --release --locked --target "$TARGET" --bin codex --bin codex-responses-api-proxy
+          cargo build --release --target "$TARGET" --bin codex --bin codex-responses-api-proxy
 
       - name: Package artifact
         shell: bash
