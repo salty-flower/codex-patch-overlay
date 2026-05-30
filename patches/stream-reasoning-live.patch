@@ -1,0 +1,366 @@
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+index fe20b76..93702f4 100644
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -2011,7 +2011,10 @@ async fn try_run_sampling_request(
+                 // In review child threads, suppress assistant text deltas; the
+                 // UI will show a selection popup from the final ReviewOutput.
+                 if let Some(active) = active_item.as_ref() {
+-                    if !active_item_is_streaming_to_client {
++                    if !active_item_allows_reasoning_delta(
++                        active_item_is_streaming_to_client,
++                        active_item.as_ref(),
++                    ) {
+                         continue;
+                     }
+                     let item_id = active.id();
+@@ -2062,7 +2065,10 @@ async fn try_run_sampling_request(
+                 summary_index,
+             } => {
+                 if let Some(active) = active_item.as_ref() {
+-                    if !active_item_is_streaming_to_client {
++                    if !active_item_allows_reasoning_delta(
++                        active_item_is_streaming_to_client,
++                        active_item.as_ref(),
++                    ) {
+                         continue;
+                     }
+                     let event = ReasoningContentDeltaEvent {
+@@ -2080,7 +2086,10 @@ async fn try_run_sampling_request(
+             }
+             ResponseEvent::ReasoningSummaryPartAdded { summary_index } => {
+                 if let Some(active) = active_item.as_ref() {
+-                    if !active_item_is_streaming_to_client {
++                    if !active_item_allows_reasoning_delta(
++                        active_item_is_streaming_to_client,
++                        active_item.as_ref(),
++                    ) {
+                         continue;
+                     }
+                     let event =
+@@ -2162,6 +2171,13 @@ async fn try_run_sampling_request(
+     outcome
+ }
+ 
++fn active_item_allows_reasoning_delta(
++    active_item_is_streaming_to_client: bool,
++    active_item: Option<&TurnItem>,
++) -> bool {
++    active_item_is_streaming_to_client || matches!(active_item, Some(TurnItem::Reasoning(_)))
++}
++
+ pub(crate) fn get_last_assistant_message_from_turn(responses: &[ResponseItem]) -> Option<String> {
+     for item in responses.iter().rev() {
+         if let Some(message) = last_assistant_message_from_item(item, /*plan_mode*/ false) {
+diff --git a/codex-rs/core/src/session/turn_tests.rs b/codex-rs/core/src/session/turn_tests.rs
+index 81a43ff..6deee28 100644
+--- a/codex-rs/core/src/session/turn_tests.rs
++++ b/codex-rs/core/src/session/turn_tests.rs
+@@ -63,3 +63,26 @@ async fn plan_mode_uses_contributed_turn_item_for_last_agent_message() {
+         Some("plan contributed assistant text")
+     );
+ }
++
++#[test]
++fn reasoning_deltas_are_forwarded_when_turn_item_streaming_is_deferred() {
++    let item = TurnItem::Reasoning(codex_protocol::items::ReasoningItem {
++        id: "reasoning-1".to_string(),
++        summary_text: Vec::new(),
++        raw_content: Vec::new(),
++    });
++
++    assert!(active_item_allows_reasoning_delta(false, Some(&item)));
++}
++
++#[test]
++fn non_reasoning_deltas_still_respect_deferred_streaming() {
++    let item = TurnItem::AgentMessage(codex_protocol::items::AgentMessageItem {
++        id: "msg-1".to_string(),
++        content: Vec::new(),
++        phase: None,
++        memory_citation: None,
++    });
++
++    assert!(!active_item_allows_reasoning_delta(false, Some(&item)));
++}
+diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
+index 6d56330..431a8b7 100644
+--- a/codex-rs/tui/src/chatwidget/protocol.rs
++++ b/codex-rs/tui/src/chatwidget/protocol.rs
+@@ -311,6 +311,7 @@ impl ChatWidget {
+             ThreadItem::ImageGeneration { .. } => {
+                 self.on_image_generation_begin();
+             }
++            ThreadItem::Reasoning { .. } => self.on_agent_reasoning_started(),
+             ThreadItem::CollabAgentToolCall {
+                 id,
+                 tool,
+diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
+index f0211aa..e578349 100644
+--- a/codex-rs/tui/src/chatwidget/replay.rs
++++ b/codex-rs/tui/src/chatwidget/replay.rs
+@@ -111,7 +111,7 @@ impl ChatWidget {
+             ThreadItem::Reasoning {
+                 summary, content, ..
+             } => {
+-                if from_replay {
++                if from_replay || self.reasoning_buffer.trim().is_empty() {
+                     for delta in summary {
+                         self.on_agent_reasoning_delta(delta);
+                     }
+diff --git a/codex-rs/tui/src/chatwidget/streaming.rs b/codex-rs/tui/src/chatwidget/streaming.rs
+index e6f5701..a64a6c7 100644
+--- a/codex-rs/tui/src/chatwidget/streaming.rs
++++ b/codex-rs/tui/src/chatwidget/streaming.rs
+@@ -107,6 +107,18 @@ impl ChatWidget {
+         self.handle_streaming_delta(delta);
+     }
+ 
++    pub(super) fn on_agent_reasoning_started(&mut self) {
++        if self.active_cell_is_reasoning_summary() || !self.reasoning_buffer.trim().is_empty() {
++            return;
++        }
++        self.transcript.active_cell = Some(history_cell::new_reasoning_summary_block(
++            "Thinking...".to_string(),
++            &self.config.cwd,
++        ));
++        self.bump_active_cell_revision();
++        self.request_redraw();
++    }
++
+     pub(super) fn on_plan_delta(&mut self, delta: String) {
+         if self.active_mode_kind() != ModeKind::Plan {
+             return;
+@@ -187,10 +199,8 @@ impl ChatWidget {
+     }
+ 
+     pub(super) fn on_agent_reasoning_delta(&mut self, delta: String) {
+-        // For reasoning deltas, do not stream to history. Accumulate the
+-        // current reasoning block and extract the first bold element
+-        // (between **/**) as the chunk header. Show this header as status.
+         self.reasoning_buffer.push_str(&delta);
++        self.sync_live_reasoning_summary_cell();
+ 
+         if self.unified_exec_wait_streak.is_some() {
+             // Unified exec waiting should take precedence over reasoning-derived status headers.
+@@ -209,25 +219,51 @@ impl ChatWidget {
+     }
+ 
+     pub(super) fn on_agent_reasoning_final(&mut self) {
+-        // At the end of a reasoning block, record transcript-only content.
+-        self.full_reasoning_buffer.push_str(&self.reasoning_buffer);
+-        if !self.full_reasoning_buffer.is_empty() {
++        if self.active_cell_is_reasoning_summary() && self.reasoning_buffer.trim().is_empty() {
++            self.transcript.active_cell = None;
++            self.bump_active_cell_revision();
++        } else if self.active_cell_is_reasoning_summary() {
++            self.flush_active_cell();
++            self.reasoning_buffer.clear();
++        } else if !self.reasoning_buffer.trim().is_empty() {
+             let cell = history_cell::new_reasoning_summary_block(
+-                self.full_reasoning_buffer.clone(),
++                std::mem::take(&mut self.reasoning_buffer),
+                 &self.config.cwd,
+             );
+             self.add_boxed_history(cell);
+         }
+-        self.reasoning_buffer.clear();
+         self.full_reasoning_buffer.clear();
+         self.request_redraw();
+     }
+ 
+     pub(super) fn on_reasoning_section_break(&mut self) {
+-        // Start a new reasoning block for header extraction and accumulate transcript.
+-        self.full_reasoning_buffer.push_str(&self.reasoning_buffer);
+-        self.full_reasoning_buffer.push_str("\n\n");
+-        self.reasoning_buffer.clear();
++        if self.active_cell_is_reasoning_summary() && self.reasoning_buffer.trim().is_empty() {
++            self.transcript.active_cell = None;
++            self.bump_active_cell_revision();
++            self.request_redraw();
++        } else if self.active_cell_is_reasoning_summary() {
++            if let Some(header) = extract_first_bold(&self.reasoning_buffer) {
++                self.status_state.terminal_title_status_kind = TerminalTitleStatusKind::Thinking;
++                self.set_status_header(header);
++            }
++            self.flush_active_cell();
++            self.reasoning_buffer.clear();
++            self.request_redraw();
++        } else if !self.reasoning_buffer.trim().is_empty() {
++            if let Some(header) = extract_first_bold(&self.reasoning_buffer) {
++                self.status_state.terminal_title_status_kind = TerminalTitleStatusKind::Thinking;
++                self.set_status_header(header);
++            }
++
++            let cell = history_cell::new_reasoning_summary_block(
++                std::mem::take(&mut self.reasoning_buffer),
++                &self.config.cwd,
++            );
++            self.add_boxed_history(cell);
++            self.request_redraw();
++        } else {
++            self.reasoning_buffer.clear();
++        }
+     }
+ 
+     pub(super) fn on_stream_error(&mut self, message: String, additional_details: Option<String>) {
+@@ -408,6 +444,28 @@ impl ChatWidget {
+         })
+     }
+ 
++    fn active_cell_is_reasoning_summary(&self) -> bool {
++        self.transcript
++            .active_cell
++            .as_ref()
++            .is_some_and(|cell| cell.as_any().is::<history_cell::ReasoningSummaryCell>())
++    }
++
++    fn sync_live_reasoning_summary_cell(&mut self) {
++        if self.reasoning_buffer.trim().is_empty() {
++            return;
++        }
++
++        if !self.active_cell_is_reasoning_summary() {
++            self.flush_active_cell();
++        }
++        self.transcript.active_cell = Some(history_cell::new_reasoning_summary_block(
++            self.reasoning_buffer.clone(),
++            &self.config.cwd,
++        ));
++        self.bump_active_cell_revision();
++    }
++
+     pub(super) fn has_active_stream_tail(&self) -> bool {
+         (self.stream_controller.is_some() || self.plan_stream_controller.is_some())
+             && self.active_cell_is_stream_tail()
+diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
+index 58f9923..1852164 100644
+--- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
++++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
+@@ -874,6 +874,47 @@ async fn replayed_in_progress_mcp_tool_call_stays_active() {
+     assert!(!active.contains("MCP tool call completed without a result"));
+ }
+ 
++#[tokio::test]
++async fn live_reasoning_summary_delta_updates_active_cell() {
++    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
++    chat.show_welcome_banner = false;
++
++    chat.handle_server_notification(
++        ServerNotification::TurnStarted(TurnStartedNotification {
++            thread_id: "thread-1".to_string(),
++            turn: AppServerTurn {
++                id: "turn-1".to_string(),
++                items_view: codex_app_server_protocol::TurnItemsView::Full,
++                items: Vec::new(),
++                status: AppServerTurnStatus::InProgress,
++                error: None,
++                started_at: Some(0),
++                completed_at: None,
++                duration_ms: None,
++            },
++        }),
++        /*replay_kind*/ None,
++    );
++    let _ = drain_insert_history(&mut rx);
++
++    chat.handle_server_notification(
++        ServerNotification::ReasoningSummaryTextDelta(ReasoningSummaryTextDeltaNotification {
++            thread_id: "thread-1".to_string(),
++            turn_id: "turn-1".to_string(),
++            item_id: "reasoning-1".to_string(),
++            delta: "Streaming summary".to_string(),
++            summary_index: 0,
++        }),
++        /*replay_kind*/ None,
++    );
++
++    let rendered = active_blob(&chat);
++    assert!(
++        rendered.contains("Streaming summary"),
++        "expected live reasoning summary in active cell, got {rendered:?}",
++    );
++}
++
+ #[tokio::test]
+ async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
+     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+@@ -931,6 +972,66 @@ async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
+     assert_eq!(rendered.matches("Summary only").count(), 1);
+ }
+ 
++#[tokio::test]
++async fn live_reasoning_summary_is_visible_when_item_completes() {
++    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
++    chat.show_welcome_banner = false;
++
++    chat.handle_server_notification(
++        ServerNotification::TurnStarted(TurnStartedNotification {
++            thread_id: "thread-1".to_string(),
++            turn: AppServerTurn {
++                id: "turn-1".to_string(),
++                items_view: codex_app_server_protocol::TurnItemsView::Full,
++                items: Vec::new(),
++                status: AppServerTurnStatus::InProgress,
++                error: None,
++                started_at: Some(0),
++                completed_at: None,
++                duration_ms: None,
++            },
++        }),
++        /*replay_kind*/ None,
++    );
++    let _ = drain_insert_history(&mut rx);
++
++    chat.handle_server_notification(
++        ServerNotification::ReasoningSummaryTextDelta(ReasoningSummaryTextDeltaNotification {
++            thread_id: "thread-1".to_string(),
++            turn_id: "turn-1".to_string(),
++            item_id: "reasoning-1".to_string(),
++            delta: "Summary only".to_string(),
++            summary_index: 0,
++        }),
++        /*replay_kind*/ None,
++    );
++
++    chat.handle_server_notification(
++        ServerNotification::ItemCompleted(ItemCompletedNotification {
++            thread_id: "thread-1".to_string(),
++            turn_id: "turn-1".to_string(),
++            completed_at_ms: 0,
++            item: AppServerThreadItem::Reasoning {
++                id: "reasoning-1".to_string(),
++                summary: vec!["Summary only".to_string()],
++                content: Vec::new(),
++            },
++        }),
++        /*replay_kind*/ None,
++    );
++
++    let rendered = match rx.try_recv() {
++        Ok(AppEvent::InsertHistoryCell(cell)) => {
++            lines_to_single_string(&cell.display_lines(/*width*/ 80))
++        }
++        other => panic!("expected InsertHistoryCell, got {other:?}"),
++    };
++    assert!(
++        rendered.contains("Summary only"),
++        "expected reasoning summary in viewport, got {rendered:?}",
++    );
++}
++
+ #[tokio::test]
+ async fn thread_snapshot_replayed_turn_started_marks_task_running() {
+     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+diff --git a/codex-rs/tui/src/history_cell/messages.rs b/codex-rs/tui/src/history_cell/messages.rs
+index 19a6ec2..7f43ea5 100644
+--- a/codex-rs/tui/src/history_cell/messages.rs
++++ b/codex-rs/tui/src/history_cell/messages.rs
+@@ -460,6 +460,6 @@ pub(crate) fn new_reasoning_summary_block(
+         "".to_string(),
+         full_reasoning_buffer.to_string(),
+         &cwd,
+-        /*transcript_only*/ true,
++        /*transcript_only*/ false,
+     ))
+ }
