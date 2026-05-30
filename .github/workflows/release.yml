@@ -49,11 +49,6 @@ jobs:
           toolchain: 1.95.0
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: staging/openai-codex/codex-rs -> target
-          key: ${{ matrix.target }}-${{ env.RELEASE_TAG }}
-
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -82,6 +77,11 @@ jobs:
             git -C staging/openai-codex apply --check "../../${patch_file}"
             git -C staging/openai-codex apply "../../${patch_file}"
           done
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: staging/openai-codex/codex-rs -> target
+          key: ${{ matrix.target }}-${{ env.RELEASE_TAG }}
 
       - name: Build release binaries
         working-directory: staging/openai-codex/codex-rs
