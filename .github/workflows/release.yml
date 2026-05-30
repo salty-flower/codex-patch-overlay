@@ -20,7 +20,9 @@ concurrency:
 
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-  CARGO_PROFILE_RELEASE_LTO: thin
+  CARGO_BUILD_JOBS: 2
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+  CARGO_PROFILE_RELEASE_LTO: "false"
 
 jobs:
   build:
@@ -217,7 +219,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          package_dir="dist/codex-${RELEASE_TAG}-${TARGET}"
+          package_dir="dist/${RELEASE_TAG}-${TARGET}"
           mkdir -p "$package_dir/bin" "$package_dir/codex-resources"
           printf '{}\n' > "$package_dir/codex-package.json"
           cp "staging/openai-codex/codex-rs/target/${TARGET}/release/codex" "$package_dir/bin/"
@@ -229,16 +231,16 @@ jobs:
           fi
           cp README.md patches/manifest.toml "$package_dir/"
 
-          archive="dist/codex-${RELEASE_TAG}-${TARGET}.tar.gz"
-          tar -C dist -czf "$archive" "codex-${RELEASE_TAG}-${TARGET}"
+          archive="dist/${RELEASE_TAG}-${TARGET}.tar.gz"
+          tar -C dist -czf "$archive" "${RELEASE_TAG}-${TARGET}"
           shasum -a 256 "$archive" > "${archive}.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
           name: codex-${{ env.RELEASE_TAG }}-${{ matrix.target }}
           path: |
-            dist/codex-${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz
-            dist/codex-${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz.sha256
+            dist/${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz
+            dist/${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz.sha256
           if-no-files-found: error
 
   publish:
