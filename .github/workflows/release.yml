@@ -20,6 +20,7 @@ concurrency:
 
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  CARGO_PROFILE_RELEASE_LTO: thin
 
 jobs:
   build:
@@ -35,7 +36,7 @@ jobs:
           - runner: macos-15
             target: aarch64-apple-darwin
           - runner: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
 
     steps:
       - uses: actions/checkout@v4
@@ -48,13 +49,6 @@ jobs:
         with:
           toolchain: 1.95.0
           targets: ${{ matrix.target }}
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libssl-dev
 
       - name: Stage patched upstream
         shell: bash
@@ -78,10 +72,87 @@ jobs:
             git -C staging/openai-codex apply "../../${patch_file}"
           done
 
+      - name: Use hermetic Cargo home for musl
+        if: contains(matrix.target, 'linux-musl')
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo_home="${GITHUB_WORKSPACE}/.cargo-home"
+          mkdir -p "${cargo_home}/bin"
+          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
+          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
+          : > "${cargo_home}/config.toml"
+
+      - name: Install Zig for musl
+        if: contains(matrix.target, 'linux-musl')
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.0
+          use-cache: false
+
+      - name: Install musl build tools
+        if: contains(matrix.target, 'linux-musl')
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          bash staging/openai-codex/.github/scripts/install-musl-build-tools.sh
+          echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${TARGET}"
+          target_no_jitter="${target_no_jitter//-/_}"
+          echo "${target_no_jitter}=1" >> "$GITHUB_ENV"
+
+      - name: Configure rusty_v8 artifacts
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          version="$(python3 staging/openai-codex/.github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
+          release_tag="rusty-v8-v${version}"
+          base_url="https://github.com/openai/codex/releases/download/${release_tag}"
+          binding_dir="${RUNNER_TEMP}/rusty_v8"
+          archive_path="${binding_dir}/librusty_v8_release_${TARGET}.a.gz"
+          binding_path="${binding_dir}/src_binding_release_${TARGET}.rs"
+          checksums_path="${binding_dir}/rusty_v8_release_${TARGET}.sha256"
+
+          mkdir -p "${binding_dir}"
+          curl -fsSL "${base_url}/librusty_v8_release_${TARGET}.a.gz" -o "${archive_path}"
+          curl -fsSL "${base_url}/src_binding_release_${TARGET}.rs" -o "${binding_path}"
+          curl -fsSL "${base_url}/rusty_v8_release_${TARGET}.sha256" -o "${checksums_path}"
+
+          if [[ "$(wc -l < "${checksums_path}")" -ne 2 ]]; then
+            echo "Expected exactly two checksums for ${TARGET} in ${checksums_path}" >&2
+            exit 1
+          fi
+
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd "${binding_dir}" && sha256sum -c "${checksums_path}")
+          else
+            (cd "${binding_dir}" && shasum -a 256 -c "${checksums_path}")
+          fi
+
+          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
+          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: staging/openai-codex/codex-rs -> target
           key: ${{ matrix.target }}-${{ env.RELEASE_TAG }}
+
+      - name: Build bwrap and export digest
+        if: contains(matrix.target, 'linux')
+        working-directory: staging/openai-codex/codex-rs
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          cargo build --release --locked --target "$TARGET" --bin bwrap
+          bwrap_path="target/${TARGET}/release/bwrap"
+          digest="$(sha256sum "$bwrap_path" | awk '{print $1}')"
+          echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
 
       - name: Build release binaries
         working-directory: staging/openai-codex/codex-rs
@@ -90,8 +161,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          cargo build --release --locked --target "$TARGET" -p codex-cli --bin codex
-          cargo build --release --locked --target "$TARGET" -p codex-responses-api-proxy --bin codex-responses-api-proxy
+          cargo build --release --locked --target "$TARGET" --bin codex --bin codex-responses-api-proxy
 
       - name: Package artifact
         shell: bash
@@ -100,10 +170,15 @@ jobs:
         run: |
           set -euo pipefail
           package_dir="dist/codex-${RELEASE_TAG}-${TARGET}"
-          mkdir -p "$package_dir"
-          cp "staging/openai-codex/codex-rs/target/${TARGET}/release/codex" "$package_dir/"
-          cp "staging/openai-codex/codex-rs/target/${TARGET}/release/codex-responses-api-proxy" "$package_dir/"
-          chmod 0755 "$package_dir/codex" "$package_dir/codex-responses-api-proxy"
+          mkdir -p "$package_dir/bin" "$package_dir/codex-resources"
+          printf '{}\n' > "$package_dir/codex-package.json"
+          cp "staging/openai-codex/codex-rs/target/${TARGET}/release/codex" "$package_dir/bin/"
+          cp "staging/openai-codex/codex-rs/target/${TARGET}/release/codex-responses-api-proxy" "$package_dir/bin/"
+          chmod 0755 "$package_dir/bin/codex" "$package_dir/bin/codex-responses-api-proxy"
+          if [[ -f "staging/openai-codex/codex-rs/target/${TARGET}/release/bwrap" ]]; then
+            cp "staging/openai-codex/codex-rs/target/${TARGET}/release/bwrap" "$package_dir/codex-resources/bwrap"
+            chmod 0755 "$package_dir/codex-resources/bwrap"
+          fi
           cp README.md patches/manifest.toml "$package_dir/"
 
           archive="dist/codex-${RELEASE_TAG}-${TARGET}.tar.gz"
