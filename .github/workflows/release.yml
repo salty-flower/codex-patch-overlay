@@ -1,0 +1,172 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "codex-*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: staging/openai-codex/codex-rs -> target
+          key: ${{ matrix.target }}-${{ env.RELEASE_TAG }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libssl-dev
+
+      - name: Stage patched upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          upstream_repo="$(awk -F'"' '/^upstream_repo =/ { print $2; exit }' patches/manifest.toml)"
+          upstream_base="$(awk -F'"' '/^upstream_base =/ { print $2; exit }' patches/manifest.toml)"
+          upstream_sha="$(awk -F'"' '/^upstream_sha =/ { print $2; exit }' patches/manifest.toml)"
+
+          mkdir -p staging
+          git clone --filter=blob:none "https://github.com/${upstream_repo}.git" staging/openai-codex
+          git -C staging/openai-codex checkout --detach "${upstream_sha:-$upstream_base}"
+
+          awk '
+            /^name = / { name = $0; sub(/^name = "/, "", name); sub(/"$/, "", name) }
+            /^enabled = true/ { enabled = 1 }
+            /^file = / && enabled == 1 { file = $0; sub(/^file = "/, "", file); sub(/"$/, "", file); print name "\t" file; enabled = 0 }
+          ' patches/manifest.toml | while IFS=$'\t' read -r patch_name patch_file; do
+            echo "applying ${patch_name}: ${patch_file}"
+            git -C staging/openai-codex apply --check "../../${patch_file}"
+            git -C staging/openai-codex apply "../../${patch_file}"
+          done
+
+      - name: Build release binaries
+        working-directory: staging/openai-codex/codex-rs
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          cargo build --release --locked --target "$TARGET" -p codex-cli --bin codex
+          cargo build --release --locked --target "$TARGET" -p codex-responses-api-proxy --bin codex-responses-api-proxy
+
+      - name: Package artifact
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          package_dir="dist/codex-${RELEASE_TAG}-${TARGET}"
+          mkdir -p "$package_dir"
+          cp "staging/openai-codex/codex-rs/target/${TARGET}/release/codex" "$package_dir/"
+          cp "staging/openai-codex/codex-rs/target/${TARGET}/release/codex-responses-api-proxy" "$package_dir/"
+          chmod 0755 "$package_dir/codex" "$package_dir/codex-responses-api-proxy"
+          cp README.md patches/manifest.toml "$package_dir/"
+
+          archive="dist/codex-${RELEASE_TAG}-${TARGET}.tar.gz"
+          tar -C dist -czf "$archive" "codex-${RELEASE_TAG}-${TARGET}"
+          shasum -a 256 "$archive" > "${archive}.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-${{ env.RELEASE_TAG }}-${{ matrix.target }}
+          path: |
+            dist/codex-${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz
+            dist/codex-${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+
+  publish:
+    name: publish GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          upstream_repo="$(awk -F'"' '/^upstream_repo =/ { print $2; exit }' patches/manifest.toml)"
+          upstream_base="$(awk -F'"' '/^upstream_base =/ { print $2; exit }' patches/manifest.toml)"
+          upstream_sha="$(awk -F'"' '/^upstream_sha =/ { print $2; exit }' patches/manifest.toml)"
+
+          {
+            echo "# ${RELEASE_TAG}"
+            echo
+            echo "- Upstream: ${upstream_repo}@${upstream_base} (${upstream_sha})"
+            echo "- Versioning: patch overlay release from \`patches/manifest.toml\`"
+            echo "- Binaries: \`codex\`, \`codex-responses-api-proxy\`"
+            echo
+            echo "Enabled patches:"
+            awk '
+              /^name = / { name = $0; sub(/^name = "/, "", name); sub(/"$/, "", name) }
+              /^enabled = true/ { print "- " name }
+            ' patches/manifest.toml
+            echo
+            echo "Artifacts are built by GitHub Actions from the tagged manifest and include SHA-256 sidecar files."
+          } > release-notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TAG }}
+          body_path: release-notes.md
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+          fail_on_unmatched_files: true
