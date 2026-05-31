@@ -1,0 +1,51 @@
+name: auto-release
+
+on:
+  schedule:
+    - cron: "25 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: "Optional upstream tag to try, for example rust-v0.136.0"
+        required: false
+        type: string
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  auto-release:
+    name: auto release patched Codex
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
+      UPSTREAM_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.upstream_tag || '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Check for upstream release and tag patched release
+        id: auto
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix develop --command nu scripts/auto-release.nu --apply --upstream-tag "${UPSTREAM_TAG}"
+
+      - name: Dispatch release build
+        if: steps.auto.outputs.release_tag != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run release.yml --ref main -f tag="${{ steps.auto.outputs.release_tag }}"
