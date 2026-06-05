@@ -14,11 +14,9 @@
 | Patch | Upstream | Risk | Status |
 | --- | --- | --- | --- |
 | Stream reasoning live | `openai/codex#5339`, `openai/codex#6006` | medium | carried |
-| Symlinked skills | `openai/codex#8370` | low | candidate |
-| TUI notification sound | `openai/codex#8417` | low | candidate |
-| WebP image input | `openai/codex#8589` | low | candidate |
+| TUI notification sound | `openai/codex#8417` | low | carried |
+| WebP image input | `openai/codex#8562`, `openai/codex#8589` | low | carried |
 | Transcript search | `openai/codex#8641` | high | candidate |
-| Directory selection in `@` search | `openai/codex#8960` | medium | candidate |
 
 ## Promotion Rule
 
