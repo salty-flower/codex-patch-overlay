@@ -18,6 +18,13 @@ nu scripts/stage-upstream.nu
 nu scripts/apply-patches.nu
 ```
 
+To consume the latest published patch release from another flake, point the
+input at the moving `latest-release` ref:
+
+```nix
+inputs.codex-patch-overlay.url = "github:salty-flower/codex-patch-overlay/latest-release";
+```
+
 ## Manual TUI Check
 
 ```sh

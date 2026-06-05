@@ -255,7 +255,7 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - uses: actions/download-artifact@v4
         with:
@@ -295,3 +295,11 @@ jobs:
             dist/*.tar.gz
             dist/*.sha256
           fail_on_unmatched_files: true
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Move latest release ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix develop --command nu scripts/move-latest-release-ref.nu "${RELEASE_TAG}"
