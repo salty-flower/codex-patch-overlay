@@ -20,16 +20,3 @@ status = "carried"
 risk = "medium"
 owner = "local"
 notes = "Show streamed reasoning summaries in the TUI history; verify with model_reasoning_summary=detailed."
-
-[[patches]]
-name = "symlinked-skills"
-enabled = false
-file = "patches/symlinked-skills.patch"
-upstream_base = "rust-v0.135.0"
-upstream_sha = ""
-upstream_issue = "https://github.com/openai/codex/issues/8369"
-upstream_pr = "https://github.com/openai/codex/pull/8370"
-status = "candidate"
-risk = "low"
-owner = "local"
-notes = "Follow symlinked skills while avoiding recursive traversal."
