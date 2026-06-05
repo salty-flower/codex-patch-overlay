@@ -1,0 +1,259 @@
+diff --git a/codex-rs/tui/src/notifications/mod.rs b/codex-rs/tui/src/notifications/mod.rs
+index ee6694b..0d223f6 100644
+--- a/codex-rs/tui/src/notifications/mod.rs
++++ b/codex-rs/tui/src/notifications/mod.rs
+@@ -1,5 +1,6 @@
+ mod bel;
+ mod osc9;
++mod sound;
+ 
+ use std::io;
+ 
+@@ -9,6 +10,7 @@ use codex_terminal_detection::TerminalInfo;
+ use codex_terminal_detection::TerminalName;
+ use codex_terminal_detection::terminal_info;
+ use osc9::Osc9Backend;
++use sound::play_notification_sound;
+ 
+ #[derive(Debug)]
+ pub enum DesktopNotificationBackend {
+@@ -46,10 +48,28 @@ impl DesktopNotificationBackend {
+     }
+ }
+ 
++pub fn notify_with_sound(
++    backend: &mut DesktopNotificationBackend,
++    message: &str,
++) -> io::Result<()> {
++    let method = backend.method();
++    backend.notify(message)?;
++
++    if should_play_notification_sound(method) {
++        play_notification_sound();
++    }
++
++    Ok(())
++}
++
+ pub fn detect_backend(method: NotificationMethod) -> DesktopNotificationBackend {
+     DesktopNotificationBackend::for_method(method)
+ }
+ 
++fn should_play_notification_sound(method: NotificationMethod) -> bool {
++    method != NotificationMethod::Bel
++}
++
+ fn supports_osc9(terminal: &TerminalInfo) -> bool {
+     matches!(
+         terminal.name,
+@@ -64,6 +84,7 @@ fn supports_osc9(terminal: &TerminalInfo) -> bool {
+ #[cfg(test)]
+ mod tests {
+     use super::detect_backend;
++    use super::should_play_notification_sound;
+     use super::supports_osc9;
+     use codex_config::types::NotificationMethod;
+     use codex_terminal_detection::TerminalInfo;
+@@ -96,6 +117,19 @@ mod tests {
+         ));
+     }
+ 
++    #[test]
++    fn skips_extra_sound_for_bel_notifications() {
++        assert_eq!(
++            should_play_notification_sound(NotificationMethod::Bel),
++            false
++        );
++    }
++
++    #[test]
++    fn plays_extra_sound_for_osc9_notifications() {
++        assert!(should_play_notification_sound(NotificationMethod::Osc9));
++    }
++
+     #[test]
+     fn supports_osc9_for_supported_terminals() {
+         for name in [
+diff --git a/codex-rs/tui/src/notifications/sound.rs b/codex-rs/tui/src/notifications/sound.rs
+new file mode 100644
+index 0000000..fd493f3
+--- /dev/null
++++ b/codex-rs/tui/src/notifications/sound.rs
+@@ -0,0 +1,156 @@
++use std::path::Path;
++use std::process::Command;
++use std::process::Stdio;
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++struct SoundCommand {
++    program: &'static str,
++    args: &'static [&'static str],
++}
++
++pub fn play_notification_sound() {
++    for command in sound_commands_for_platform(|path| Path::new(path).exists()) {
++        if spawn_sound_command(command) {
++            return;
++        }
++    }
++}
++
++fn spawn_sound_command(command: SoundCommand) -> bool {
++    Command::new(command.program)
++        .args(command.args)
++        .stdin(Stdio::null())
++        .stdout(Stdio::null())
++        .stderr(Stdio::null())
++        .spawn()
++        .is_ok()
++}
++
++fn sound_commands_for_platform(path_exists: impl Fn(&str) -> bool) -> Vec<SoundCommand> {
++    let mut commands = Vec::new();
++
++    #[cfg(target_os = "macos")]
++    {
++        const GLASS_SOUND: &str = "/System/Library/Sounds/Glass.aiff";
++
++        if path_exists(GLASS_SOUND) {
++            commands.push(SoundCommand {
++                program: "afplay",
++                args: &[GLASS_SOUND],
++            });
++        }
++        commands.push(SoundCommand {
++            program: "osascript",
++            args: &["-e", "beep"],
++        });
++    }
++
++    #[cfg(target_os = "linux")]
++    {
++        const FREEDESKTOP_SOUND: &str = "/usr/share/sounds/freedesktop/stereo/complete.oga";
++        const ALSA_SOUND: &str = "/usr/share/sounds/alsa/Front_Center.wav";
++
++        commands.push(SoundCommand {
++            program: "canberra-gtk-play",
++            args: &["-i", "bell"],
++        });
++
++        if path_exists(FREEDESKTOP_SOUND) {
++            commands.push(SoundCommand {
++                program: "paplay",
++                args: &[FREEDESKTOP_SOUND],
++            });
++            commands.push(SoundCommand {
++                program: "pw-play",
++                args: &[FREEDESKTOP_SOUND],
++            });
++        }
++
++        if path_exists(ALSA_SOUND) {
++            commands.push(SoundCommand {
++                program: "aplay",
++                args: &[ALSA_SOUND],
++            });
++        }
++    }
++
++    commands
++}
++
++#[cfg(test)]
++mod tests {
++    use super::SoundCommand;
++    use super::sound_commands_for_platform;
++
++    #[cfg(target_os = "macos")]
++    #[test]
++    fn macos_prefers_system_sound_before_osascript_beep() {
++        assert_eq!(
++            sound_commands_for_platform(|path| path == "/System/Library/Sounds/Glass.aiff"),
++            vec![
++                SoundCommand {
++                    program: "afplay",
++                    args: &["/System/Library/Sounds/Glass.aiff"],
++                },
++                SoundCommand {
++                    program: "osascript",
++                    args: &["-e", "beep"],
++                },
++            ]
++        );
++    }
++
++    #[cfg(target_os = "macos")]
++    #[test]
++    fn macos_falls_back_to_osascript_beep() {
++        assert_eq!(
++            sound_commands_for_platform(|_| false),
++            vec![SoundCommand {
++                program: "osascript",
++                args: &["-e", "beep"],
++            }]
++        );
++    }
++
++    #[cfg(target_os = "linux")]
++    #[test]
++    fn linux_prefers_canberra_before_file_based_players() {
++        assert_eq!(
++            sound_commands_for_platform(|path| {
++                path == "/usr/share/sounds/freedesktop/stereo/complete.oga"
++            }),
++            vec![
++                SoundCommand {
++                    program: "canberra-gtk-play",
++                    args: &["-i", "bell"],
++                },
++                SoundCommand {
++                    program: "paplay",
++                    args: &["/usr/share/sounds/freedesktop/stereo/complete.oga"],
++                },
++                SoundCommand {
++                    program: "pw-play",
++                    args: &["/usr/share/sounds/freedesktop/stereo/complete.oga"],
++                },
++            ]
++        );
++    }
++
++    #[cfg(target_os = "linux")]
++    #[test]
++    fn linux_falls_back_to_alsa_front_center_sound() {
++        assert_eq!(
++            sound_commands_for_platform(|path| path == "/usr/share/sounds/alsa/Front_Center.wav"),
++            vec![
++                SoundCommand {
++                    program: "canberra-gtk-play",
++                    args: &["-i", "bell"],
++                },
++                SoundCommand {
++                    program: "aplay",
++                    args: &["/usr/share/sounds/alsa/Front_Center.wav"],
++                },
++            ]
++        );
++    }
++}
+diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
+index b9055f5..e9b09a3 100644
+--- a/codex-rs/tui/src/tui.rs
++++ b/codex-rs/tui/src/tui.rs
+@@ -44,6 +44,7 @@ use crate::insert_history::HistoryLineWrapPolicy;
+ use crate::insert_history::InsertHistoryMode;
+ use crate::notifications::DesktopNotificationBackend;
+ use crate::notifications::detect_backend;
++use crate::notifications::notify_with_sound;
+ use crate::terminal_hyperlinks::HyperlinkLine;
+ use crate::terminal_hyperlinks::plain_hyperlink_lines;
+ use crate::tui::event_stream::EventBroker;
+@@ -659,7 +660,7 @@ impl Tui {
+         };
+ 
+         let message = message.as_ref().to_string();
+-        match backend.notify(&message) {
++        match notify_with_sound(backend, &message) {
+             Ok(()) => true,
+             Err(err) => {
+                 let method = backend.method();
