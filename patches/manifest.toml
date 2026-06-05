@@ -34,3 +34,18 @@ status = "carried"
 risk = "low"
 owner = "local"
 notes = "Play a best-effort desktop notification sound alongside OSC9 notifications (afplay/osascript on macOS; canberra/paplay/pw-play/aplay on Linux); skipped for the Bel backend, which already rings. Preserves the existing unfocused-only notification gate."
+
+[[patches]]
+name = "webp-image-input"
+enabled = true
+file = "patches/webp-image-input.patch"
+upstream_base = "rust-v0.137.0"
+upstream_sha = "f221438b691b8f749d98f22077c93ebe01923fbe"
+source_hash = "sha256-puszZqi1lZeq8iXWAD9U9+WMnNvzMYKf6wVT9mtjSUU="
+cargo_hash = "sha256-SX5LMO+IWismbH61Jd0g1mgykfav8DrqG+wjyNCWyCo="
+upstream_issue = "https://github.com/openai/codex/issues/8562"
+upstream_pr = "https://github.com/openai/codex/pull/8589"
+status = "carried"
+risk = "low"
+owner = "local"
+notes = "Recognize .webp paste/attach paths in the TUI composer as WEBP; decode + webp image feature already exist upstream at this base. Verify by attaching a .webp image in the composer."
