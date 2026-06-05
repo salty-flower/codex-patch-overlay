@@ -1,5 +1,72 @@
+diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
+index 7b634a5188..024a12c8a5 100644
+--- a/codex-rs/config/src/types.rs
++++ b/codex-rs/config/src/types.rs
+@@ -637,6 +637,10 @@ pub struct TuiNotificationSettings {
+     /// regardless of focus. Defaults to `unfocused`.
+     #[serde(default, rename = "notification_condition")]
+     pub condition: NotificationCondition,
++
++    /// Optional command argv used to play a notification sound after a TUI notification.
++    #[serde(default, rename = "notification_sound_command")]
++    pub sound_command: Option<Vec<String>>,
+ }
+ 
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
+diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
+index 87f00fed86..e99f7bb24a 100644
+--- a/codex-rs/core/src/config/config_tests.rs
++++ b/codex-rs/core/src/config/config_tests.rs
+@@ -10855,6 +10855,23 @@ fn test_tui_notification_condition_always() {
+     );
+ }
+ 
++#[test]
++fn test_tui_notification_sound_command() {
++    let toml = r#"
++            [tui]
++            notification_sound_command = ["pw-play", "/tmp/codex-done.wav"]
++        "#;
++    let parsed: RootTomlTest =
++        toml::from_str(toml).expect("deserialize notification_sound_command");
++    assert_eq!(
++        parsed.tui.notifications.sound_command,
++        Some(vec![
++            "pw-play".to_string(),
++            "/tmp/codex-done.wav".to_string()
++        ])
++    );
++}
++
+ #[test]
+ fn test_tui_notification_condition_rejects_unknown_value() {
+     let toml = r#"
+diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
+index b1245db3ec..ba92d260c3 100644
+--- a/codex-rs/tui/src/app.rs
++++ b/codex-rs/tui/src/app.rs
+@@ -738,6 +738,7 @@ impl App {
+         tui.set_notification_settings(
+             config.tui_notifications.method,
+             config.tui_notifications.condition,
++            config.tui_notifications.sound_command.clone(),
+         );
+ 
+         let harness_overrides =
+diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
+index 5e7985f108..920e602e87 100644
+--- a/codex-rs/tui/src/app/session_lifecycle.rs
++++ b/codex-rs/tui/src/app/session_lifecycle.rs
+@@ -724,6 +724,7 @@ impl App {
+                 tui.set_notification_settings(
+                     self.config.tui_notifications.method,
+                     self.config.tui_notifications.condition,
++                    self.config.tui_notifications.sound_command.clone(),
+                 );
+                 self.file_search
+                     .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/notifications/mod.rs b/codex-rs/tui/src/notifications/mod.rs
-index ee6694b..0d223f6 100644
+index ee6694b357..bc1ed6155b 100644
 --- a/codex-rs/tui/src/notifications/mod.rs
 +++ b/codex-rs/tui/src/notifications/mod.rs
 @@ -1,5 +1,6 @@
@@ -17,19 +84,20 @@ index ee6694b..0d223f6 100644
  
  #[derive(Debug)]
  pub enum DesktopNotificationBackend {
-@@ -46,10 +48,28 @@ impl DesktopNotificationBackend {
+@@ -46,10 +48,29 @@ impl DesktopNotificationBackend {
      }
  }
  
 +pub fn notify_with_sound(
 +    backend: &mut DesktopNotificationBackend,
 +    message: &str,
++    sound_command: Option<&[String]>,
 +) -> io::Result<()> {
 +    let method = backend.method();
 +    backend.notify(message)?;
 +
 +    if should_play_notification_sound(method) {
-+        play_notification_sound();
++        play_notification_sound(sound_command);
 +    }
 +
 +    Ok(())
@@ -46,7 +114,7 @@ index ee6694b..0d223f6 100644
  fn supports_osc9(terminal: &TerminalInfo) -> bool {
      matches!(
          terminal.name,
-@@ -64,6 +84,7 @@ fn supports_osc9(terminal: &TerminalInfo) -> bool {
+@@ -64,6 +85,7 @@ fn supports_osc9(terminal: &TerminalInfo) -> bool {
  #[cfg(test)]
  mod tests {
      use super::detect_backend;
@@ -54,7 +122,7 @@ index ee6694b..0d223f6 100644
      use super::supports_osc9;
      use codex_config::types::NotificationMethod;
      use codex_terminal_detection::TerminalInfo;
-@@ -96,6 +117,19 @@ mod tests {
+@@ -96,6 +118,19 @@ mod tests {
          ));
      }
  
@@ -74,38 +142,105 @@ index ee6694b..0d223f6 100644
      #[test]
      fn supports_osc9_for_supported_terminals() {
          for name in [
+diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
+index b9055f5d6b..fadc32fd71 100644
+--- a/codex-rs/tui/src/tui.rs
++++ b/codex-rs/tui/src/tui.rs
+@@ -44,6 +44,7 @@ use crate::insert_history::HistoryLineWrapPolicy;
+ use crate::insert_history::InsertHistoryMode;
+ use crate::notifications::DesktopNotificationBackend;
+ use crate::notifications::detect_backend;
++use crate::notifications::notify_with_sound;
+ use crate::terminal_hyperlinks::HyperlinkLine;
+ use crate::terminal_hyperlinks::plain_hyperlink_lines;
+ use crate::tui::event_stream::EventBroker;
+@@ -503,6 +504,7 @@ pub struct Tui {
+     enhanced_keys_supported: bool,
+     notification_backend: Option<DesktopNotificationBackend>,
+     notification_condition: NotificationCondition,
++    notification_sound_command: Option<Vec<String>>,
+     // Raw terminal-wrapped history needs a non-scroll-region insertion path in Zellij.
+     is_zellij: bool,
+     // When false, enter_alt_screen() becomes a no-op.
+@@ -558,6 +560,7 @@ impl Tui {
+             enhanced_keys_supported,
+             notification_backend: Some(detect_backend(NotificationMethod::default())),
+             notification_condition: NotificationCondition::default(),
++            notification_sound_command: None,
+             is_zellij,
+             alt_screen_enabled: true,
+             _stderr_guard: stderr_guard,
+@@ -573,9 +576,11 @@ impl Tui {
+         &mut self,
+         method: NotificationMethod,
+         condition: NotificationCondition,
++        sound_command: Option<Vec<String>>,
+     ) {
+         self.notification_backend = Some(detect_backend(method));
+         self.notification_condition = condition;
++        self.notification_sound_command = sound_command;
+     }
+ 
+     pub fn frame_requester(&self) -> FrameRequester {
+@@ -659,7 +664,11 @@ impl Tui {
+         };
+ 
+         let message = message.as_ref().to_string();
+-        match backend.notify(&message) {
++        match notify_with_sound(
++            backend,
++            &message,
++            self.notification_sound_command.as_deref(),
++        ) {
+             Ok(()) => true,
+             Err(err) => {
+                 let method = backend.method();
 diff --git a/codex-rs/tui/src/notifications/sound.rs b/codex-rs/tui/src/notifications/sound.rs
 new file mode 100644
-index 0000000..fd493f3
+index 0000000000..08d4cc90d9
 --- /dev/null
 +++ b/codex-rs/tui/src/notifications/sound.rs
-@@ -0,0 +1,156 @@
+@@ -0,0 +1,184 @@
 +use std::path::Path;
 +use std::process::Command;
 +use std::process::Stdio;
 +
-+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++#[derive(Clone, Debug, PartialEq, Eq)]
 +struct SoundCommand {
-+    program: &'static str,
-+    args: &'static [&'static str],
++    program: String,
++    args: Vec<String>,
 +}
 +
-+pub fn play_notification_sound() {
-+    for command in sound_commands_for_platform(|path| Path::new(path).exists()) {
-+        if spawn_sound_command(command) {
++pub fn play_notification_sound(configured_command: Option<&[String]>) {
++    for command in sound_commands(configured_command, |path| Path::new(path).exists()) {
++        if spawn_sound_command(&command) {
 +            return;
 +        }
 +    }
 +}
 +
-+fn spawn_sound_command(command: SoundCommand) -> bool {
-+    Command::new(command.program)
-+        .args(command.args)
++fn spawn_sound_command(command: &SoundCommand) -> bool {
++    Command::new(&command.program)
++        .args(&command.args)
 +        .stdin(Stdio::null())
 +        .stdout(Stdio::null())
 +        .stderr(Stdio::null())
 +        .spawn()
 +        .is_ok()
++}
++
++fn sound_commands(
++    configured_command: Option<&[String]>,
++    path_exists: impl Fn(&str) -> bool,
++) -> Vec<SoundCommand> {
++    if let Some((program, args)) = configured_command.and_then(|command| command.split_first()) {
++        return vec![SoundCommand {
++            program: program.clone(),
++            args: args.to_vec(),
++        }];
++    }
++
++    sound_commands_for_platform(path_exists)
 +}
 +
 +fn sound_commands_for_platform(path_exists: impl Fn(&str) -> bool) -> Vec<SoundCommand> {
@@ -117,13 +252,13 @@ index 0000000..fd493f3
 +
 +        if path_exists(GLASS_SOUND) {
 +            commands.push(SoundCommand {
-+                program: "afplay",
-+                args: &[GLASS_SOUND],
++                program: "afplay".to_string(),
++                args: vec![GLASS_SOUND.to_string()],
 +            });
 +        }
 +        commands.push(SoundCommand {
-+            program: "osascript",
-+            args: &["-e", "beep"],
++            program: "osascript".to_string(),
++            args: vec!["-e".to_string(), "beep".to_string()],
 +        });
 +    }
 +
@@ -133,25 +268,25 @@ index 0000000..fd493f3
 +        const ALSA_SOUND: &str = "/usr/share/sounds/alsa/Front_Center.wav";
 +
 +        commands.push(SoundCommand {
-+            program: "canberra-gtk-play",
-+            args: &["-i", "bell"],
++            program: "canberra-gtk-play".to_string(),
++            args: vec!["-i".to_string(), "bell".to_string()],
 +        });
 +
 +        if path_exists(FREEDESKTOP_SOUND) {
 +            commands.push(SoundCommand {
-+                program: "paplay",
-+                args: &[FREEDESKTOP_SOUND],
++                program: "paplay".to_string(),
++                args: vec![FREEDESKTOP_SOUND.to_string()],
 +            });
 +            commands.push(SoundCommand {
-+                program: "pw-play",
-+                args: &[FREEDESKTOP_SOUND],
++                program: "pw-play".to_string(),
++                args: vec![FREEDESKTOP_SOUND.to_string()],
 +            });
 +        }
 +
 +        if path_exists(ALSA_SOUND) {
 +            commands.push(SoundCommand {
-+                program: "aplay",
-+                args: &[ALSA_SOUND],
++                program: "aplay".to_string(),
++                args: vec![ALSA_SOUND.to_string()],
 +            });
 +        }
 +    }
@@ -162,6 +297,7 @@ index 0000000..fd493f3
 +#[cfg(test)]
 +mod tests {
 +    use super::SoundCommand;
++    use super::sound_commands;
 +    use super::sound_commands_for_platform;
 +
 +    #[cfg(target_os = "macos")]
@@ -171,12 +307,12 @@ index 0000000..fd493f3
 +            sound_commands_for_platform(|path| path == "/System/Library/Sounds/Glass.aiff"),
 +            vec![
 +                SoundCommand {
-+                    program: "afplay",
-+                    args: &["/System/Library/Sounds/Glass.aiff"],
++                    program: "afplay".to_string(),
++                    args: vec!["/System/Library/Sounds/Glass.aiff".to_string()],
 +                },
 +                SoundCommand {
-+                    program: "osascript",
-+                    args: &["-e", "beep"],
++                    program: "osascript".to_string(),
++                    args: vec!["-e".to_string(), "beep".to_string()],
 +                },
 +            ]
 +        );
@@ -188,8 +324,8 @@ index 0000000..fd493f3
 +        assert_eq!(
 +            sound_commands_for_platform(|_| false),
 +            vec![SoundCommand {
-+                program: "osascript",
-+                args: &["-e", "beep"],
++                program: "osascript".to_string(),
++                args: vec!["-e".to_string(), "beep".to_string()],
 +            }]
 +        );
 +    }
@@ -203,16 +339,16 @@ index 0000000..fd493f3
 +            }),
 +            vec![
 +                SoundCommand {
-+                    program: "canberra-gtk-play",
-+                    args: &["-i", "bell"],
++                    program: "canberra-gtk-play".to_string(),
++                    args: vec!["-i".to_string(), "bell".to_string()],
 +                },
 +                SoundCommand {
-+                    program: "paplay",
-+                    args: &["/usr/share/sounds/freedesktop/stereo/complete.oga"],
++                    program: "paplay".to_string(),
++                    args: vec!["/usr/share/sounds/freedesktop/stereo/complete.oga".to_string()],
 +                },
 +                SoundCommand {
-+                    program: "pw-play",
-+                    args: &["/usr/share/sounds/freedesktop/stereo/complete.oga"],
++                    program: "pw-play".to_string(),
++                    args: vec!["/usr/share/sounds/freedesktop/stereo/complete.oga".to_string()],
 +                },
 +            ]
 +        );
@@ -225,35 +361,27 @@ index 0000000..fd493f3
 +            sound_commands_for_platform(|path| path == "/usr/share/sounds/alsa/Front_Center.wav"),
 +            vec![
 +                SoundCommand {
-+                    program: "canberra-gtk-play",
-+                    args: &["-i", "bell"],
++                    program: "canberra-gtk-play".to_string(),
++                    args: vec!["-i".to_string(), "bell".to_string()],
 +                },
 +                SoundCommand {
-+                    program: "aplay",
-+                    args: &["/usr/share/sounds/alsa/Front_Center.wav"],
++                    program: "aplay".to_string(),
++                    args: vec!["/usr/share/sounds/alsa/Front_Center.wav".to_string()],
 +                },
 +            ]
 +        );
 +    }
++
++    #[test]
++    fn configured_sound_command_overrides_platform_fallbacks() {
++        let configured = vec!["pw-play".to_string(), "/tmp/codex-done.wav".to_string()];
++
++        assert_eq!(
++            sound_commands(Some(configured.as_slice()), |_| true),
++            vec![SoundCommand {
++                program: "pw-play".to_string(),
++                args: vec!["/tmp/codex-done.wav".to_string()],
++            }]
++        );
++    }
 +}
-diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
-index b9055f5..e9b09a3 100644
---- a/codex-rs/tui/src/tui.rs
-+++ b/codex-rs/tui/src/tui.rs
-@@ -44,6 +44,7 @@ use crate::insert_history::HistoryLineWrapPolicy;
- use crate::insert_history::InsertHistoryMode;
- use crate::notifications::DesktopNotificationBackend;
- use crate::notifications::detect_backend;
-+use crate::notifications::notify_with_sound;
- use crate::terminal_hyperlinks::HyperlinkLine;
- use crate::terminal_hyperlinks::plain_hyperlink_lines;
- use crate::tui::event_stream::EventBroker;
-@@ -659,7 +660,7 @@ impl Tui {
-         };
- 
-         let message = message.as_ref().to_string();
--        match backend.notify(&message) {
-+        match notify_with_sound(backend, &message) {
-             Ok(()) => true,
-             Err(err) => {
-                 let method = backend.method();

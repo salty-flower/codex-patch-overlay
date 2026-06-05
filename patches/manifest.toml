@@ -33,7 +33,7 @@ upstream_pr = "https://github.com/openai/codex/pull/8417"
 status = "carried"
 risk = "low"
 owner = "local"
-notes = "Play a best-effort desktop notification sound alongside OSC9 notifications (afplay/osascript on macOS; canberra/paplay/pw-play/aplay on Linux); skipped for the Bel backend, which already rings. Preserves the existing unfocused-only notification gate."
+notes = "Play a desktop notification sound alongside OSC9 notifications; supports tui.notification_sound_command = [program, args...] before falling back to platform defaults (afplay/osascript on macOS; canberra/paplay/pw-play/aplay on Linux). Skipped for the Bel backend, which already rings. Preserves the existing unfocused-only notification gate."
 
 [[patches]]
 name = "webp-image-input"
