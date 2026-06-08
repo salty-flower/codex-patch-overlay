@@ -1,0 +1,20 @@
+codex-patch-overlay
+Modified build of OpenAI Codex — https://github.com/openai/codex
+
+The binaries and Nix packages distributed here are built from OpenAI Codex
+(licensed under Apache-2.0, see LICENSE) with a small local patch stack applied.
+The modifications are limited to the patches recorded in patches/manifest.toml.
+
+The patches in this repository are original work; the upstream issue/PR links in
+the manifest are references to the related feature requests, not the source of
+the patch code.
+
+---------------------------------------------------------------------
+The following NOTICE is retained from OpenAI Codex per Apache-2.0 section 4(d):
+
+OpenAI Codex
+Copyright 2025 OpenAI
+
+This project includes code derived from [Ratatui](https://github.com/ratatui/ratatui), licensed under the MIT license.
+Copyright (c) 2016-2022 Florian Dehau
+Copyright (c) 2023-2025 The Ratatui Developers

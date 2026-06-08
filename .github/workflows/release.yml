@@ -229,7 +229,7 @@ jobs:
             cp "staging/openai-codex/codex-rs/target/${TARGET}/release/bwrap" "$package_dir/codex-resources/bwrap"
             chmod 0755 "$package_dir/codex-resources/bwrap"
           fi
-          cp README.md patches/manifest.toml "$package_dir/"
+          cp README.md LICENSE NOTICE patches/manifest.toml "$package_dir/"
 
           archive="dist/${RELEASE_TAG}-${TARGET}.tar.gz"
           tar -C dist -czf "$archive" "${RELEASE_TAG}-${TARGET}"
