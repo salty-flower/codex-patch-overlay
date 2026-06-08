@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.1"
+patch_suffix = "patch.2"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
@@ -49,3 +49,31 @@ status = "carried"
 risk = "low"
 owner = "local"
 notes = "Recognize .webp paste/attach paths in the TUI composer as WEBP; decode + webp image feature already exist upstream at this base. Verify by attaching a .webp image in the composer."
+
+[[patches]]
+name = "session-delete"
+enabled = true
+file = "patches/session-delete.patch"
+upstream_base = "rust-v0.137.0"
+upstream_sha = "f221438b691b8f749d98f22077c93ebe01923fbe"
+source_hash = "sha256-puszZqi1lZeq8iXWAD9U9+WMnNvzMYKf6wVT9mtjSUU="
+cargo_hash = "sha256-SX5LMO+IWismbH61Jd0g1mgykfav8DrqG+wjyNCWyCo="
+upstream_issue = "https://github.com/openai/codex/issues/8784"
+status = "carried"
+risk = "low"
+owner = "local"
+notes = "Add `codex delete <session>` subcommand to permanently remove a session (SQLite metadata + on-disk rollout file). Reuses archive/unarchive patterns for CLI dispatch, app-server RPC, and session resolution."
+
+[[patches]]
+name = "disable-autocompact"
+enabled = true
+file = "patches/disable-autocompact.patch"
+upstream_base = "rust-v0.137.0"
+upstream_sha = "f221438b691b8f749d98f22077c93ebe01923fbe"
+source_hash = "sha256-puszZqi1lZeq8iXWAD9U9+WMnNvzMYKf6wVT9mtjSUU="
+cargo_hash = "sha256-SX5LMO+IWismbH61Jd0g1mgykfav8DrqG+wjyNCWyCo="
+upstream_issue = "https://github.com/openai/codex/issues/4106"
+status = "carried"
+risk = "low"
+owner = "local"
+notes = "Add `auto_compact = false` config option to disable automatic context compaction. Guards both pre-turn and mid-turn compaction triggers in turn.rs. Defaults to true (existing behavior). A/B check with `cargo run -p codex-cli --bin codex -- -c model_auto_compact_token_limit=1 -c auto_compact=false --no-alt-screen` versus the same command without `-c auto_compact=false`; the enabled/default run should compact."
