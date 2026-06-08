@@ -17,6 +17,8 @@
 | TUI notification sound | `openai/codex#8417` | low | carried |
 | WebP image input | `openai/codex#8562`, `openai/codex#8589` | low | carried |
 | Transcript search | `openai/codex#8641` | high | candidate |
+| Symlinked skills | `openai/codex#8370` | — | **retired**: Rust `fs::read_dir` follows symlinks by default; already works |
+| Directory @ selection | `openai/codex#8960` | — | **retired**: implemented upstream in #19068 (2026-05-11) |
 
 ## Promotion Rule
 
