@@ -1,0 +1,59 @@
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index 7c060cadb7..e735e78c46 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -148,6 +148,10 @@ pub struct ConfigToml {
+     /// Size of the context window for the model, in tokens.
+     pub model_context_window: Option<i64>,
+ 
++    /// When set to `false`, disables automatic context compaction entirely.
++    /// Defaults to `true`.
++    pub auto_compact: Option<bool>,
++
+     /// Token usage threshold triggering auto-compaction of conversation history.
+     pub model_auto_compact_token_limit: Option<i64>,
+ 
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index 43b2a2ed29..9f644033db 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -609,6 +609,9 @@ pub struct Config {
+     /// active context or only tokens after the carried compaction-window prefix.
+     pub model_auto_compact_token_limit_scope: AutoCompactTokenLimitScope,
+ 
++    /// When `false`, automatic context compaction is disabled entirely.
++    pub auto_compact_enabled: bool,
++
+     /// Key into the model_providers map that specifies which provider to use.
+     pub model_provider_id: String,
+ 
+@@ -3410,6 +3413,7 @@ impl Config {
+             model_auto_compact_token_limit_scope: cfg
+                 .model_auto_compact_token_limit_scope
+                 .unwrap_or_default(),
++            auto_compact_enabled: cfg.auto_compact.unwrap_or(true),
+             model_provider_id,
+             model_provider,
+             cwd: resolved_cwd,
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+index 42d609561e..13e9c7c3cb 100644
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -289,7 +289,7 @@ pub(crate) async fn run_turn(
+                 );
+ 
+                 // as long as compaction works well in getting us way below the token limit, we shouldn't worry about being in an infinite loop.
+-                if token_limit_reached && needs_follow_up {
++                if token_limit_reached && needs_follow_up && turn_context.config.auto_compact_enabled {
+                     if let Err(err) = run_auto_compact(
+                         &sess,
+                         &turn_context,
+@@ -776,7 +776,7 @@ async fn run_pre_sampling_compact(
+     maybe_run_previous_model_inline_compact(sess, turn_context, client_session).await?;
+     let token_status = auto_compact_token_status(sess.as_ref(), turn_context.as_ref()).await;
+     // Compact if the configured auto-compaction budget or usable context window is exhausted.
+-    if token_status.token_limit_reached {
++    if token_status.token_limit_reached && turn_context.config.auto_compact_enabled {
+         run_auto_compact(
+             sess,
+             turn_context,
