@@ -19,8 +19,8 @@
 | Transcript search | `openai/codex#8641` | high | candidate |
 | Symlinked skills | `openai/codex#8370` | — | **retired**: Rust `fs::read_dir` follows symlinks by default; already works |
 | Directory @ selection | `openai/codex#8960` | — | **retired**: implemented upstream in #19068 (2026-05-11) |
-| `codex delete <session>` | `openai/codex#8784` | low | carried |
-| Disable autocompact | `openai/codex#4106` | low | carried |
+| `codex delete <session>` | `openai/codex#8784` | low | candidate |
+| Disable autocompact | `openai/codex#4106` | low | candidate |
 | Respect proxy env vars | `openai/codex#4242` | low | candidate |
 | Sensitive file exclusion `.codexignore` | `openai/codex#2847` | medium | candidate |
 
