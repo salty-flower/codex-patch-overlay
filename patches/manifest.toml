@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.2"
+patch_suffix = "patch.3"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
@@ -80,28 +80,28 @@ notes = "Add `auto_compact = false` config option to disable automatic context c
 
 [[patches]]
 name = "token-usage-breakdown"
-enabled = false
+enabled = true
 file = "patches/token-usage-breakdown.patch"
 upstream_base = "rust-v0.137.0"
 upstream_sha = "f221438b691b8f749d98f22077c93ebe01923fbe"
 source_hash = "sha256-puszZqi1lZeq8iXWAD9U9+WMnNvzMYKf6wVT9mtjSUU="
 cargo_hash = "sha256-SX5LMO+IWismbH61Jd0g1mgykfav8DrqG+wjyNCWyCo="
 upstream_issue = "https://github.com/openai/codex/issues/13222"
-status = "candidate"
+status = "carried"
 risk = "low"
 owner = "local"
 notes = "Add a 'Context input' row to the TUI /status display showing non-cached vs cached input tokens with a cached percentage. Helps users identify how much of their context window is consumed by fresh (paid) vs cached (free/cheap) tokens. Verify by running /status in a session with conversation history; the new row appears below 'Context window' when cached tokens are present."
 
 [[patches]]
 name = "plan-mode-default"
-enabled = false
+enabled = true
 file = "patches/plan-mode-default.patch"
 upstream_base = "rust-v0.137.0"
 upstream_sha = "f221438b691b8f749d98f22077c93ebe01923fbe"
 source_hash = "sha256-puszZqi1lZeq8iXWAD9U9+WMnNvzMYKf6wVT9mtjSUU="
 cargo_hash = "sha256-SX5LMO+IWismbH61Jd0g1mgykfav8DrqG+wjyNCWyCo="
 upstream_issue = "https://github.com/openai/codex/issues/13942"
-status = "candidate"
+status = "carried"
 risk = "low"
 owner = "local"
 notes = "Add `tui.default_collaboration_mode = \"plan\"` config option to launch the TUI in Plan mode instead of Code mode. Falls back to default on invalid values. Verify with `codex -c 'tui.default_collaboration_mode=\"plan\"' --no-alt-screen`; the TUI should start in Plan mode."

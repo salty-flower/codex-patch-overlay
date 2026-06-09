@@ -23,8 +23,8 @@
 | Disable autocompact | `openai/codex#4106` | low | carried |
 | Respect proxy env vars | `openai/codex#4242` | — | **deferred**: see notes |
 | Sensitive file exclusion `.codexignore` | `openai/codex#2847`, `openai/codex#6530` | — | **retired**: implemented upstream as model-level enforcement (prompt injection via `<codex-ignore>` context fragment); not sandbox-level deny-read — model *can* still read excluded files. #2847 (open) wants deterministic exclusion; #6530 (closed) reported it wasn't being respected. Files: `codexignore_instructions.rs`, `agents_md.rs::load_codexignore()` |
-| Token usage breakdown | `openai/codex#13222` | low | candidate |
-| Default Plan mode | `openai/codex#13942` | low | candidate |
+| Token usage breakdown | `openai/codex#13222` | low | carried |
+| Default Plan mode | `openai/codex#13942` | low | carried |
 
 ## Research Notes
 
