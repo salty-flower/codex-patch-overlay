@@ -1,0 +1,77 @@
+diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
+index 7b634a5188..7f4a4c2b36 100644
+--- a/codex-rs/config/src/types.rs
++++ b/codex-rs/config/src/types.rs
+@@ -677,6 +677,19 @@ pub struct Tui {
+     #[serde(default)]
+     pub raw_output_mode: bool,
+ 
++    /// Start the TUI in the specified collaboration mode (plan/default).
++    ///
++    /// When set to `"plan"`, the TUI launches in Plan mode instead of the
++    /// default Code mode. Invalid values are silently ignored (falls back to
++    /// default).
++    ///
++    /// ```toml
++    /// [tui]
++    /// default_collaboration_mode = "plan"
++    /// ```
++    #[serde(default)]
++    pub default_collaboration_mode: Option<ModeKind>,
++
+     /// Controls whether the TUI uses the terminal's alternate screen buffer.
+     ///
+     /// - `auto` (default): Use alternate screen.
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index 43b2a2ed29..fa50d0aee9 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -80,6 +80,7 @@ use codex_models_manager::ModelsManagerConfig;
+ use codex_protocol::config_types::AltScreenMode;
+ use codex_protocol::config_types::AutoCompactTokenLimitScope;
+ use codex_protocol::config_types::ForcedLoginMethod;
++use codex_protocol::config_types::ModeKind;
+ use codex_protocol::config_types::Personality;
+ use codex_protocol::config_types::ReasoningSummary;
+ use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
+@@ -721,6 +722,8 @@ pub struct Config {
+     pub tui_raw_output_mode: bool,
+ 
+     /// Start the TUI in the specified collaboration mode (plan/default).
++    /// When `Some(ModeKind::Plan)`, the TUI launches in Plan mode.
++    pub tui_default_collaboration_mode: Option<ModeKind>,
+ 
+     /// Controls whether the TUI uses the terminal's alternate screen buffer.
+     ///
+@@ -3596,6 +3599,10 @@ impl Config {
+                 .as_ref()
+                 .map(|t| t.raw_output_mode)
+                 .unwrap_or(false),
++            tui_default_collaboration_mode: cfg
++                .tui
++                .as_ref()
++                .and_then(|t| t.default_collaboration_mode),
+             tui_alternate_screen: cfg
+                 .tui
+                 .as_ref()
+diff --git a/codex-rs/tui/src/chatwidget/settings.rs b/codex-rs/tui/src/chatwidget/settings.rs
+index 45dbc362e9..96dd5b8071 100644
+--- a/codex-rs/tui/src/chatwidget/settings.rs
++++ b/codex-rs/tui/src/chatwidget/settings.rs
+@@ -446,11 +446,14 @@ impl ChatWidget {
+     }
+ 
+     pub(super) fn initial_collaboration_mask(
+-        _config: &Config,
++        config: &Config,
+         model_catalog: &ModelCatalog,
+         model_override: Option<&str>,
+     ) -> Option<CollaborationModeMask> {
+-        let mut mask = collaboration_modes::default_mask(model_catalog)?;
++        let mut mask = match config.tui_default_collaboration_mode {
++            Some(ModeKind::Plan) => collaboration_modes::plan_mask(model_catalog),
++            _ => collaboration_modes::default_mask(model_catalog),
++        }?;
+         if let Some(model_override) = model_override {
+             mask.model = Some(model_override.to_string());
+         }
