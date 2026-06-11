@@ -4,9 +4,9 @@ Local Nix overlay for carrying small OpenAI Codex patches without maintaining a 
 
 Each release carries community-requested features that upstream `openai/codex` hasn't
 merged yet — currently live TUI reasoning-summary streaming, a task-completion
-notification sound, and WebP image input — and ships them as ready-to-run binaries plus
-a Nix overlay, refreshed on every upstream Codex release. See `patches/manifest.toml` for
-the exact patch stack.
+notification sound, WebP image input, and strict timed CLI queueing — and ships
+them as ready-to-run binaries plus a Nix overlay, refreshed on every upstream
+Codex release. See `patches/manifest.toml` for the exact patch stack.
 
 ## Install a patched build
 

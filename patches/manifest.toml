@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.2"
+patch_suffix = "patch.3"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
@@ -105,3 +105,17 @@ status = "carried"
 risk = "low"
 owner = "local"
 notes = "Add `tui.default_collaboration_mode = \"plan\"` config option to launch the TUI in Plan mode instead of Code mode. Falls back to default on invalid values. Verify with `codex -c 'tui.default_collaboration_mode=\"plan\"' --no-alt-screen`; the TUI should start in Plan mode."
+
+[[patches]]
+name = "timed-queue"
+enabled = true
+file = "patches/timed-queue.patch"
+upstream_base = "rust-v0.139.0"
+upstream_sha = "a7dff904308535e965aee87680c1fc5ef1d19eec"
+source_hash = "sha256-XjzlkBUkBey+P3tFLDYB3ae5oseUfW5tmzhLzqlqj2E="
+cargo_hash = "sha256-8mN4OTRJvt2mBYHQXZS55PSOChLqEIiXwPu2y+2MZ9o="
+upstream_issue = "local-request"
+status = "carried"
+risk = "medium"
+owner = "local"
+notes = "Add `/schedule in <minutes> <prompt>` and `/schedule at <HH:MM> <prompt>` to queue a follow-up prompt for a strict future time. Due prompts drain immediately when idle, or wait for the current turn to finish if Codex is still running."
