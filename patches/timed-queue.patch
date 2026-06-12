@@ -343,7 +343,7 @@ index 0a85e0002c..e1c1dc7c66 100644
              let rejected_messages = self
                  .input_queue
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index 48caf8f54d..8258fc8756 100644
+index 48caf8f54d..4d3b74e542 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 @@ -14,6 +14,7 @@ use crate::bottom_pane::slash_commands::ServiceTierCommand;
@@ -358,8 +358,8 @@ index 48caf8f54d..8258fc8756 100644
      "Press Ctrl+C to return to the main thread first.";
  const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
  const RAW_USAGE: &str = "Usage: /raw [on|off]";
-+const SCHEDULE_USAGE: &str =
-+    "Usage: /schedule in <minutes> <prompt> OR /schedule at <HH:MM> <prompt>";
++const SCHEDULE_USAGE: &str = "Usage: /schedule in <duration> <prompt> OR /schedule at <HH:MM> <prompt>\n\
++     Duration: 10m, 1h30m, 90s, 1h2m3s (bare number = minutes)";
  
  impl ChatWidget {
      /// Dispatch a bare slash command and record its staged local-history entry.
@@ -470,7 +470,7 @@ index 7134fa300a..8b6eb95f13 100644
  
  impl From<UserMessage> for QueuedUserMessage {
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index 805f266e0a..282a80ab52 100644
+index 805f266e0a..80688cb017 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
 @@ -28,6 +28,7 @@ pub enum SlashCommand {
@@ -485,7 +485,7 @@ index 805f266e0a..282a80ab52 100644
              SlashCommand::Init => "create an AGENTS.md file with instructions for Codex",
              SlashCommand::Compact => "summarize conversation to prevent hitting the context limit",
              SlashCommand::Review => "review my current changes and find issues",
-+            SlashCommand::Schedule => "schedule a follow-up prompt for later",
++            SlashCommand::Schedule => "e.g. /schedule in 5m <prompt> or at 14:30 <prompt>",
              SlashCommand::Rename => "rename the current thread",
              SlashCommand::Resume => "resume a saved chat",
              SlashCommand::Archive => "archive this session and exit",
@@ -507,14 +507,17 @@ index 805f266e0a..282a80ab52 100644
              | SlashCommand::Hooks
 diff --git a/codex-rs/tui/src/chatwidget/scheduled_input.rs b/codex-rs/tui/src/chatwidget/scheduled_input.rs
 new file mode 100644
-index 0000000000..562bad3c01
+index 0000000000..9b1397e787
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/scheduled_input.rs
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,169 @@
 +use std::time::Duration;
 +
 +use chrono::NaiveTime;
 +use chrono::Timelike;
++
++const USAGE: &str = "Usage: /schedule in <duration> <prompt> OR /schedule at <HH:MM> <prompt>\n\
++     Duration: 10m, 1h30m, 90s, 1h2m3s (bare number = minutes)";
 +
 +#[derive(Debug, PartialEq, Eq)]
 +pub(super) struct ScheduledPrompt {
@@ -523,42 +526,64 @@ index 0000000000..562bad3c01
 +    pub(super) label: String,
 +}
 +
++fn parse_duration(input: &str) -> Option<(u64, String)> {
++    if input.is_empty() {
++        return None;
++    }
++    // Bare integer = minutes (backwards-compat).
++    if let Ok(minutes) = input.parse::<u64>() {
++        return (minutes > 0).then(|| (minutes * 60, format!("{minutes}m")));
++    }
++    let mut total_secs: u64 = 0;
++    let mut label_parts = Vec::new();
++    let mut rest = input;
++    let mut matched_any = false;
++    for (suffix, factor, label_suffix) in [('h', 3600u64, "h"), ('m', 60, "m"), ('s', 1, "s")] {
++        if let Some(pos) = rest.find(suffix) {
++            let n: u64 = rest[..pos].parse().ok()?;
++            total_secs += n * factor;
++            label_parts.push(format!("{n}{label_suffix}"));
++            rest = &rest[pos + 1..];
++            matched_any = true;
++        }
++    }
++    if !matched_any || !rest.is_empty() || total_secs == 0 {
++        return None;
++    }
++    Some((total_secs, label_parts.join("")))
++}
++
 +pub(super) fn parse_schedule_args(args: &str, now: NaiveTime) -> Result<ScheduledPrompt, String> {
-+    let usage = "Usage: /schedule in <minutes> <prompt> OR /schedule at <HH:MM> <prompt>";
 +    let trimmed = args.trim();
 +    let Some((mode, rest)) = trimmed.split_once(char::is_whitespace) else {
-+        return Err(usage.to_string());
++        return Err(USAGE.to_string());
 +    };
 +    let rest = rest.trim_start();
 +    let Some((time_value, prompt)) = rest.split_once(char::is_whitespace) else {
-+        return Err(usage.to_string());
++        return Err(USAGE.to_string());
 +    };
 +    let prompt = prompt.trim_start();
 +    if prompt.is_empty() {
-+        return Err(usage.to_string());
++        return Err(USAGE.to_string());
 +    }
 +
 +    match mode {
 +        "in" => {
-+            let minutes_text = time_value.strip_suffix('m').unwrap_or(time_value);
-+            let minutes: u64 = minutes_text.parse().map_err(|_| usage.to_string())?;
-+            if minutes == 0 {
-+                return Err(usage.to_string());
-+            }
++            let (secs, label) = parse_duration(time_value).ok_or_else(|| USAGE.to_string())?;
 +            Ok(ScheduledPrompt {
-+                delay: Duration::from_secs(minutes * 60),
++                delay: Duration::from_secs(secs),
 +                prompt: prompt.to_string(),
-+                label: format!("in {minutes}m"),
++                label: format!("in {label}"),
 +            })
 +        }
 +        "at" => {
 +            let Some((hour, minute)) = time_value.split_once(':') else {
-+                return Err(usage.to_string());
++                return Err(USAGE.to_string());
 +            };
-+            let hour: u32 = hour.parse().map_err(|_| usage.to_string())?;
-+            let minute: u32 = minute.parse().map_err(|_| usage.to_string())?;
++            let hour: u32 = hour.parse().map_err(|_| USAGE.to_string())?;
++            let minute: u32 = minute.parse().map_err(|_| USAGE.to_string())?;
 +            if hour > 23 || minute > 59 {
-+                return Err(usage.to_string());
++                return Err(USAGE.to_string());
 +            }
 +            let target_seconds = hour * 60 * 60 + minute * 60;
 +            let now_seconds = now.num_seconds_from_midnight();
@@ -572,7 +597,7 @@ index 0000000000..562bad3c01
 +                label: format!("at {hour:02}:{minute:02}"),
 +            })
 +        }
-+        _ => Err(usage.to_string()),
++        _ => Err(USAGE.to_string()),
 +    }
 +}
 +
@@ -580,24 +605,58 @@ index 0000000000..562bad3c01
 +mod tests {
 +    use super::*;
 +    use chrono::NaiveTime;
++    use pretty_assertions::assert_eq;
 +
 +    fn t(hour: u32, minute: u32) -> NaiveTime {
 +        NaiveTime::from_hms_opt(hour, minute, 0).unwrap()
 +    }
 +
 +    #[test]
-+    fn parses_in_minutes_with_prompt() {
++    fn parses_in_bare_minutes() {
 +        let parsed = parse_schedule_args("in 10 continue the review", t(9, 0)).unwrap();
-+
 +        assert_eq!(parsed.delay, Duration::from_secs(10 * 60));
 +        assert_eq!(parsed.prompt, "continue the review");
 +        assert_eq!(parsed.label, "in 10m");
 +    }
 +
 +    #[test]
++    fn parses_in_minutes_with_suffix() {
++        let parsed = parse_schedule_args("in 10m continue", t(9, 0)).unwrap();
++        assert_eq!(parsed.delay, Duration::from_secs(600));
++        assert_eq!(parsed.label, "in 10m");
++    }
++
++    #[test]
++    fn parses_in_hours() {
++        let parsed = parse_schedule_args("in 2h continue", t(9, 0)).unwrap();
++        assert_eq!(parsed.delay, Duration::from_secs(7200));
++        assert_eq!(parsed.label, "in 2h");
++    }
++
++    #[test]
++    fn parses_in_seconds() {
++        let parsed = parse_schedule_args("in 90s continue", t(9, 0)).unwrap();
++        assert_eq!(parsed.delay, Duration::from_secs(90));
++        assert_eq!(parsed.label, "in 90s");
++    }
++
++    #[test]
++    fn parses_compound_duration() {
++        let parsed = parse_schedule_args("in 1h30m continue", t(9, 0)).unwrap();
++        assert_eq!(parsed.delay, Duration::from_secs(5400));
++        assert_eq!(parsed.label, "in 1h30m");
++    }
++
++    #[test]
++    fn parses_full_hms_duration() {
++        let parsed = parse_schedule_args("in 1h2m3s continue", t(9, 0)).unwrap();
++        assert_eq!(parsed.delay, Duration::from_secs(3723));
++        assert_eq!(parsed.label, "in 1h2m3s");
++    }
++
++    #[test]
 +    fn parses_at_hh_mm_today() {
 +        let parsed = parse_schedule_args("at 09:30 continue the review", t(9, 0)).unwrap();
-+
 +        assert_eq!(parsed.delay, Duration::from_secs(30 * 60));
 +        assert_eq!(parsed.prompt, "continue the review");
 +        assert_eq!(parsed.label, "at 09:30");
@@ -606,19 +665,18 @@ index 0000000000..562bad3c01
 +    #[test]
 +    fn parses_at_hh_mm_tomorrow_when_time_has_passed() {
 +        let parsed = parse_schedule_args("at 09:30 continue the review", t(10, 0)).unwrap();
-+
 +        assert_eq!(parsed.delay, Duration::from_secs(23 * 60 * 60 + 30 * 60));
-+        assert_eq!(parsed.prompt, "continue the review");
 +        assert_eq!(parsed.label, "at 09:30");
 +    }
 +
 +    #[test]
 +    fn rejects_freeform_time() {
-+        let err = parse_schedule_args("after lunch continue", t(9, 0)).unwrap_err();
++        assert!(parse_schedule_args("after lunch continue", t(9, 0)).is_err());
++    }
 +
-+        assert_eq!(
-+            err,
-+            "Usage: /schedule in <minutes> <prompt> OR /schedule at <HH:MM> <prompt>"
-+        );
++    #[test]
++    fn rejects_zero_duration() {
++        assert!(parse_schedule_args("in 0 continue", t(9, 0)).is_err());
++        assert!(parse_schedule_args("in 0s continue", t(9, 0)).is_err());
 +    }
 +}
