@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 548aa54427..571736bef8 100644
+index 6c6a31ee6..9587f871a 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -1841,6 +1841,18 @@ impl App {
+@@ -1816,6 +1816,18 @@ impl App {
                  self.chat_widget
                      .submit_user_message_with_mode(text, collaboration_mode);
              }
@@ -22,10 +22,10 @@ index 548aa54427..571736bef8 100644
                  self.chat_widget.handle_manage_skills_closed();
              }
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index c2f9ee3f31..51dc8d48c8 100644
+index 39e0b9503..ba9763380 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -911,6 +911,16 @@ pub(crate) enum AppEvent {
+@@ -888,6 +888,16 @@ pub(crate) enum AppEvent {
          collaboration_mode: CollaborationModeMask,
      },
  
@@ -43,10 +43,10 @@ index c2f9ee3f31..51dc8d48c8 100644
      FullScreenApprovalRequest(ApprovalRequest),
  
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index c9827a4e71..2b5acf04ae 100644
+index fb89fda2e..6109b06d4 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -361,6 +361,7 @@ use self::session_header::SessionHeader;
+@@ -359,6 +359,7 @@ use self::session_header::SessionHeader;
  mod hook_lifecycle;
  mod hooks;
  mod interaction;
@@ -55,10 +55,20 @@ index c9827a4e71..2b5acf04ae 100644
  mod slash_dispatch;
  use self::skills::collect_tool_mentions;
 diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
-index ddb118baec..4b4a811daf 100644
+index b24a4fde2..119199889 100644
 --- a/codex-rs/tui/src/chatwidget/input_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/input_flow.rs
-@@ -105,7 +105,9 @@ impl ChatWidget {
+@@ -91,6 +91,9 @@ impl ChatWidget {
+                     user_message,
+                     action,
+                     pending_pastes,
++                    not_before: None,
++                    schedule_label: None,
++                    schedule_target_time: None,
+                 });
+             self.input_queue
+                 .queued_user_message_history_records
+@@ -111,7 +114,9 @@ impl ChatWidget {
          }
          let mut submitted_follow_up = false;
          while !self.is_user_turn_pending_or_running() {
@@ -69,7 +79,7 @@ index ddb118baec..4b4a811daf 100644
                  break;
              };
              match queued_message.action {
-@@ -137,6 +139,49 @@ impl ChatWidget {
+@@ -143,6 +148,49 @@ impl ChatWidget {
          submitted_follow_up
      }
  
@@ -119,7 +129,7 @@ index ddb118baec..4b4a811daf 100644
      pub(super) fn is_user_turn_pending_or_running(&self) -> bool {
          self.input_queue.user_turn_pending_start || self.bottom_pane.is_task_running()
      }
-@@ -151,7 +196,7 @@ impl ChatWidget {
+@@ -157,7 +205,7 @@ impl ChatWidget {
      }
  
      /// Rebuild and update the bottom-pane pending-input preview.
@@ -129,7 +139,7 @@ index ddb118baec..4b4a811daf 100644
          self.bottom_pane.set_pending_input_preview(
              preview.queued_messages,
 diff --git a/codex-rs/tui/src/chatwidget/input_queue.rs b/codex-rs/tui/src/chatwidget/input_queue.rs
-index 67a306af22..cca2a4f3c8 100644
+index 67a306af2..cca2a4f3c 100644
 --- a/codex-rs/tui/src/chatwidget/input_queue.rs
 +++ b/codex-rs/tui/src/chatwidget/input_queue.rs
 @@ -4,6 +4,10 @@
@@ -314,10 +324,10 @@ index 67a306af22..cca2a4f3c8 100644
      fn clear_resets_all_input_queues() {
          let mut state = InputQueueState::default();
 diff --git a/codex-rs/tui/src/chatwidget/input_restore.rs b/codex-rs/tui/src/chatwidget/input_restore.rs
-index 0a85e0002c..e1c1dc7c66 100644
+index bcc4e956a..14813d841 100644
 --- a/codex-rs/tui/src/chatwidget/input_restore.rs
 +++ b/codex-rs/tui/src/chatwidget/input_restore.rs
-@@ -52,21 +52,12 @@ impl ChatWidget {
+@@ -55,21 +55,12 @@ impl ChatWidget {
          }
      }
  
@@ -343,27 +353,27 @@ index 0a85e0002c..e1c1dc7c66 100644
              let rejected_messages = self
                  .input_queue
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index 48caf8f54d..4d3b74e542 100644
+index 32ab70ed3..adca19806 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-@@ -14,6 +14,7 @@ use crate::bottom_pane::slash_commands::ServiceTierCommand;
- use crate::bottom_pane::slash_commands::SlashCommandItem;
+@@ -14,6 +14,7 @@ use crate::bottom_pane::slash_commands::SlashCommandItem;
  use crate::bottom_pane::slash_commands::find_slash_command;
  use crate::goal_display::GOAL_USAGE;
+ use crate::goal_files::GoalDraft;
 +use chrono::Local;
  
  #[derive(Clone, Copy, Debug, PartialEq, Eq)]
  enum SlashCommandDispatchSource {
-@@ -35,6 +36,8 @@ const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str =
+@@ -36,6 +37,8 @@ const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str =
      "Press Ctrl+C to return to the main thread first.";
  const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
  const RAW_USAGE: &str = "Usage: /raw [on|off]";
 +const SCHEDULE_USAGE: &str = "Usage: /schedule in <duration> <prompt> OR /schedule at <HH:MM> <prompt>\n\
 +     Duration: 10m, 1h30m, 90s, 1h2m3s (bare number = minutes)";
+ const USAGE_CHATGPT_LOGIN_REQUIRED: &str = "Sign in with ChatGPT to use /usage.";
  
  impl ChatWidget {
-     /// Dispatch a bare slash command and record its staged local-history entry.
-@@ -234,6 +237,9 @@ impl ChatWidget {
+@@ -256,6 +259,9 @@ impl ChatWidget {
              SlashCommand::Review => {
                  self.open_review_popup();
              }
@@ -373,9 +383,9 @@ index 48caf8f54d..4d3b74e542 100644
              SlashCommand::Rename => {
                  self.session_telemetry
                      .counter("codex.thread.rename", /*inc*/ 1, &[]);
-@@ -689,6 +695,27 @@ impl ChatWidget {
-                     self.queue_user_message(user_message);
-                 }
+@@ -711,6 +717,27 @@ impl ChatWidget {
+                 };
+                 self.app_event_tx.set_thread_name(name);
              }
 +            SlashCommand::Schedule if !trimmed.is_empty() => {
 +                let parsed =
@@ -398,10 +408,10 @@ index 48caf8f54d..4d3b74e542 100644
 +                    parsed.label,
 +                );
 +            }
-             SlashCommand::Goal if !trimmed.is_empty() => {
-                 if !self.config.features.enabled(Feature::Goals) {
+             SlashCommand::Plan if !trimmed.is_empty() => {
+                 if !self.apply_plan_slash_command() {
                      return;
-@@ -986,6 +1013,7 @@ impl ChatWidget {
+@@ -1048,6 +1075,7 @@ impl ChatWidget {
              | SlashCommand::Diff
              | SlashCommand::App
              | SlashCommand::Rename
@@ -410,10 +420,10 @@ index 48caf8f54d..4d3b74e542 100644
              SlashCommand::Feedback
              | SlashCommand::New
 diff --git a/codex-rs/tui/src/chatwidget/user_messages.rs b/codex-rs/tui/src/chatwidget/user_messages.rs
-index 7134fa300a..8b6eb95f13 100644
+index 6cfb739da..c79371498 100644
 --- a/codex-rs/tui/src/chatwidget/user_messages.rs
 +++ b/codex-rs/tui/src/chatwidget/user_messages.rs
-@@ -9,6 +9,10 @@ use std::collections::HashMap;
+@@ -10,6 +10,10 @@ use std::collections::HashSet;
  use std::collections::VecDeque;
  use std::ops::Deref;
  use std::path::PathBuf;
@@ -424,20 +434,20 @@ index 7134fa300a..8b6eb95f13 100644
  
  use crate::bottom_pane::LocalImageAttachment;
  use crate::bottom_pane::MentionBinding;
-@@ -59,6 +63,9 @@ pub(super) enum ShellEscapePolicy {
- pub(super) struct QueuedUserMessage {
+@@ -61,6 +65,9 @@ pub(super) struct QueuedUserMessage {
      pub(super) user_message: UserMessage,
      pub(super) action: QueuedInputAction,
+     pub(super) pending_pastes: Vec<(String, String)>,
 +    pub(super) not_before: Option<Instant>,
 +    pub(super) schedule_label: Option<String>,
 +    pub(super) schedule_target_time: Option<DateTime<Local>>,
  }
  
  impl QueuedUserMessage {
-@@ -66,12 +73,34 @@ impl QueuedUserMessage {
-         Self {
+@@ -69,12 +76,34 @@ impl QueuedUserMessage {
              user_message,
              action,
+             pending_pastes: Vec::new(),
 +            not_before: None,
 +            schedule_label: None,
 +            schedule_target_time: None,
@@ -470,18 +480,18 @@ index 7134fa300a..8b6eb95f13 100644
  
  impl From<UserMessage> for QueuedUserMessage {
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index 805f266e0a..80688cb017 100644
+index 05dcefe93..c494bcb9e 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
-@@ -28,6 +28,7 @@ pub enum SlashCommand {
-     Skills,
+@@ -29,6 +29,7 @@ pub enum SlashCommand {
+     Import,
      Hooks,
      Review,
 +    Schedule,
      Rename,
      New,
      Archive,
-@@ -86,6 +87,7 @@ impl SlashCommand {
+@@ -87,6 +88,7 @@ impl SlashCommand {
              SlashCommand::Init => "create an AGENTS.md file with instructions for Codex",
              SlashCommand::Compact => "summarize conversation to prevent hitting the context limit",
              SlashCommand::Review => "review my current changes and find issues",
@@ -489,7 +499,7 @@ index 805f266e0a..80688cb017 100644
              SlashCommand::Rename => "rename the current thread",
              SlashCommand::Resume => "resume a saved chat",
              SlashCommand::Archive => "archive this session and exit",
-@@ -152,6 +154,7 @@ impl SlashCommand {
+@@ -154,6 +156,7 @@ impl SlashCommand {
          matches!(
              self,
              SlashCommand::Review
@@ -497,7 +507,7 @@ index 805f266e0a..80688cb017 100644
                  | SlashCommand::Rename
                  | SlashCommand::Plan
                  | SlashCommand::Goal
-@@ -208,6 +211,7 @@ impl SlashCommand {
+@@ -214,6 +217,7 @@ impl SlashCommand {
              | SlashCommand::Copy
              | SlashCommand::Raw
              | SlashCommand::Rename
@@ -505,178 +515,3 @@ index 805f266e0a..80688cb017 100644
              | SlashCommand::Mention
              | SlashCommand::Skills
              | SlashCommand::Hooks
-diff --git a/codex-rs/tui/src/chatwidget/scheduled_input.rs b/codex-rs/tui/src/chatwidget/scheduled_input.rs
-new file mode 100644
-index 0000000000..9b1397e787
---- /dev/null
-+++ b/codex-rs/tui/src/chatwidget/scheduled_input.rs
-@@ -0,0 +1,169 @@
-+use std::time::Duration;
-+
-+use chrono::NaiveTime;
-+use chrono::Timelike;
-+
-+const USAGE: &str = "Usage: /schedule in <duration> <prompt> OR /schedule at <HH:MM> <prompt>\n\
-+     Duration: 10m, 1h30m, 90s, 1h2m3s (bare number = minutes)";
-+
-+#[derive(Debug, PartialEq, Eq)]
-+pub(super) struct ScheduledPrompt {
-+    pub(super) delay: Duration,
-+    pub(super) prompt: String,
-+    pub(super) label: String,
-+}
-+
-+fn parse_duration(input: &str) -> Option<(u64, String)> {
-+    if input.is_empty() {
-+        return None;
-+    }
-+    // Bare integer = minutes (backwards-compat).
-+    if let Ok(minutes) = input.parse::<u64>() {
-+        return (minutes > 0).then(|| (minutes * 60, format!("{minutes}m")));
-+    }
-+    let mut total_secs: u64 = 0;
-+    let mut label_parts = Vec::new();
-+    let mut rest = input;
-+    let mut matched_any = false;
-+    for (suffix, factor, label_suffix) in [('h', 3600u64, "h"), ('m', 60, "m"), ('s', 1, "s")] {
-+        if let Some(pos) = rest.find(suffix) {
-+            let n: u64 = rest[..pos].parse().ok()?;
-+            total_secs += n * factor;
-+            label_parts.push(format!("{n}{label_suffix}"));
-+            rest = &rest[pos + 1..];
-+            matched_any = true;
-+        }
-+    }
-+    if !matched_any || !rest.is_empty() || total_secs == 0 {
-+        return None;
-+    }
-+    Some((total_secs, label_parts.join("")))
-+}
-+
-+pub(super) fn parse_schedule_args(args: &str, now: NaiveTime) -> Result<ScheduledPrompt, String> {
-+    let trimmed = args.trim();
-+    let Some((mode, rest)) = trimmed.split_once(char::is_whitespace) else {
-+        return Err(USAGE.to_string());
-+    };
-+    let rest = rest.trim_start();
-+    let Some((time_value, prompt)) = rest.split_once(char::is_whitespace) else {
-+        return Err(USAGE.to_string());
-+    };
-+    let prompt = prompt.trim_start();
-+    if prompt.is_empty() {
-+        return Err(USAGE.to_string());
-+    }
-+
-+    match mode {
-+        "in" => {
-+            let (secs, label) = parse_duration(time_value).ok_or_else(|| USAGE.to_string())?;
-+            Ok(ScheduledPrompt {
-+                delay: Duration::from_secs(secs),
-+                prompt: prompt.to_string(),
-+                label: format!("in {label}"),
-+            })
-+        }
-+        "at" => {
-+            let Some((hour, minute)) = time_value.split_once(':') else {
-+                return Err(USAGE.to_string());
-+            };
-+            let hour: u32 = hour.parse().map_err(|_| USAGE.to_string())?;
-+            let minute: u32 = minute.parse().map_err(|_| USAGE.to_string())?;
-+            if hour > 23 || minute > 59 {
-+                return Err(USAGE.to_string());
-+            }
-+            let target_seconds = hour * 60 * 60 + minute * 60;
-+            let now_seconds = now.num_seconds_from_midnight();
-+            let mut delay_seconds = target_seconds as i64 - now_seconds as i64;
-+            if delay_seconds <= 0 {
-+                delay_seconds += 24 * 60 * 60;
-+            }
-+            Ok(ScheduledPrompt {
-+                delay: Duration::from_secs(delay_seconds as u64),
-+                prompt: prompt.to_string(),
-+                label: format!("at {hour:02}:{minute:02}"),
-+            })
-+        }
-+        _ => Err(USAGE.to_string()),
-+    }
-+}
-+
-+#[cfg(test)]
-+mod tests {
-+    use super::*;
-+    use chrono::NaiveTime;
-+    use pretty_assertions::assert_eq;
-+
-+    fn t(hour: u32, minute: u32) -> NaiveTime {
-+        NaiveTime::from_hms_opt(hour, minute, 0).unwrap()
-+    }
-+
-+    #[test]
-+    fn parses_in_bare_minutes() {
-+        let parsed = parse_schedule_args("in 10 continue the review", t(9, 0)).unwrap();
-+        assert_eq!(parsed.delay, Duration::from_secs(10 * 60));
-+        assert_eq!(parsed.prompt, "continue the review");
-+        assert_eq!(parsed.label, "in 10m");
-+    }
-+
-+    #[test]
-+    fn parses_in_minutes_with_suffix() {
-+        let parsed = parse_schedule_args("in 10m continue", t(9, 0)).unwrap();
-+        assert_eq!(parsed.delay, Duration::from_secs(600));
-+        assert_eq!(parsed.label, "in 10m");
-+    }
-+
-+    #[test]
-+    fn parses_in_hours() {
-+        let parsed = parse_schedule_args("in 2h continue", t(9, 0)).unwrap();
-+        assert_eq!(parsed.delay, Duration::from_secs(7200));
-+        assert_eq!(parsed.label, "in 2h");
-+    }
-+
-+    #[test]
-+    fn parses_in_seconds() {
-+        let parsed = parse_schedule_args("in 90s continue", t(9, 0)).unwrap();
-+        assert_eq!(parsed.delay, Duration::from_secs(90));
-+        assert_eq!(parsed.label, "in 90s");
-+    }
-+
-+    #[test]
-+    fn parses_compound_duration() {
-+        let parsed = parse_schedule_args("in 1h30m continue", t(9, 0)).unwrap();
-+        assert_eq!(parsed.delay, Duration::from_secs(5400));
-+        assert_eq!(parsed.label, "in 1h30m");
-+    }
-+
-+    #[test]
-+    fn parses_full_hms_duration() {
-+        let parsed = parse_schedule_args("in 1h2m3s continue", t(9, 0)).unwrap();
-+        assert_eq!(parsed.delay, Duration::from_secs(3723));
-+        assert_eq!(parsed.label, "in 1h2m3s");
-+    }
-+
-+    #[test]
-+    fn parses_at_hh_mm_today() {
-+        let parsed = parse_schedule_args("at 09:30 continue the review", t(9, 0)).unwrap();
-+        assert_eq!(parsed.delay, Duration::from_secs(30 * 60));
-+        assert_eq!(parsed.prompt, "continue the review");
-+        assert_eq!(parsed.label, "at 09:30");
-+    }
-+
-+    #[test]
-+    fn parses_at_hh_mm_tomorrow_when_time_has_passed() {
-+        let parsed = parse_schedule_args("at 09:30 continue the review", t(10, 0)).unwrap();
-+        assert_eq!(parsed.delay, Duration::from_secs(23 * 60 * 60 + 30 * 60));
-+        assert_eq!(parsed.label, "at 09:30");
-+    }
-+
-+    #[test]
-+    fn rejects_freeform_time() {
-+        assert!(parse_schedule_args("after lunch continue", t(9, 0)).is_err());
-+    }
-+
-+    #[test]
-+    fn rejects_zero_duration() {
-+        assert!(parse_schedule_args("in 0 continue", t(9, 0)).is_err());
-+        assert!(parse_schedule_args("in 0s continue", t(9, 0)).is_err());
-+    }
-+}

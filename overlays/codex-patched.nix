@@ -41,7 +41,7 @@ in
         --replace-fail "cargo:rustc-link-lib=static=webrtc" "cargo:rustc-link-lib=dylib=webrtc"
       substituteInPlace Cargo.toml \
         --replace-fail 'lto = "thin"' "" \
-        --replace-fail 'codegen-units = 1' ""
+        --replace-fail 'codegen-units = 4' ""
     '';
 
     passthru = (old.passthru or { }) // {
