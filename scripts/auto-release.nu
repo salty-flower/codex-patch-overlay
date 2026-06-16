@@ -1,6 +1,5 @@
 #!/usr/bin/env nu
 
-const PATCH_SUFFIX = "patch.1"
 const FAKE_SHA256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 def env-var [name: string] {
@@ -164,7 +163,14 @@ def refresh-cargo-hash [] {
   $matches | last | get hash
 }
 
-def update-manifest [path: string, upstream_tag: string, upstream_sha: string, new_source_hash: string, new_cargo_hash: string] {
+def update-manifest [
+  path: string
+  upstream_tag: string
+  upstream_sha: string
+  new_source_hash: string
+  new_cargo_hash: string
+  patch_suffix: string
+] {
   let raw = (open --raw $path)
   mut in_patch = false
   mut patch_enabled = false
@@ -179,7 +185,7 @@ def update-manifest [path: string, upstream_tag: string, upstream_sha: string, n
     }
 
     if ($line =~ '^patch_suffix = ') {
-      $next = $"patch_suffix = \"($PATCH_SUFFIX)\""
+      $next = $"patch_suffix = \"($patch_suffix)\""
     }
 
     if ($in_patch and ($line =~ '^enabled = ')) {
@@ -240,6 +246,7 @@ def main [
 ] {
   let manifest_path = "patches/manifest.toml"
   let manifest = (open $manifest_path)
+  let patch_suffix = $manifest.release.patch_suffix
   let upstream_repo = $manifest.release.upstream_repo
   let current_tag = (enabled-patches $manifest).0.upstream_base
   let target_tag = (if ($upstream_tag | is-empty) { latest-stable-tag $upstream_repo } else { $upstream_tag })
@@ -252,7 +259,7 @@ def main [
     fail $"target upstream tag ($target_tag) is older than manifest upstream ($current_tag)"
   }
 
-  let release_tag = $"codex-(tag-version $target_tag)-($PATCH_SUFFIX)"
+  let release_tag = $"codex-(tag-version $target_tag)-($patch_suffix)"
   let repo = (overlay-repo)
 
   if ((release-exists $repo $release_tag) or (remote-tag-exists $release_tag)) {
@@ -277,9 +284,9 @@ def main [
   }
 
   let new_source_hash = (if ($target_tag == $current_tag) { $patches.0.source_hash } else { source-hash $upstream_repo $upstream.sha })
-  update-manifest $manifest_path $target_tag $upstream.sha $new_source_hash $FAKE_SHA256
+  update-manifest $manifest_path $target_tag $upstream.sha $new_source_hash $FAKE_SHA256 $patch_suffix
   let new_cargo_hash = (if ($target_tag == $current_tag) { $patches.0.cargo_hash } else { refresh-cargo-hash })
-  update-manifest $manifest_path $target_tag $upstream.sha $new_source_hash $new_cargo_hash
+  update-manifest $manifest_path $target_tag $upstream.sha $new_source_hash $new_cargo_hash $patch_suffix
 
   ^nix flake check
 
@@ -293,7 +300,7 @@ def main [
     fail $"no release changes staged for ($release_tag)"
   }
 
-  ^git commit -m $"codex: release (tag-version $target_tag) patch.1"
+  ^git commit -m $"codex: release (tag-version $target_tag) ($patch_suffix)"
   ^git tag -a $release_tag -m $release_tag
   ^git push origin HEAD:main
   ^git push origin $release_tag
