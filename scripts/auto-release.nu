@@ -51,6 +51,14 @@ def version-greater-than [left: string, right: string] {
   }
 }
 
+def release-patch-suffix [current_tag: string, target_tag: string, manifest_patch_suffix: string] {
+  if $target_tag == $current_tag {
+    $manifest_patch_suffix
+  } else {
+    "patch.1"
+  }
+}
+
 def overlay-repo [] {
   let from_env = (env-var "GITHUB_REPOSITORY")
   if not ($from_env | is-empty) {
@@ -246,7 +254,7 @@ def main [
 ] {
   let manifest_path = "patches/manifest.toml"
   let manifest = (open $manifest_path)
-  let patch_suffix = $manifest.release.patch_suffix
+  let manifest_patch_suffix = $manifest.release.patch_suffix
   let upstream_repo = $manifest.release.upstream_repo
   let current_tag = (enabled-patches $manifest).0.upstream_base
   let target_tag = (if ($upstream_tag | is-empty) { latest-stable-tag $upstream_repo } else { $upstream_tag })
@@ -259,6 +267,7 @@ def main [
     fail $"target upstream tag ($target_tag) is older than manifest upstream ($current_tag)"
   }
 
+  let patch_suffix = (release-patch-suffix $current_tag $target_tag $manifest_patch_suffix)
   let release_tag = $"codex-(tag-version $target_tag)-($patch_suffix)"
   let repo = (overlay-repo)
 

@@ -71,6 +71,20 @@
             ${pkgs.yq-go}/bin/yq -e '.jobs.publish.steps[] | select(.name == "Move latest release ref").run | contains("scripts/move-latest-release-ref.nu")' ${./.github/workflows/release.yml} > /dev/null
             touch $out
           '';
+          auto-release = pkgs.runCommand "codex-auto-release-check" { } ''
+            ${pkgs.nushell}/bin/nu --no-config-file -c '
+              source ${./scripts/auto-release.nu}
+
+              if ((release-patch-suffix "rust-v0.140.0" "rust-v0.141.0" "patch.3") != "patch.1") {
+                error make { msg: "upstream bumps should reset to patch.1" }
+              }
+
+              if ((release-patch-suffix "rust-v0.141.0" "rust-v0.141.0" "patch.3") != "patch.3") {
+                error make { msg: "same-upstream releases should keep the manifest patch suffix" }
+              }
+            '
+            touch $out
+          '';
         });
 
       devShells = eachSystem (system:
