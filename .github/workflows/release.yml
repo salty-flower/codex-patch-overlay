@@ -298,9 +298,21 @@ jobs:
             dist/*.sha256
           fail_on_unmatched_files: true
 
+      - name: Read release metadata
+        id: release-metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          prerelease="$(gh release view "${RELEASE_TAG}" --json isPrerelease --jq .isPrerelease)"
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
+
       - uses: cachix/install-nix-action@v31
+        if: steps.release-metadata.outputs.prerelease != 'true'
 
       - name: Move latest release ref
+        if: steps.release-metadata.outputs.prerelease != 'true'
         shell: bash
         run: |
           set -euo pipefail
