@@ -1,8 +1,8 @@
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index fe20b76..93702f4 100644
+index cdb8468e55..cd876a018b 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -2011,7 +2011,10 @@ async fn try_run_sampling_request(
+@@ -2285,7 +2285,10 @@ async fn try_run_sampling_request(
                  // In review child threads, suppress assistant text deltas; the
                  // UI will show a selection popup from the final ReviewOutput.
                  if let Some(active) = active_item.as_ref() {
@@ -14,7 +14,7 @@ index fe20b76..93702f4 100644
                          continue;
                      }
                      let item_id = active.id();
-@@ -2062,7 +2065,10 @@ async fn try_run_sampling_request(
+@@ -2336,7 +2339,10 @@ async fn try_run_sampling_request(
                  summary_index,
              } => {
                  if let Some(active) = active_item.as_ref() {
@@ -26,7 +26,7 @@ index fe20b76..93702f4 100644
                          continue;
                      }
                      let event = ReasoningContentDeltaEvent {
-@@ -2080,7 +2086,10 @@ async fn try_run_sampling_request(
+@@ -2354,7 +2360,10 @@ async fn try_run_sampling_request(
              }
              ResponseEvent::ReasoningSummaryPartAdded { summary_index } => {
                  if let Some(active) = active_item.as_ref() {
@@ -38,7 +38,7 @@ index fe20b76..93702f4 100644
                          continue;
                      }
                      let event =
-@@ -2162,6 +2171,13 @@ async fn try_run_sampling_request(
+@@ -2434,6 +2443,13 @@ async fn try_run_sampling_request(
      outcome
  }
  
@@ -53,10 +53,10 @@ index fe20b76..93702f4 100644
      for item in responses.iter().rev() {
          if let Some(message) = last_assistant_message_from_item(item, /*plan_mode*/ false) {
 diff --git a/codex-rs/core/src/session/turn_tests.rs b/codex-rs/core/src/session/turn_tests.rs
-index 81a43ff..6deee28 100644
+index 051799cf85..417e80f1b4 100644
 --- a/codex-rs/core/src/session/turn_tests.rs
 +++ b/codex-rs/core/src/session/turn_tests.rs
-@@ -63,3 +63,26 @@ async fn plan_mode_uses_contributed_turn_item_for_last_agent_message() {
+@@ -65,3 +65,26 @@ async fn plan_mode_uses_contributed_turn_item_for_last_agent_message() {
          Some("plan contributed assistant text")
      );
  }
@@ -84,10 +84,10 @@ index 81a43ff..6deee28 100644
 +    assert!(!active_item_allows_reasoning_delta(false, Some(&item)));
 +}
 diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
-index 6d56330..431a8b7 100644
+index 085255a1cf..e63d52619d 100644
 --- a/codex-rs/tui/src/chatwidget/protocol.rs
 +++ b/codex-rs/tui/src/chatwidget/protocol.rs
-@@ -311,6 +311,7 @@ impl ChatWidget {
+@@ -294,6 +294,7 @@ impl ChatWidget {
              ThreadItem::ImageGeneration { .. } => {
                  self.on_image_generation_begin();
              }
@@ -96,7 +96,7 @@ index 6d56330..431a8b7 100644
                  id,
                  tool,
 diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
-index f0211aa..e578349 100644
+index a96ab614ca..f969ce9b97 100644
 --- a/codex-rs/tui/src/chatwidget/replay.rs
 +++ b/codex-rs/tui/src/chatwidget/replay.rs
 @@ -111,7 +111,7 @@ impl ChatWidget {
@@ -109,41 +109,37 @@ index f0211aa..e578349 100644
                          self.on_agent_reasoning_delta(delta);
                      }
 diff --git a/codex-rs/tui/src/chatwidget/streaming.rs b/codex-rs/tui/src/chatwidget/streaming.rs
-index e6f5701..a64a6c7 100644
+index 897094b1f6..abee419ba7 100644
 --- a/codex-rs/tui/src/chatwidget/streaming.rs
 +++ b/codex-rs/tui/src/chatwidget/streaming.rs
-@@ -107,6 +107,18 @@ impl ChatWidget {
+@@ -112,6 +112,10 @@ impl ChatWidget {
          self.handle_streaming_delta(delta);
      }
  
 +    pub(super) fn on_agent_reasoning_started(&mut self) {
-+        if self.active_cell_is_reasoning_summary() || !self.reasoning_buffer.trim().is_empty() {
-+            return;
-+        }
-+        self.transcript.active_cell = Some(history_cell::new_reasoning_summary_block(
-+            "Thinking...".to_string(),
-+            &self.config.cwd,
-+        ));
-+        self.bump_active_cell_revision();
 +        self.request_redraw();
 +    }
 +
      pub(super) fn on_plan_delta(&mut self, delta: String) {
          if self.active_mode_kind() != ModeKind::Plan {
              return;
-@@ -187,10 +199,8 @@ impl ChatWidget {
+@@ -198,10 +202,12 @@ impl ChatWidget {
      }
  
      pub(super) fn on_agent_reasoning_delta(&mut self, delta: String) {
 -        // For reasoning deltas, do not stream to history. Accumulate the
 -        // current reasoning block and extract the first bold element
 -        // (between **/**) as the chunk header. Show this header as status.
++        if Self::is_invisible_reasoning_delta(&delta) {
++            return;
++        }
++
          self.reasoning_buffer.push_str(&delta);
 +        self.sync_live_reasoning_summary_cell();
  
          if self.unified_exec_wait_streak.is_some() {
              // Unified exec waiting should take precedence over reasoning-derived status headers.
-@@ -209,25 +219,51 @@ impl ChatWidget {
+@@ -220,25 +226,51 @@ impl ChatWidget {
      }
  
      pub(super) fn on_agent_reasoning_final(&mut self) {
@@ -204,7 +200,7 @@ index e6f5701..a64a6c7 100644
      }
  
      pub(super) fn on_stream_error(&mut self, message: String, additional_details: Option<String>) {
-@@ -408,6 +444,28 @@ impl ChatWidget {
+@@ -422,6 +454,33 @@ impl ChatWidget {
          })
      }
  
@@ -230,14 +226,19 @@ index e6f5701..a64a6c7 100644
 +        self.bump_active_cell_revision();
 +    }
 +
++    fn is_invisible_reasoning_delta(delta: &str) -> bool {
++        let trimmed = delta.trim();
++        trimmed.is_empty() || trimmed == "<!-- -->"
++    }
++
      pub(super) fn has_active_stream_tail(&self) -> bool {
          (self.stream_controller.is_some() || self.plan_stream_controller.is_some())
              && self.active_cell_is_stream_tail()
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index 58f9923..1852164 100644
+index f8626dfcc0..a4527c4ba9 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-@@ -874,6 +874,47 @@ async fn replayed_in_progress_mcp_tool_call_stays_active() {
+@@ -990,6 +990,111 @@ async fn replayed_in_progress_mcp_tool_call_stays_active() {
      assert!(!active.contains("MCP tool call completed without a result"));
  }
  
@@ -282,10 +283,74 @@ index 58f9923..1852164 100644
 +    );
 +}
 +
++#[tokio::test]
++async fn live_reasoning_placeholder_delta_is_not_rendered() {
++    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
++    chat.show_welcome_banner = false;
++
++    chat.handle_server_notification(
++        ServerNotification::TurnStarted(TurnStartedNotification {
++            thread_id: "thread-1".to_string(),
++            turn: AppServerTurn {
++                id: "turn-1".to_string(),
++                items_view: codex_app_server_protocol::TurnItemsView::Full,
++                items: Vec::new(),
++                status: AppServerTurnStatus::InProgress,
++                error: None,
++                started_at: Some(0),
++                completed_at: None,
++                duration_ms: None,
++            },
++        }),
++        /*replay_kind*/ None,
++    );
++    let _ = drain_insert_history(&mut rx);
++
++    chat.handle_server_notification(
++        ServerNotification::ItemStarted(ItemStartedNotification {
++            thread_id: "thread-1".to_string(),
++            turn_id: "turn-1".to_string(),
++            started_at_ms: 0,
++            item: AppServerThreadItem::Reasoning {
++                id: "reasoning-1".to_string(),
++                summary: Vec::new(),
++                content: Vec::new(),
++            },
++        }),
++        /*replay_kind*/ None,
++    );
++    chat.handle_server_notification(
++        ServerNotification::ReasoningSummaryTextDelta(ReasoningSummaryTextDeltaNotification {
++            thread_id: "thread-1".to_string(),
++            turn_id: "turn-1".to_string(),
++            item_id: "reasoning-1".to_string(),
++            delta: "<!-- -->".to_string(),
++            summary_index: 0,
++        }),
++        /*replay_kind*/ None,
++    );
++    chat.handle_server_notification(
++        ServerNotification::ItemCompleted(ItemCompletedNotification {
++            thread_id: "thread-1".to_string(),
++            turn_id: "turn-1".to_string(),
++            completed_at_ms: 0,
++            item: AppServerThreadItem::Reasoning {
++                id: "reasoning-1".to_string(),
++                summary: vec!["<!-- -->".to_string()],
++                content: Vec::new(),
++            },
++        }),
++        /*replay_kind*/ None,
++    );
++
++    assert!(chat.transcript.active_cell.is_none());
++    assert!(drain_insert_history(&mut rx).is_empty());
++}
++
  #[tokio::test]
  async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
      let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-@@ -931,6 +972,66 @@ async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
+@@ -1047,6 +1152,66 @@ async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
      assert_eq!(rendered.matches("Summary only").count(), 1);
  }
  
@@ -353,10 +418,10 @@ index 58f9923..1852164 100644
  async fn thread_snapshot_replayed_turn_started_marks_task_running() {
      let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/history_cell/messages.rs b/codex-rs/tui/src/history_cell/messages.rs
-index 19a6ec2..7f43ea5 100644
+index 787f999cf1..8ab90c0206 100644
 --- a/codex-rs/tui/src/history_cell/messages.rs
 +++ b/codex-rs/tui/src/history_cell/messages.rs
-@@ -460,6 +460,6 @@ pub(crate) fn new_reasoning_summary_block(
+@@ -505,6 +505,6 @@ pub(crate) fn new_reasoning_summary_block(
          "".to_string(),
          full_reasoning_buffer.to_string(),
          &cwd,
