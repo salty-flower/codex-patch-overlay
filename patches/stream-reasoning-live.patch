@@ -1,22 +1,10 @@
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index cdb8468e55..cd876a018b 100644
+index 708f42f0ff..9b5c375a34 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -2285,7 +2285,10 @@ async fn try_run_sampling_request(
-                 // In review child threads, suppress assistant text deltas; the
-                 // UI will show a selection popup from the final ReviewOutput.
-                 if let Some(active) = active_item.as_ref() {
--                    if !active_item_is_streaming_to_client {
-+                    if !active_item_allows_reasoning_delta(
-+                        active_item_is_streaming_to_client,
-+                        active_item.as_ref(),
-+                    ) {
-                         continue;
-                     }
-                     let item_id = active.id();
-@@ -2336,7 +2339,10 @@ async fn try_run_sampling_request(
-                 summary_index,
-             } => {
+@@ -2300,7 +2300,10 @@ async fn try_run_sampling_request(
+                     continue;
+                 }
                  if let Some(active) = active_item.as_ref() {
 -                    if !active_item_is_streaming_to_client {
 +                    if !active_item_allows_reasoning_delta(
@@ -26,9 +14,9 @@ index cdb8468e55..cd876a018b 100644
                          continue;
                      }
                      let event = ReasoningContentDeltaEvent {
-@@ -2354,7 +2360,10 @@ async fn try_run_sampling_request(
-             }
-             ResponseEvent::ReasoningSummaryPartAdded { summary_index } => {
+@@ -2321,7 +2324,10 @@ async fn try_run_sampling_request(
+                     continue;
+                 }
                  if let Some(active) = active_item.as_ref() {
 -                    if !active_item_is_streaming_to_client {
 +                    if !active_item_allows_reasoning_delta(
@@ -38,7 +26,7 @@ index cdb8468e55..cd876a018b 100644
                          continue;
                      }
                      let event =
-@@ -2434,6 +2443,13 @@ async fn try_run_sampling_request(
+@@ -2435,6 +2441,13 @@ async fn try_run_sampling_request(
      outcome
  }
  
@@ -84,10 +72,10 @@ index 051799cf85..417e80f1b4 100644
 +    assert!(!active_item_allows_reasoning_delta(false, Some(&item)));
 +}
 diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
-index 085255a1cf..e63d52619d 100644
+index 0c5b0ed3ee..6588f36104 100644
 --- a/codex-rs/tui/src/chatwidget/protocol.rs
 +++ b/codex-rs/tui/src/chatwidget/protocol.rs
-@@ -294,6 +294,7 @@ impl ChatWidget {
+@@ -296,6 +296,7 @@ impl ChatWidget {
              ThreadItem::ImageGeneration { .. } => {
                  self.on_image_generation_begin();
              }
@@ -96,10 +84,10 @@ index 085255a1cf..e63d52619d 100644
                  id,
                  tool,
 diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
-index a96ab614ca..f969ce9b97 100644
+index 3ab5b3486b..2e92efc647 100644
 --- a/codex-rs/tui/src/chatwidget/replay.rs
 +++ b/codex-rs/tui/src/chatwidget/replay.rs
-@@ -111,7 +111,7 @@ impl ChatWidget {
+@@ -112,7 +112,7 @@ impl ChatWidget {
              ThreadItem::Reasoning {
                  summary, content, ..
              } => {
@@ -109,7 +97,7 @@ index a96ab614ca..f969ce9b97 100644
                          self.on_agent_reasoning_delta(delta);
                      }
 diff --git a/codex-rs/tui/src/chatwidget/streaming.rs b/codex-rs/tui/src/chatwidget/streaming.rs
-index 897094b1f6..abee419ba7 100644
+index f8b0124203..8cf868508c 100644
 --- a/codex-rs/tui/src/chatwidget/streaming.rs
 +++ b/codex-rs/tui/src/chatwidget/streaming.rs
 @@ -112,6 +112,10 @@ impl ChatWidget {
@@ -137,9 +125,9 @@ index 897094b1f6..abee419ba7 100644
          self.reasoning_buffer.push_str(&delta);
 +        self.sync_live_reasoning_summary_cell();
  
-         if self.unified_exec_wait_streak.is_some() {
-             // Unified exec waiting should take precedence over reasoning-derived status headers.
-@@ -220,25 +226,51 @@ impl ChatWidget {
+         if self.safety_buffering_is_waiting() {
+             self.request_redraw();
+@@ -225,25 +231,51 @@ impl ChatWidget {
      }
  
      pub(super) fn on_agent_reasoning_final(&mut self) {
@@ -200,7 +188,7 @@ index 897094b1f6..abee419ba7 100644
      }
  
      pub(super) fn on_stream_error(&mut self, message: String, additional_details: Option<String>) {
-@@ -422,6 +454,33 @@ impl ChatWidget {
+@@ -428,6 +460,33 @@ impl ChatWidget {
          })
      }
  
