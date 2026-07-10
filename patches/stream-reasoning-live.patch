@@ -76,7 +76,7 @@ index 0c5b0ed3ee..6588f36104 100644
 --- a/codex-rs/tui/src/chatwidget/protocol.rs
 +++ b/codex-rs/tui/src/chatwidget/protocol.rs
 @@ -296,6 +296,7 @@ impl ChatWidget {
-             ThreadItem::ImageGeneration { .. } => {
+             ThreadItem::ImageGeneration(_) => {
                  self.on_image_generation_begin();
              }
 +            ThreadItem::Reasoning { .. } => self.on_agent_reasoning_started(),
