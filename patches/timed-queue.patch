@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 6c6a31ee6..9587f871a 100644
+index a5d408d4ca..e1cc933f5a 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -1816,6 +1816,18 @@ impl App {
+@@ -2070,6 +2070,18 @@ impl App {
                  self.chat_widget
                      .submit_user_message_with_mode(text, collaboration_mode);
              }
@@ -22,10 +22,10 @@ index 6c6a31ee6..9587f871a 100644
                  self.chat_widget.handle_manage_skills_closed();
              }
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 39e0b9503..ba9763380 100644
+index 553a58d8d4..9a3c4d3215 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -888,6 +888,16 @@ pub(crate) enum AppEvent {
+@@ -971,6 +971,16 @@ pub(crate) enum AppEvent {
          collaboration_mode: CollaborationModeMask,
      },
  
@@ -43,7 +43,7 @@ index 39e0b9503..ba9763380 100644
      FullScreenApprovalRequest(ApprovalRequest),
  
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index fb89fda2e..6109b06d4 100644
+index fa745c652e..bd5f4a79a4 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
 @@ -359,6 +359,7 @@ use self::session_header::SessionHeader;
@@ -56,17 +56,18 @@ index fb89fda2e..6109b06d4 100644
  use self::skills::collect_tool_mentions;
 diff --git a/codex-rs/tui/src/chatwidget/scheduled_input.rs b/codex-rs/tui/src/chatwidget/scheduled_input.rs
 new file mode 100644
-index 000000000..9b1397e78
+index 0000000000..27d1020338
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/scheduled_input.rs
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,245 @@
 +use std::time::Duration;
 +
++use chrono::NaiveDate;
++use chrono::NaiveDateTime;
 +use chrono::NaiveTime;
-+use chrono::Timelike;
 +
-+const USAGE: &str = "Usage: /schedule in <duration> <prompt> OR /schedule at <HH:MM> <prompt>\n\
-+     Duration: 10m, 1h30m, 90s, 1h2m3s (bare number = minutes)";
++const USAGE: &str = "Usage:\n  /later <delay> <prompt>\n  /later HH:MM[:SS] <prompt>\n  /later YYYY-MM-DD HH:MM[:SS] <prompt>\n\
++     Delay: 10m, 1h30m, 90s, 1h2m3s (bare number = minutes)";
 +
 +#[derive(Debug, PartialEq, Eq)]
 +pub(super) struct ScheduledPrompt {
@@ -102,138 +103,213 @@ index 000000000..9b1397e78
 +    Some((total_secs, label_parts.join("")))
 +}
 +
-+pub(super) fn parse_schedule_args(args: &str, now: NaiveTime) -> Result<ScheduledPrompt, String> {
++/// Parse a clock-time token, accepting `HH:MM` or `HH:MM:SS`. The label keeps
++/// the seconds field only when the caller supplied it.
++fn parse_clock(token: &str) -> Option<(NaiveTime, String)> {
++    if let Ok(time) = NaiveTime::parse_from_str(token, "%H:%M:%S") {
++        return Some((time, time.format("%H:%M:%S").to_string()));
++    }
++    if let Ok(time) = NaiveTime::parse_from_str(token, "%H:%M") {
++        return Some((time, time.format("%H:%M").to_string()));
++    }
++    None
++}
++
++fn delay_until(target: NaiveDateTime, now: NaiveDateTime) -> Result<Duration, String> {
++    let seconds = target.signed_duration_since(now).num_seconds();
++    if seconds <= 0 {
++        return Err("Scheduled time is in the past.".to_string());
++    }
++    Ok(Duration::from_secs(seconds as u64))
++}
++
++pub(super) fn parse_schedule_args(
++    args: &str,
++    now: NaiveDateTime,
++) -> Result<ScheduledPrompt, String> {
 +    let trimmed = args.trim();
-+    let Some((mode, rest)) = trimmed.split_once(char::is_whitespace) else {
++    let Some((first, rest)) = trimmed.split_once(char::is_whitespace) else {
 +        return Err(USAGE.to_string());
 +    };
 +    let rest = rest.trim_start();
-+    let Some((time_value, prompt)) = rest.split_once(char::is_whitespace) else {
-+        return Err(USAGE.to_string());
-+    };
-+    let prompt = prompt.trim_start();
-+    if prompt.is_empty() {
++
++    // Absolute datetime: YYYY-MM-DD HH:MM[:SS] <prompt>
++    if let Ok(date) = NaiveDate::parse_from_str(first, "%Y-%m-%d") {
++        let Some((time_token, prompt)) = rest.split_once(char::is_whitespace) else {
++            return Err(USAGE.to_string());
++        };
++        let prompt = prompt.trim_start();
++        if prompt.is_empty() {
++            return Err(USAGE.to_string());
++        }
++        let (time, time_label) = parse_clock(time_token).ok_or_else(|| USAGE.to_string())?;
++        let delay = delay_until(NaiveDateTime::new(date, time), now)?;
++        return Ok(ScheduledPrompt {
++            delay,
++            prompt: prompt.to_string(),
++            label: format!("at {} {time_label}", date.format("%Y-%m-%d")),
++        });
++    }
++
++    if rest.is_empty() {
 +        return Err(USAGE.to_string());
 +    }
 +
-+    match mode {
-+        "in" => {
-+            let (secs, label) = parse_duration(time_value).ok_or_else(|| USAGE.to_string())?;
-+            Ok(ScheduledPrompt {
-+                delay: Duration::from_secs(secs),
-+                prompt: prompt.to_string(),
-+                label: format!("in {label}"),
-+            })
++    // Clock time today or tomorrow: HH:MM[:SS] <prompt>
++    if let Some((time, time_label)) = parse_clock(first) {
++        let mut target = NaiveDateTime::new(now.date(), time);
++        if target <= now {
++            target = NaiveDateTime::new(now.date() + chrono::Duration::days(1), time);
 +        }
-+        "at" => {
-+            let Some((hour, minute)) = time_value.split_once(':') else {
-+                return Err(USAGE.to_string());
-+            };
-+            let hour: u32 = hour.parse().map_err(|_| USAGE.to_string())?;
-+            let minute: u32 = minute.parse().map_err(|_| USAGE.to_string())?;
-+            if hour > 23 || minute > 59 {
-+                return Err(USAGE.to_string());
-+            }
-+            let target_seconds = hour * 60 * 60 + minute * 60;
-+            let now_seconds = now.num_seconds_from_midnight();
-+            let mut delay_seconds = target_seconds as i64 - now_seconds as i64;
-+            if delay_seconds <= 0 {
-+                delay_seconds += 24 * 60 * 60;
-+            }
-+            Ok(ScheduledPrompt {
-+                delay: Duration::from_secs(delay_seconds as u64),
-+                prompt: prompt.to_string(),
-+                label: format!("at {hour:02}:{minute:02}"),
-+            })
-+        }
-+        _ => Err(USAGE.to_string()),
++        let delay = delay_until(target, now)?;
++        return Ok(ScheduledPrompt {
++            delay,
++            prompt: rest.to_string(),
++            label: format!("at {time_label}"),
++        });
 +    }
++
++    // Relative delay: <delay> <prompt>
++    let (secs, label) = parse_duration(first).ok_or_else(|| USAGE.to_string())?;
++    Ok(ScheduledPrompt {
++        delay: Duration::from_secs(secs),
++        prompt: rest.to_string(),
++        label: format!("in {label}"),
++    })
 +}
 +
 +#[cfg(test)]
 +mod tests {
 +    use super::*;
-+    use chrono::NaiveTime;
 +    use pretty_assertions::assert_eq;
 +
-+    fn t(hour: u32, minute: u32) -> NaiveTime {
-+        NaiveTime::from_hms_opt(hour, minute, 0).unwrap()
++    fn now_at(hour: u32, minute: u32) -> NaiveDateTime {
++        NaiveDate::from_ymd_opt(2026, 7, 14)
++            .unwrap()
++            .and_hms_opt(hour, minute, 0)
++            .unwrap()
 +    }
 +
 +    #[test]
-+    fn parses_in_bare_minutes() {
-+        let parsed = parse_schedule_args("in 10 continue the review", t(9, 0)).unwrap();
++    fn parses_bare_minutes() {
++        let parsed = parse_schedule_args("10 continue the review", now_at(9, 0)).unwrap();
 +        assert_eq!(parsed.delay, Duration::from_secs(10 * 60));
 +        assert_eq!(parsed.prompt, "continue the review");
 +        assert_eq!(parsed.label, "in 10m");
 +    }
 +
 +    #[test]
-+    fn parses_in_minutes_with_suffix() {
-+        let parsed = parse_schedule_args("in 10m continue", t(9, 0)).unwrap();
++    fn parses_minutes_with_suffix() {
++        let parsed = parse_schedule_args("10m continue", now_at(9, 0)).unwrap();
 +        assert_eq!(parsed.delay, Duration::from_secs(600));
 +        assert_eq!(parsed.label, "in 10m");
 +    }
 +
 +    #[test]
-+    fn parses_in_hours() {
-+        let parsed = parse_schedule_args("in 2h continue", t(9, 0)).unwrap();
++    fn parses_hours() {
++        let parsed = parse_schedule_args("2h continue", now_at(9, 0)).unwrap();
 +        assert_eq!(parsed.delay, Duration::from_secs(7200));
 +        assert_eq!(parsed.label, "in 2h");
 +    }
 +
 +    #[test]
-+    fn parses_in_seconds() {
-+        let parsed = parse_schedule_args("in 90s continue", t(9, 0)).unwrap();
++    fn parses_seconds() {
++        let parsed = parse_schedule_args("90s continue", now_at(9, 0)).unwrap();
 +        assert_eq!(parsed.delay, Duration::from_secs(90));
 +        assert_eq!(parsed.label, "in 90s");
 +    }
 +
 +    #[test]
 +    fn parses_compound_duration() {
-+        let parsed = parse_schedule_args("in 1h30m continue", t(9, 0)).unwrap();
++        let parsed = parse_schedule_args("1h30m continue", now_at(9, 0)).unwrap();
 +        assert_eq!(parsed.delay, Duration::from_secs(5400));
 +        assert_eq!(parsed.label, "in 1h30m");
 +    }
 +
 +    #[test]
 +    fn parses_full_hms_duration() {
-+        let parsed = parse_schedule_args("in 1h2m3s continue", t(9, 0)).unwrap();
++        let parsed = parse_schedule_args("1h2m3s continue", now_at(9, 0)).unwrap();
 +        assert_eq!(parsed.delay, Duration::from_secs(3723));
 +        assert_eq!(parsed.label, "in 1h2m3s");
 +    }
 +
 +    #[test]
-+    fn parses_at_hh_mm_today() {
-+        let parsed = parse_schedule_args("at 09:30 continue the review", t(9, 0)).unwrap();
++    fn parses_clock_today() {
++        let parsed = parse_schedule_args("09:30 continue the review", now_at(9, 0)).unwrap();
 +        assert_eq!(parsed.delay, Duration::from_secs(30 * 60));
 +        assert_eq!(parsed.prompt, "continue the review");
 +        assert_eq!(parsed.label, "at 09:30");
 +    }
 +
 +    #[test]
-+    fn parses_at_hh_mm_tomorrow_when_time_has_passed() {
-+        let parsed = parse_schedule_args("at 09:30 continue the review", t(10, 0)).unwrap();
++    fn parses_clock_tomorrow_when_time_has_passed() {
++        let parsed = parse_schedule_args("09:30 continue", now_at(10, 0)).unwrap();
 +        assert_eq!(parsed.delay, Duration::from_secs(23 * 60 * 60 + 30 * 60));
 +        assert_eq!(parsed.label, "at 09:30");
 +    }
 +
 +    #[test]
++    fn parses_clock_with_seconds() {
++        let parsed = parse_schedule_args("09:30:15 continue", now_at(9, 0)).unwrap();
++        assert_eq!(parsed.delay, Duration::from_secs(30 * 60 + 15));
++        assert_eq!(parsed.label, "at 09:30:15");
++    }
++
++    #[test]
++    fn parses_absolute_date() {
++        let parsed = parse_schedule_args("2026-07-15 09:30 continue", now_at(9, 0)).unwrap();
++        assert_eq!(parsed.delay, Duration::from_secs(24 * 60 * 60 + 30 * 60));
++        assert_eq!(parsed.prompt, "continue");
++        assert_eq!(parsed.label, "at 2026-07-15 09:30");
++    }
++
++    #[test]
++    fn parses_absolute_date_with_seconds() {
++        let parsed = parse_schedule_args("2026-07-15 09:30:15 continue", now_at(9, 0)).unwrap();
++        assert_eq!(
++            parsed.delay,
++            Duration::from_secs(24 * 60 * 60 + 30 * 60 + 15)
++        );
++        assert_eq!(parsed.label, "at 2026-07-15 09:30:15");
++    }
++
++    #[test]
++    fn rejects_absolute_date_in_the_past() {
++        assert!(parse_schedule_args("2020-01-01 09:30 continue", now_at(9, 0)).is_err());
++    }
++
++    #[test]
++    fn rejects_absolute_date_without_time() {
++        assert!(parse_schedule_args("2026-07-15 continue", now_at(9, 0)).is_err());
++    }
++
++    #[test]
 +    fn rejects_freeform_time() {
-+        assert!(parse_schedule_args("after lunch continue", t(9, 0)).is_err());
++        assert!(parse_schedule_args("after lunch continue", now_at(9, 0)).is_err());
++    }
++
++    #[test]
++    fn rejects_invalid_clock() {
++        assert!(parse_schedule_args("25:00 continue", now_at(9, 0)).is_err());
 +    }
 +
 +    #[test]
 +    fn rejects_zero_duration() {
-+        assert!(parse_schedule_args("in 0 continue", t(9, 0)).is_err());
-+        assert!(parse_schedule_args("in 0s continue", t(9, 0)).is_err());
++        assert!(parse_schedule_args("0 continue", now_at(9, 0)).is_err());
++        assert!(parse_schedule_args("0s continue", now_at(9, 0)).is_err());
++    }
++
++    #[test]
++    fn rejects_missing_prompt() {
++        assert!(parse_schedule_args("10m", now_at(9, 0)).is_err());
++        assert!(parse_schedule_args("09:30", now_at(9, 0)).is_err());
 +    }
 +}
 diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
-index b24a4fde2..119199889 100644
+index 916c54cd5e..a73da9987e 100644
 --- a/codex-rs/tui/src/chatwidget/input_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/input_flow.rs
-@@ -91,6 +91,9 @@ impl ChatWidget {
+@@ -109,6 +109,9 @@ impl ChatWidget {
                      user_message,
                      action,
                      pending_pastes,
@@ -243,7 +319,7 @@ index b24a4fde2..119199889 100644
                  });
              self.input_queue
                  .queued_user_message_history_records
-@@ -111,7 +114,9 @@ impl ChatWidget {
+@@ -129,7 +132,9 @@ impl ChatWidget {
          }
          let mut submitted_follow_up = false;
          while !self.is_user_turn_pending_or_running() {
@@ -254,7 +330,7 @@ index b24a4fde2..119199889 100644
                  break;
              };
              match queued_message.action {
-@@ -143,6 +148,49 @@ impl ChatWidget {
+@@ -161,6 +166,49 @@ impl ChatWidget {
          submitted_follow_up
      }
  
@@ -266,7 +342,7 @@ index b24a4fde2..119199889 100644
 +    ) {
 +        let Some(thread_id) = self.thread_id else {
 +            self.add_error_message(
-+                "Session is still starting; try /schedule again in a moment.".to_string(),
++                "Session is still starting; try /later again in a moment.".to_string(),
 +            );
 +            return;
 +        };
@@ -304,7 +380,7 @@ index b24a4fde2..119199889 100644
      pub(super) fn is_user_turn_pending_or_running(&self) -> bool {
          self.input_queue.user_turn_pending_start || self.bottom_pane.is_task_running()
      }
-@@ -157,7 +205,7 @@ impl ChatWidget {
+@@ -175,7 +223,7 @@ impl ChatWidget {
      }
  
      /// Rebuild and update the bottom-pane pending-input preview.
@@ -314,7 +390,7 @@ index b24a4fde2..119199889 100644
          self.bottom_pane.set_pending_input_preview(
              preview.queued_messages,
 diff --git a/codex-rs/tui/src/chatwidget/input_queue.rs b/codex-rs/tui/src/chatwidget/input_queue.rs
-index 67a306af2..cca2a4f3c 100644
+index 67a306af22..cca2a4f3c8 100644
 --- a/codex-rs/tui/src/chatwidget/input_queue.rs
 +++ b/codex-rs/tui/src/chatwidget/input_queue.rs
 @@ -4,6 +4,10 @@
@@ -499,7 +575,7 @@ index 67a306af2..cca2a4f3c 100644
      fn clear_resets_all_input_queues() {
          let mut state = InputQueueState::default();
 diff --git a/codex-rs/tui/src/chatwidget/input_restore.rs b/codex-rs/tui/src/chatwidget/input_restore.rs
-index bcc4e956a..14813d841 100644
+index bcc4e956a7..14813d8417 100644
 --- a/codex-rs/tui/src/chatwidget/input_restore.rs
 +++ b/codex-rs/tui/src/chatwidget/input_restore.rs
 @@ -55,21 +55,12 @@ impl ChatWidget {
@@ -528,7 +604,7 @@ index bcc4e956a..14813d841 100644
              let rejected_messages = self
                  .input_queue
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index 32ab70ed3..adca19806 100644
+index df9c65f8ce..770d76b6f0 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 @@ -14,6 +14,7 @@ use crate::bottom_pane::slash_commands::SlashCommandItem;
@@ -543,28 +619,29 @@ index 32ab70ed3..adca19806 100644
      "Press Ctrl+C to return to the main thread first.";
  const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
  const RAW_USAGE: &str = "Usage: /raw [on|off]";
-+const SCHEDULE_USAGE: &str = "Usage: /schedule in <duration> <prompt> OR /schedule at <HH:MM> <prompt>\n\
-+     Duration: 10m, 1h30m, 90s, 1h2m3s (bare number = minutes)";
++const SCHEDULE_USAGE: &str = "Usage:\n  /later <delay> <prompt>\n  /later HH:MM[:SS] <prompt>\n  /later YYYY-MM-DD HH:MM[:SS] <prompt>\n\
++     Delay: 10m, 1h30m, 90s, 1h2m3s (bare number = minutes)";
  const USAGE_CHATGPT_LOGIN_REQUIRED: &str = "Sign in with ChatGPT to use /usage.";
  
  impl ChatWidget {
-@@ -256,6 +259,9 @@ impl ChatWidget {
+@@ -263,6 +266,9 @@ impl ChatWidget {
              SlashCommand::Review => {
                  self.open_review_popup();
              }
-+            SlashCommand::Schedule => {
++            SlashCommand::Later => {
 +                self.add_info_message(SCHEDULE_USAGE.to_string(), None);
 +            }
              SlashCommand::Rename => {
                  self.session_telemetry
                      .counter("codex.thread.rename", /*inc*/ 1, &[]);
-@@ -711,6 +717,27 @@ impl ChatWidget {
+@@ -721,6 +727,28 @@ impl ChatWidget {
                  };
                  self.app_event_tx.set_thread_name(name);
              }
-+            SlashCommand::Schedule if !trimmed.is_empty() => {
++            SlashCommand::Later if !trimmed.is_empty() => {
 +                let parsed =
-+                    match scheduled_input::parse_schedule_args(trimmed, Local::now().time()) {
++                    match scheduled_input::parse_schedule_args(trimmed, Local::now().naive_local())
++                    {
 +                        Ok(parsed) => parsed,
 +                        Err(message) => {
 +                            self.add_error_message(message);
@@ -586,16 +663,16 @@ index 32ab70ed3..adca19806 100644
              SlashCommand::Plan if !trimmed.is_empty() => {
                  if !self.apply_plan_slash_command() {
                      return;
-@@ -1048,6 +1075,7 @@ impl ChatWidget {
+@@ -1058,6 +1086,7 @@ impl ChatWidget {
              | SlashCommand::Diff
              | SlashCommand::App
              | SlashCommand::Rename
-+            | SlashCommand::Schedule
++            | SlashCommand::Later
              | SlashCommand::TestApproval => QueueDrain::Continue,
              SlashCommand::Feedback
              | SlashCommand::New
 diff --git a/codex-rs/tui/src/chatwidget/user_messages.rs b/codex-rs/tui/src/chatwidget/user_messages.rs
-index 6cfb739da..c79371498 100644
+index 6cfb739da5..c793714981 100644
 --- a/codex-rs/tui/src/chatwidget/user_messages.rs
 +++ b/codex-rs/tui/src/chatwidget/user_messages.rs
 @@ -10,6 +10,10 @@ use std::collections::HashSet;
@@ -655,38 +732,40 @@ index 6cfb739da..c79371498 100644
  
  impl From<UserMessage> for QueuedUserMessage {
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index 05dcefe93..c494bcb9e 100644
+index 646380a2fa..8524b9b699 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
 @@ -29,6 +29,7 @@ pub enum SlashCommand {
      Import,
      Hooks,
      Review,
-+    Schedule,
++    Later,
      Rename,
      New,
      Archive,
-@@ -87,6 +88,7 @@ impl SlashCommand {
+@@ -87,6 +88,9 @@ impl SlashCommand {
              SlashCommand::Init => "create an AGENTS.md file with instructions for Codex",
              SlashCommand::Compact => "summarize conversation to prevent hitting the context limit",
              SlashCommand::Review => "review my current changes and find issues",
-+            SlashCommand::Schedule => "e.g. /schedule in 5m <prompt> or at 14:30 <prompt>",
++            SlashCommand::Later => {
++                "schedule a prompt: /later 5m, /later 14:30, or /later 2026-07-15 09:00"
++            }
              SlashCommand::Rename => "rename the current thread",
              SlashCommand::Resume => "resume a saved chat",
              SlashCommand::Archive => "archive this session and exit",
-@@ -154,6 +156,7 @@ impl SlashCommand {
+@@ -154,6 +158,7 @@ impl SlashCommand {
          matches!(
              self,
              SlashCommand::Review
-+                | SlashCommand::Schedule
++                | SlashCommand::Later
                  | SlashCommand::Rename
                  | SlashCommand::Plan
                  | SlashCommand::Goal
-@@ -214,6 +217,7 @@ impl SlashCommand {
+@@ -214,6 +219,7 @@ impl SlashCommand {
              | SlashCommand::Copy
              | SlashCommand::Raw
              | SlashCommand::Rename
-+            | SlashCommand::Schedule
++            | SlashCommand::Later
              | SlashCommand::Mention
              | SlashCommand::Skills
              | SlashCommand::Hooks
