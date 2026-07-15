@@ -134,3 +134,17 @@ status = "carried"
 risk = "medium"
 owner = "local"
 notes = "Add opt-in `[tui].auto_thread_name` with a clamped `auto_thread_name_after_turns` threshold (default 3). The active app-server generates a concise hidden title from loaded history, preserves existing names, skips subagents, and immediately refreshes the TUI thread title surfaces without adding a visible turn."
+
+[[patches]]
+name = "tui-status-line-command"
+enabled = true
+file = "patches/tui-status-line-command.patch"
+upstream_base = "rust-v0.144.4"
+upstream_sha = "8c68d4c87dc54d38861f5114e920c3de2efa5876"
+source_hash = "sha256-NmYZxjNFPkRWN4rw+eeka10pJt6/oU3ZoLXBxj3dPRU="
+cargo_hash = "sha256-S4dsZXfmKvJItL2XYKyxfhqdCMATEG6oPjrtVRwkuYc="
+upstream_issue = "https://github.com/openai/codex/issues/17827"
+status = "carried"
+risk = "high"
+owner = "local"
+notes = "Add opt-in `[tui.status_line_command]` direct-argv rendering with a versioned JSON stdin contract, COLUMNS/LINES, single-flight coalescing, bounded timeout/output, built-in fallback before first success, retained same-thread last success after later failures, SGR-only ANSI parsing, and a maximum of two safely clipped passive footer rows."
