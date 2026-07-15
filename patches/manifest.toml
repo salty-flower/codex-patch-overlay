@@ -120,3 +120,17 @@ status = "carried"
 risk = "medium"
 owner = "local"
 notes = "Add `/later <delay> <prompt>` to queue a follow-up prompt for a strict future time. The time spec accepts a relative delay (`10m`, `1h30m`, `90s`, bare number = minutes), a clock time `HH:MM[:SS]` (today, or tomorrow if already past), or an absolute `YYYY-MM-DD HH:MM[:SS]`. Due prompts drain immediately when idle, or wait for the current turn to finish if Codex is still running. The pending-input preview shows both the target wall-clock time (HH:MM:SS) and a live countdown refreshed every 10 seconds."
+
+[[patches]]
+name = "auto-thread-name"
+enabled = true
+file = "patches/auto-thread-name.patch"
+upstream_base = "rust-v0.144.4"
+upstream_sha = "8c68d4c87dc54d38861f5114e920c3de2efa5876"
+source_hash = "sha256-NmYZxjNFPkRWN4rw+eeka10pJt6/oU3ZoLXBxj3dPRU="
+cargo_hash = "sha256-S4dsZXfmKvJItL2XYKyxfhqdCMATEG6oPjrtVRwkuYc="
+upstream_issue = "local-request"
+status = "carried"
+risk = "medium"
+owner = "local"
+notes = "Add opt-in `[tui].auto_thread_name` with a clamped `auto_thread_name_after_turns` threshold (default 3). The active app-server generates a concise hidden title from loaded history, preserves existing names, skips subagents, and immediately refreshes the TUI thread title surfaces without adding a visible turn."

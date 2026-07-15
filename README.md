@@ -4,9 +4,10 @@ Local Nix overlay for carrying small OpenAI Codex patches without maintaining a 
 
 Each release carries community-requested features that upstream `openai/codex` hasn't
 merged yet — currently live TUI reasoning-summary streaming, a task-completion
-notification sound, WebP image input, and strict timed CLI queueing — and ships
-them as ready-to-run binaries plus a Nix overlay, refreshed on every upstream
-Codex release. See `patches/manifest.toml` for the exact patch stack.
+notification sound, WebP image input, automatic thread naming, and strict timed
+CLI queueing — and ships them as ready-to-run binaries plus a Nix overlay,
+refreshed on every upstream Codex release. See `patches/manifest.toml` for the
+exact patch stack.
 
 ## Install a patched build
 
@@ -64,6 +65,18 @@ cargo run -p codex-cli --bin codex -- --no-alt-screen -c model_reasoning_summary
 `stream-reasoning-live` renders reasoning summaries that the API returns. If the
 model returns only encrypted reasoning content, Codex can preserve it for the
 next request but cannot render it as text.
+
+To opt into automatic model-generated names for otherwise unnamed primary
+threads:
+
+```toml
+[tui]
+auto_thread_name = true
+auto_thread_name_after_turns = 3
+```
+
+Naming runs as hidden metadata work in the active session, so the status line and
+terminal title update immediately without adding a transcript turn.
 
 ## Layout
 
