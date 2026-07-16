@@ -682,13 +682,14 @@ index 7fb6fe54e9..ea1c7e3d4f 100644
              external_editor_state: ExternalEditorState::Closed,
 diff --git a/codex-rs/tui/src/chatwidget/status_line_command.rs b/codex-rs/tui/src/chatwidget/status_line_command.rs
 new file mode 100644
-index 0000000000..ba70406486
+index 0000000000..6cd3722191
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/status_line_command.rs
-@@ -0,0 +1,209 @@
+@@ -0,0 +1,215 @@
 +//! Snapshot construction and orchestration for the command-backed status line.
 +
 +use super::rate_limits::get_limits_duration;
++use super::status_surfaces::approval_mode_display;
 +use super::status_surfaces::permissions_display;
 +use super::*;
 +use crate::status_line_command::StatusLineCommandCompletion;
@@ -787,7 +788,12 @@ index 0000000000..ba70406486
 +                .and_then(|effort| serde_json::to_value(effort).ok())
 +                .and_then(|value| value.as_str().map(str::to_string)),
 +            permission_mode: status_line_permission_mode(&self.config),
-+            approval_mode: self.config.permissions.approval_policy.value().to_string(),
++            // Mirror the built-in `approval-mode` status item: under `on-request` the
++            // "Approve for me" / "Ask for approval" toggle only changes
++            // `approvals_reviewer`, so the raw approval policy alone cannot distinguish it.
++            approval_mode: approval_mode_display(&self.config)
++                .to_ascii_lowercase()
++                .replace(' ', "-"),
 +            collaboration_mode: match self.active_mode_kind() {
 +                ModeKind::Plan => "plan",
 +                ModeKind::Default => "default",
@@ -897,10 +903,10 @@ index 0000000000..ba70406486
 +mod tests;
 diff --git a/codex-rs/tui/src/chatwidget/status_line_command_tests.rs b/codex-rs/tui/src/chatwidget/status_line_command_tests.rs
 new file mode 100644
-index 0000000000..0f3275e6ca
+index 0000000000..2facebf8f7
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/status_line_command_tests.rs
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,202 @@
 +use chrono::Local;
 +use pretty_assertions::assert_eq;
 +use ratatui::layout::Size;
@@ -1037,6 +1043,55 @@ index 0000000000..0f3275e6ca
 +}
 +
 +#[tokio::test]
++async fn approval_mode_tracks_runtime_reviewer_and_policy_updates() {
++    let (mut chat, _sender, _rx, _op_rx) = make_chatwidget_manual_with_sender().await;
++    chat.set_approval_policy(AskForApproval::OnRequest);
++
++    chat.set_approvals_reviewer(ApprovalsReviewer::AutoReview);
++    assert_eq!(
++        chat.status_line_command_input_v1().approval_mode,
++        "approve-for-me"
++    );
++
++    chat.set_approvals_reviewer(ApprovalsReviewer::User);
++    assert_eq!(
++        chat.status_line_command_input_v1().approval_mode,
++        "ask-for-approval"
++    );
++
++    chat.set_approval_policy(AskForApproval::Never);
++    assert_eq!(chat.status_line_command_input_v1().approval_mode, "never");
++}
++
++#[tokio::test]
++async fn model_and_effort_follow_active_collaboration_mask() {
++    let (mut chat, _sender, _rx, _op_rx) = make_chatwidget_manual_with_sender().await;
++    chat.set_feature_enabled(Feature::CollaborationModes, /*enabled*/ true);
++    chat.set_reasoning_effort(Some(ReasoningEffortConfig::High));
++
++    let baseline = chat.status_line_command_input_v1();
++    assert_eq!(baseline.collaboration_mode, "default");
++    assert_eq!(baseline.effort_level.as_deref(), Some("high"));
++
++    let plan_mask = crate::collaboration_modes::plan_mask(chat.model_catalog.as_ref())
++        .expect("expected plan collaboration mode");
++    chat.set_collaboration_mask(plan_mask);
++
++    let snapshot = chat.status_line_command_input_v1();
++    assert_eq!(snapshot.collaboration_mode, "plan");
++    assert_eq!(snapshot.effort_level.as_deref(), Some("medium"));
++    assert_eq!(snapshot.model, baseline.model);
++
++    let default_mask = crate::collaboration_modes::default_mask(chat.model_catalog.as_ref())
++        .expect("expected default collaboration mode");
++    chat.set_collaboration_mask(default_mask);
++
++    let restored = chat.status_line_command_input_v1();
++    assert_eq!(restored.collaboration_mode, "default");
++    assert_eq!(restored.effort_level.as_deref(), Some("high"));
++}
++
++#[tokio::test]
 +async fn unavailable_snapshot_values_serialize_as_null() {
 +    let (mut chat, _sender, _rx, _op_rx) = make_chatwidget_manual_with_sender().await;
 +    chat.thread_id = None;
@@ -1055,7 +1110,7 @@ index 0000000000..0f3275e6ca
 +    assert_eq!(value["rate_limits"]["windows"], serde_json::json!([]));
 +}
 diff --git a/codex-rs/tui/src/chatwidget/status_surfaces.rs b/codex-rs/tui/src/chatwidget/status_surfaces.rs
-index 7120462330..0fef0ad8be 100644
+index 7120462330..32136f03c8 100644
 --- a/codex-rs/tui/src/chatwidget/status_surfaces.rs
 +++ b/codex-rs/tui/src/chatwidget/status_surfaces.rs
 @@ -81,6 +81,7 @@ impl StatusSurfaceSelections {
@@ -1162,6 +1217,15 @@ index 7120462330..0fef0ad8be 100644
      let active_permission_profile = config.permissions.active_permission_profile();
      if let Some(active_permission_profile) = active_permission_profile.as_ref()
          && !active_permission_profile.id.starts_with(':')
+@@ -1121,7 +1138,7 @@ fn permissions_display(config: &Config) -> String {
+     "Custom permissions".to_string()
+ }
+ 
+-fn approval_mode_display(config: &Config) -> String {
++pub(super) fn approval_mode_display(config: &Config) -> String {
+     let approval_policy = AskForApproval::from(config.permissions.approval_policy.value());
+     if approval_policy == AskForApproval::OnRequest {
+         return match config.approvals_reviewer {
 diff --git a/codex-rs/tui/src/chatwidget/tests/status_surface_previews.rs b/codex-rs/tui/src/chatwidget/tests/status_surface_previews.rs
 index 63005cb957..7d83a3e220 100644
 --- a/codex-rs/tui/src/chatwidget/tests/status_surface_previews.rs
