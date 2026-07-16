@@ -682,10 +682,10 @@ index 7fb6fe54e9..ea1c7e3d4f 100644
              external_editor_state: ExternalEditorState::Closed,
 diff --git a/codex-rs/tui/src/chatwidget/status_line_command.rs b/codex-rs/tui/src/chatwidget/status_line_command.rs
 new file mode 100644
-index 0000000000..2bd0e1ed3c
+index 0000000000..ba70406486
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/status_line_command.rs
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,209 @@
 +//! Snapshot construction and orchestration for the command-backed status line.
 +
 +use super::rate_limits::get_limits_duration;
@@ -722,7 +722,9 @@ index 0000000000..2bd0e1ed3c
 +            Ok(true) => {
 +                if let Some(config) = config {
 +                    self.frame_requester
-+                        .schedule_frame_in(Duration::from_millis(config.refresh_interval_ms));
++                        .schedule_frame_in_guaranteed(Duration::from_millis(
++                            config.refresh_interval_ms,
++                        ));
 +                }
 +            }
 +            Ok(false) => {}
@@ -808,7 +810,7 @@ index 0000000000..2bd0e1ed3c
 +                total_input_tokens: total.input_tokens,
 +                total_output_tokens: total.output_tokens,
 +                current_usage: StatusLineCurrentUsageV1 {
-+                    input_tokens: current.input_tokens,
++                    input_tokens: current.non_cached_input(),
 +                    cache_creation_input_tokens: None,
 +                    cache_read_input_tokens: current.cached_input_tokens,
 +                    output_tokens: current.output_tokens,
@@ -895,7 +897,7 @@ index 0000000000..2bd0e1ed3c
 +mod tests;
 diff --git a/codex-rs/tui/src/chatwidget/status_line_command_tests.rs b/codex-rs/tui/src/chatwidget/status_line_command_tests.rs
 new file mode 100644
-index 0000000000..ca233d8020
+index 0000000000..0f3275e6ca
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/status_line_command_tests.rs
 @@ -0,0 +1,153 @@
@@ -939,7 +941,7 @@ index 0000000000..ca233d8020
 +
 +    assert_eq!(snapshot.context_window.total_input_tokens, 123_456);
 +    assert_eq!(snapshot.context_window.total_output_tokens, 23_456);
-+    assert_eq!(snapshot.context_window.current_usage.input_tokens, 50_000);
++    assert_eq!(snapshot.context_window.current_usage.input_tokens, 18_000);
 +    assert_eq!(
 +        snapshot
 +            .context_window
@@ -2544,3 +2546,157 @@ index 0000000000..3ca160bcb1
 +        assert_eq!(lines[0].to_string(), "done");
 +    }
 +}
+diff --git a/codex-rs/tui/src/tui/frame_requester.rs b/codex-rs/tui/src/tui/frame_requester.rs
+index d7e54d82cc..f09cf71aa2 100644
+--- a/codex-rs/tui/src/tui/frame_requester.rs
++++ b/codex-rs/tui/src/tui/frame_requester.rs
+@@ -29,7 +29,13 @@ use super::frame_rate_limiter::FrameRateLimiter;
+ /// from anywhere in the TUI code.
+ #[derive(Clone, Debug)]
+ pub struct FrameRequester {
+-    frame_schedule_tx: mpsc::UnboundedSender<Instant>,
++    frame_schedule_tx: mpsc::UnboundedSender<FrameSchedule>,
++}
++
++#[derive(Clone, Copy, Debug)]
++struct FrameSchedule {
++    draw_at: Instant,
++    preserve_after_earlier_draw: bool,
+ }
+ 
+ impl FrameRequester {
+@@ -47,12 +53,29 @@ impl FrameRequester {
+ 
+     /// Schedule a frame draw as soon as possible.
+     pub fn schedule_frame(&self) {
+-        let _ = self.frame_schedule_tx.send(Instant::now());
++        let _ = self.frame_schedule_tx.send(FrameSchedule {
++            draw_at: Instant::now(),
++            preserve_after_earlier_draw: false,
++        });
+     }
+ 
+     /// Schedule a frame draw to occur after the specified duration.
+     pub fn schedule_frame_in(&self, dur: Duration) {
+-        let _ = self.frame_schedule_tx.send(Instant::now() + dur);
++        let _ = self.frame_schedule_tx.send(FrameSchedule {
++            draw_at: Instant::now() + dur,
++            preserve_after_earlier_draw: false,
++        });
++    }
++
++    /// Schedule a delayed frame that is not consumed by an earlier draw.
++    ///
++    /// This is intended for time-based state that must be checked again after
++    /// the delay even when unrelated activity requests an immediate frame.
++    pub fn schedule_frame_in_guaranteed(&self, dur: Duration) {
++        let _ = self.frame_schedule_tx.send(FrameSchedule {
++            draw_at: Instant::now() + dur,
++            preserve_after_earlier_draw: true,
++        });
+     }
+ }
+ 
+@@ -74,14 +97,17 @@ impl FrameRequester {
+ /// To avoid wasted redraw work, draw notifications are clamped to a maximum of 120 FPS (see
+ /// [`FrameRateLimiter`]).
+ struct FrameScheduler {
+-    receiver: mpsc::UnboundedReceiver<Instant>,
++    receiver: mpsc::UnboundedReceiver<FrameSchedule>,
+     draw_tx: broadcast::Sender<()>,
+     rate_limiter: FrameRateLimiter,
+ }
+ 
+ impl FrameScheduler {
+     /// Create a new FrameScheduler with the provided receiver and draw notification sender.
+-    fn new(receiver: mpsc::UnboundedReceiver<Instant>, draw_tx: broadcast::Sender<()>) -> Self {
++    fn new(
++        receiver: mpsc::UnboundedReceiver<FrameSchedule>,
++        draw_tx: broadcast::Sender<()>,
++    ) -> Self {
+         Self {
+             receiver,
+             draw_tx,
+@@ -96,19 +122,30 @@ impl FrameScheduler {
+     async fn run(mut self) {
+         const ONE_YEAR: Duration = Duration::from_secs(60 * 60 * 24 * 365);
+         let mut next_deadline: Option<Instant> = None;
++        let mut next_guaranteed_deadline: Option<Instant> = None;
+         loop {
+-            let target = next_deadline.unwrap_or_else(|| Instant::now() + ONE_YEAR);
++            let target = match (next_deadline, next_guaranteed_deadline) {
++                (Some(deadline), Some(guaranteed)) => deadline.min(guaranteed),
++                (Some(deadline), None) => deadline,
++                (None, Some(guaranteed)) => guaranteed,
++                (None, None) => Instant::now() + ONE_YEAR,
++            };
+             let deadline = tokio::time::sleep_until(target.into());
+             tokio::pin!(deadline);
+ 
+             tokio::select! {
+-                draw_at = self.receiver.recv() => {
+-                    let Some(draw_at) = draw_at else {
++                request = self.receiver.recv() => {
++                    let Some(request) = request else {
+                         // All senders dropped; exit the scheduler.
+                         break
+                     };
+-                    let draw_at = self.rate_limiter.clamp_deadline(draw_at);
+-                    next_deadline = Some(next_deadline.map_or(draw_at, |cur| cur.min(draw_at)));
++                    let draw_at = self.rate_limiter.clamp_deadline(request.draw_at);
++                    let deadline = if request.preserve_after_earlier_draw {
++                        &mut next_guaranteed_deadline
++                    } else {
++                        &mut next_deadline
++                    };
++                    *deadline = Some(deadline.map_or(draw_at, |cur| cur.min(draw_at)));
+ 
+                     // Do not send a draw immediately here. By continuing the loop,
+                     // we recompute the sleep target so the draw fires once via the
+@@ -116,8 +153,13 @@ impl FrameScheduler {
+                     continue;
+                 }
+                 _ = &mut deadline => {
+-                    if next_deadline.is_some() {
++                    if next_deadline.is_some() || next_guaranteed_deadline.is_some() {
++                        // Any draw consumes ordinary coalesced requests. A guaranteed
++                        // request survives until its own deadline has been reached.
+                         next_deadline = None;
++                        if next_guaranteed_deadline.is_some_and(|deadline| deadline <= target) {
++                            next_guaranteed_deadline = None;
++                        }
+                         self.rate_limiter.mark_emitted(target);
+                         let _ = self.draw_tx.send(());
+                     }
+@@ -231,6 +273,31 @@ mod tests {
+         assert!(second.is_err(), "unexpected extra draw received");
+     }
+ 
++    #[tokio::test(flavor = "current_thread", start_paused = true)]
++    async fn test_guaranteed_delayed_request_survives_immediate_draw() {
++        let (draw_tx, mut draw_rx) = broadcast::channel(16);
++        let requester = FrameRequester::new(draw_tx);
++
++        requester.schedule_frame_in_guaranteed(Duration::from_millis(100));
++        requester.schedule_frame();
++
++        time::advance(Duration::from_millis(1)).await;
++        let first = draw_rx
++            .recv()
++            .timeout(Duration::from_millis(50))
++            .await
++            .expect("timed out waiting for immediate draw");
++        assert!(first.is_ok(), "broadcast closed unexpectedly");
++
++        time::advance(Duration::from_millis(100)).await;
++        let second = draw_rx
++            .recv()
++            .timeout(Duration::from_millis(50))
++            .await
++            .expect("timed out waiting for guaranteed delayed draw");
++        assert!(second.is_ok(), "broadcast closed unexpectedly");
++    }
++
+     #[tokio::test(flavor = "current_thread", start_paused = true)]
+     async fn test_limits_draw_notifications_to_120fps() {
+         let (draw_tx, mut draw_rx) = broadcast::channel(16);
