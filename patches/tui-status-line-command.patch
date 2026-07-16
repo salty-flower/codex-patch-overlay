@@ -1,11 +1,11 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 2d60f00b09..026b7aa58e 100644
+index f4b350da67..879ac87670 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -713,6 +713,39 @@ pub struct ModelAvailabilityNuxConfig {
+@@ -713,6 +713,38 @@ pub struct ModelAvailabilityNuxConfig {
  /// Fallback resize-reflow row cap when Codex cannot identify a terminal-specific scrollback size.
  pub const DEFAULT_TERMINAL_RESIZE_REFLOW_FALLBACK_MAX_ROWS: usize = 1_000;
- 
+ pub const DEFAULT_AUTO_THREAD_NAME_AFTER_TURNS: usize = 3;
 +pub const DEFAULT_STATUS_LINE_COMMAND_TIMEOUT_MS: u64 = 1000;
 +pub const DEFAULT_STATUS_LINE_COMMAND_REFRESH_INTERVAL_MS: u64 = 10_000;
 +pub const MAX_STATUS_LINE_COMMAND_TIMEOUT_MS: u64 = 5000;
@@ -38,11 +38,10 @@ index 2d60f00b09..026b7aa58e 100644
 +    #[schemars(range(min = 1000, max = 3600000))]
 +    pub refresh_interval_ms: u64,
 +}
-+
+ 
  /// Collection of settings that are specific to the TUI.
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
- #[schemars(deny_unknown_fields)]
-@@ -768,6 +801,16 @@ pub struct Tui {
+@@ -779,6 +811,16 @@ pub struct Tui {
      #[serde(default)]
      pub status_line: Option<Vec<String>>,
  
@@ -60,25 +59,10 @@ index 2d60f00b09..026b7aa58e 100644
      /// Defaults to `true`.
      #[serde(default = "default_true")]
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index fb4d8740ba..a6e243f624 100644
+index 536c7c6fed..c5588cc6ad 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1547,6 +1547,14 @@
-       },
-       "type": "object"
-     },
-+    "ModeKind": {
-+      "description": "Initial collaboration mode to use when the TUI starts.",
-+      "enum": [
-+        "plan",
-+        "default"
-+      ],
-+      "type": "string"
-+    },
-     "ModelAvailabilityNuxConfig": {
-       "additionalProperties": {
-         "format": "uint32",
-@@ -2895,6 +2903,40 @@
+@@ -2903,6 +2903,40 @@
        },
        "type": "object"
      },
@@ -119,42 +103,7 @@ index fb4d8740ba..a6e243f624 100644
      "ThreadStoreToml": {
        "oneOf": [
          {
-@@ -3041,6 +3083,15 @@
-           "description": "Enable animations (welcome screen, shimmer effects, spinners). Defaults to `true`.",
-           "type": "boolean"
-         },
-+        "default_collaboration_mode": {
-+          "allOf": [
-+            {
-+              "$ref": "#/definitions/ModeKind"
-+            }
-+          ],
-+          "default": null,
-+          "description": "Start the TUI in the specified collaboration mode (plan/default).\n\nWhen set to `\"plan\"`, the TUI launches in Plan mode instead of the default Code mode. Invalid values are silently ignored (falls back to default).\n\n```toml [tui] default_collaboration_mode = \"plan\" ```"
-+        },
-         "keymap": {
-           "allOf": [
-             {
-@@ -3210,6 +3261,18 @@
-           "default": "auto",
-           "description": "Notification method to use for terminal notifications. Defaults to `auto`."
-         },
-+        "notification_sound": {
-+          "allOf": [
-+            {
-+              "$ref": "#/definitions/TuiNotificationSoundConfig"
-+            }
-+          ],
-+          "default": {
-+            "command": null,
-+            "enabled": true
-+          },
-+          "description": "Optional sound command to run after a TUI desktop notification.\n\nWhen unset, Codex uses a platform default sound command. Set `enabled = false` to disable the extra sound, or set `command` to run a custom argv array.\n\n```toml [tui] notification_sound = { command = [\"afplay\", \"/path/to/done.aiff\"] } ```"
-+        },
-         "notifications": {
-           "allOf": [
-             {
-@@ -3260,6 +3323,15 @@
+@@ -3301,6 +3335,15 @@
            },
            "type": "array"
          },
@@ -170,34 +119,8 @@ index fb4d8740ba..a6e243f624 100644
          "status_line_use_colors": {
            "default": true,
            "description": "Color status line items with colors derived from the active syntax theme. Defaults to `true`.",
-@@ -3976,6 +4048,25 @@
-       },
-       "type": "object"
-     },
-+    "TuiNotificationSoundConfig": {
-+      "additionalProperties": false,
-+      "properties": {
-+        "command": {
-+          "default": null,
-+          "description": "Custom sound command argv. The first item is the executable; remaining items are arguments.",
-+          "items": {
-+            "type": "string"
-+          },
-+          "type": "array"
-+        },
-+        "enabled": {
-+          "default": true,
-+          "description": "Enable the extra notification sound. Defaults to `true`.",
-+          "type": "boolean"
-+        }
-+      },
-+      "type": "object"
-+    },
-     "TuiPagerKeymap": {
-       "additionalProperties": false,
-       "description": "Pager context keybindings for transcript and static overlays.",
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index c5e2a1d5c9..e926277cc2 100644
+index bbb7f14216..776610bc82 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
 @@ -58,6 +58,7 @@ use codex_config::types::OtelExporterKind;
@@ -208,18 +131,15 @@ index c5e2a1d5c9..e926277cc2 100644
  use codex_config::types::ToolSuggestDisabledTool;
  use codex_config::types::ToolSuggestDiscoverableType;
  use codex_config::types::Tui;
-@@ -822,8 +823,10 @@ fn config_toml_deserializes_model_availability_nux() {
-             show_tooltips: true,
-             vim_mode_default: false,
-             raw_output_mode: false,
-+            default_collaboration_mode: None,
+@@ -827,6 +828,7 @@ fn config_toml_deserializes_model_availability_nux() {
+             auto_thread_name_after_turns: None,
              alternate_screen: AltScreenMode::default(),
              status_line: None,
 +            status_line_command: None,
              status_line_use_colors: true,
              terminal_title: None,
              theme: None,
-@@ -873,6 +876,86 @@ status_line_use_colors = false
+@@ -911,6 +913,86 @@ status_line_use_colors = false
      );
  }
  
@@ -306,11 +226,8 @@ index c5e2a1d5c9..e926277cc2 100644
  #[test]
  fn config_toml_deserializes_terminal_resize_reflow_config() {
      let toml = r#"
-@@ -3661,8 +3744,10 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
-             show_tooltips: true,
-             vim_mode_default: false,
-             raw_output_mode: false,
-+            default_collaboration_mode: None,
+@@ -3704,6 +3786,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+             auto_thread_name_after_turns: None,
              alternate_screen: AltScreenMode::Auto,
              status_line: None,
 +            status_line_command: None,
@@ -318,7 +235,7 @@ index c5e2a1d5c9..e926277cc2 100644
              terminal_title: None,
              theme: None,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 6e213b4a45..2193abae07 100644
+index a2c907d197..6bdd317f5e 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
 @@ -37,6 +37,9 @@ use codex_config::types::ApprovalsReviewer;
@@ -339,7 +256,7 @@ index 6e213b4a45..2193abae07 100644
  use codex_config::types::ToolSuggestConfig;
  use codex_config::types::ToolSuggestDisabledTool;
  use codex_config::types::ToolSuggestDiscoverable;
-@@ -771,6 +775,9 @@ pub struct Config {
+@@ -777,6 +781,9 @@ pub struct Config {
      /// When unset, the TUI defaults to: `model-with-reasoning` and `current-dir`.
      pub tui_status_line: Option<Vec<String>>,
  
@@ -349,7 +266,7 @@ index 6e213b4a45..2193abae07 100644
      /// Whether to color status line items with colors from the active syntax theme.
      pub tui_status_line_use_colors: bool,
  
-@@ -2859,6 +2866,43 @@ fn validate_multi_agent_v2_wait_timeout(label: &str, value: i64) -> std::io::Res
+@@ -2865,6 +2872,43 @@ fn validate_multi_agent_v2_wait_timeout(label: &str, value: i64) -> std::io::Res
      Ok(())
  }
  
@@ -393,7 +310,7 @@ index 6e213b4a45..2193abae07 100644
  fn validate_multi_agent_v2_tool_namespace(namespace: Option<&str>) -> std::io::Result<()> {
      const LABEL: &str = "features.multi_agent_v2.tool_namespace";
      const MAX_LEN: usize = 64;
-@@ -3420,6 +3464,11 @@ impl Config {
+@@ -3426,6 +3470,11 @@ impl Config {
          let rollout_budget = resolve_rollout_budget_config(&cfg, &features)?;
          let current_time_reminder = resolve_current_time_reminder_config(&cfg, &features)?;
          let terminal_resize_reflow = resolve_terminal_resize_reflow_config(&cfg);
@@ -405,7 +322,7 @@ index 6e213b4a45..2193abae07 100644
  
          let agent_roles =
              agent_roles::load_agent_roles(fs, &cfg, &config_layer_stack, &mut startup_warnings)
-@@ -4000,6 +4049,7 @@ impl Config {
+@@ -4017,6 +4066,7 @@ impl Config {
                  .map(|t| t.alternate_screen)
                  .unwrap_or_default(),
              tui_status_line: cfg.tui.as_ref().and_then(|t| t.status_line.clone()),
@@ -429,10 +346,10 @@ index c35daaa497..a313f12466 100644
          tui_terminal_title: None,
          tui_theme: None,
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index e1cc933f5a..b84c94914c 100644
+index f69b7c7aa7..29b5214513 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -2200,6 +2200,11 @@ impl App {
+@@ -2219,6 +2219,11 @@ impl App {
                      tui.frame_requester().schedule_frame();
                  }
              }
@@ -480,7 +397,7 @@ index fd5efd2d94..1de641edaf 100644
          if should_rebuild_transcript {
              if reflow_needed && self.should_mark_reflow_as_stream_time() {
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 9a3c4d3215..8db8a07436 100644
+index f1319e3393..9175b8645f 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
 @@ -52,6 +52,7 @@ use codex_protocol::models::ActivePermissionProfile;
@@ -491,7 +408,7 @@ index 9a3c4d3215..8db8a07436 100644
  
  #[derive(Debug, Clone, Copy, PartialEq, Eq)]
  pub(crate) enum ThreadGoalSetMode {
-@@ -1029,6 +1030,8 @@ pub(crate) enum AppEvent {
+@@ -1033,6 +1034,8 @@ pub(crate) enum AppEvent {
          request_id: u64,
          result: Result<crate::workspace_messages::WorkspaceHeadlineFetchResult, String>,
      },
