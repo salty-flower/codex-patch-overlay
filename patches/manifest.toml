@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.3"
+patch_suffix = "patch.4"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
@@ -147,4 +147,4 @@ upstream_issue = "https://github.com/openai/codex/issues/17827"
 status = "carried"
 risk = "high"
 owner = "local"
-notes = "Add opt-in `[tui.status_line_command]` direct-argv rendering with a versioned JSON stdin contract, COLUMNS/LINES, single-flight coalescing, bounded timeout/output, built-in fallback before first success, retained same-thread last success after later failures, SGR-only ANSI parsing, and a maximum of two safely clipped passive footer rows. Periodic refresh deadlines survive unrelated immediate redraws, and current input usage is split into non-cached and cache-read tokens."
+notes = "Add opt-in `[tui.status_line_command]` direct-argv rendering with a versioned JSON stdin contract, COLUMNS/LINES, single-flight coalescing, bounded timeout/output, built-in fallback before first success, retained same-thread last success after later failures, SGR-only ANSI parsing, and a maximum of two safely clipped passive footer rows. Periodic refresh deadlines survive unrelated immediate redraws, and current input usage is split into non-cached and cache-read tokens. Snapshot `approval_mode` mirrors the built-in approval-mode item so the on-request reviewer toggle is distinguishable (approve-for-me / ask-for-approval)."
