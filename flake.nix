@@ -69,6 +69,8 @@
 
             ${pkgs.yq-go}/bin/yq -e '.jobs.publish.steps[] | select(.uses == "actions/checkout@v4").with."persist-credentials" == true' ${./.github/workflows/release.yml} > /dev/null
             ${pkgs.yq-go}/bin/yq -e '.jobs.publish.steps[] | select(.name == "Move latest release ref").run | contains("scripts/move-latest-release-ref.nu")' ${./.github/workflows/release.yml} > /dev/null
+            ${pkgs.yq-go}/bin/yq -e '.jobs.build."timeout-minutes" >= 120' ${./.github/workflows/release.yml} > /dev/null
+            ${pkgs.yq-go}/bin/yq -e '.jobs.build.steps[] | select(.uses == "Swatinem/rust-cache@v2").with.key == "''${{ matrix.target }}"' ${./.github/workflows/release.yml} > /dev/null
             touch $out
           '';
           auto-release = pkgs.runCommand "codex-auto-release-check" { } ''

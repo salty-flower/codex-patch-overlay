@@ -271,8 +271,18 @@ def main [
   let release_tag = $"codex-(tag-version $target_tag)-($patch_suffix)"
   let repo = (overlay-repo)
 
-  if ((release-exists $repo $release_tag) or (remote-tag-exists $release_tag)) {
+  if (release-exists $repo $release_tag) {
     print $"already released: ($release_tag)"
+    return
+  }
+
+  if (remote-tag-exists $release_tag) {
+    if $apply {
+      print $"release missing for existing tag: retrying ($release_tag)"
+      write-output $release_tag $target_tag
+    } else {
+      print $"dry run: would retry release for existing tag ($release_tag)"
+    }
     return
   }
 

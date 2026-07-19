@@ -30,7 +30,7 @@ jobs:
   build:
     name: build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    timeout-minutes: 120
     permissions:
       contents: read
     strategy:
@@ -191,7 +191,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: staging/openai-codex/codex-rs -> target
-          key: ${{ matrix.target }}-${{ env.RELEASE_TAG }}
+          key: ${{ matrix.target }}
 
       - name: Build bwrap and export digest
         if: contains(matrix.target, 'linux')
