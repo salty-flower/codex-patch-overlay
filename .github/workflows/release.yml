@@ -197,9 +197,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: staging/openai-codex/codex-rs -> target
-          # `-rusty-v8-stable` abandons caches poisoned with the old
-          # $RUNNER_TEMP rusty_v8 path so the fixed stable path takes effect.
-          key: ${{ matrix.target }}-rusty-v8-stable
+          key: ${{ matrix.target }}
 
       - name: Build bwrap and export digest
         if: contains(matrix.target, 'linux')
