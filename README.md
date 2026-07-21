@@ -78,6 +78,13 @@ auto_thread_name_after_turns = 3
 Naming runs as hidden metadata work in the active session, so the status line and
 terminal title update immediately without adding a transcript turn.
 
+The same opt-in also exposes a current-thread-scoped `set_thread_name` tool to the
+model on primary threads. A Stop-hook continuation can generate a concise title and
+call it to rename the live thread in-process: the owning app-server persists through
+the canonical thread-store path and emits one `thread/name/updated`, so the terminal
+TUI and any attached app-server client (e.g. codex-acp) update immediately without a
+second `codex app-server` process. Existing manual `/rename` behavior is unchanged.
+
 ## Layout
 
 | Path | Purpose |

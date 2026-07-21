@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.1"
+patch_suffix = "patch.2"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
@@ -133,7 +133,7 @@ upstream_issue = "local-request"
 status = "carried"
 risk = "medium"
 owner = "local"
-notes = "Add opt-in `[tui].auto_thread_name` with a clamped `auto_thread_name_after_turns` threshold (default 3). The active app-server generates a concise hidden title from loaded history, preserves existing names, skips subagents, and immediately refreshes the TUI thread title surfaces without adding a visible turn."
+notes = "Add opt-in `[tui].auto_thread_name` with a clamped `auto_thread_name_after_turns` threshold (default 3). The active app-server generates a concise hidden title from loaded history, preserves existing names, skips subagents, and immediately refreshes the TUI thread title surfaces without adding a visible turn. Also adds a current-thread-scoped, model-callable `set_thread_name` tool (gated by the same opt-in, primary threads only): it emits `EventMsg::ThreadNameUpdateRequested`, and the owning app-server persists through the canonical thread-store metadata path and broadcasts one `thread/name/updated` (source=generated) to every initialized client, so a Stop-hook continuation can rename the live thread in-process without a second app-server. The generate and tool paths share one persistence writer (`persist_thread_name_if_unnamed`)."
 
 [[patches]]
 name = "tui-status-line-command"
