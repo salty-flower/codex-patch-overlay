@@ -199,6 +199,21 @@ jobs:
           workspaces: staging/openai-codex/codex-rs -> target
           key: ${{ matrix.target }}
 
+      - name: Force-rebuild rusty_v8 against this run's archive
+        working-directory: staging/openai-codex/codex-rs
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          # rust-cache restores the `v8` crate's build-script output, which bakes
+          # an absolute linker search path for the prebuilt librusty_v8 provided
+          # at build time (RUSTY_V8_ARCHIVE). On a cache hit that decompressed
+          # library isn't regenerated, so the link fails with
+          # "could not find native static library `rusty_v8`". Clean just the v8
+          # crate so its build script re-runs against this run's archive.
+          cargo clean -p v8 --release --target "$TARGET"
+
       - name: Build bwrap and export digest
         if: contains(matrix.target, 'linux')
         working-directory: staging/openai-codex/codex-rs
