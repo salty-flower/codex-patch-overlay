@@ -164,7 +164,13 @@ jobs:
           version="$(python3 staging/openai-codex/.github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
           release_tag="rusty-v8-v${version}"
           base_url="https://github.com/openai/codex/releases/download/${release_tag}"
-          binding_dir="${RUNNER_TEMP}/rusty_v8"
+          # Stage under a run-stable path (not $RUNNER_TEMP, which changes every
+          # run). The `v8` crate bakes this archive's absolute directory into its
+          # cached build-script output as the linker search path; a per-run temp
+          # path goes stale on the next rust-cache full match (same Cargo.lock,
+          # e.g. a patch.N+1 re-release) and breaks linking with
+          # "could not find native static library `rusty_v8`".
+          binding_dir="${GITHUB_WORKSPACE}/.rusty_v8"
           archive_path="${binding_dir}/librusty_v8_release_${TARGET}.a.gz"
           binding_path="${binding_dir}/src_binding_release_${TARGET}.rs"
           checksums_path="${binding_dir}/rusty_v8_release_${TARGET}.sha256"
@@ -191,7 +197,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: staging/openai-codex/codex-rs -> target
-          key: ${{ matrix.target }}
+          # `-rusty-v8-stable` abandons caches poisoned with the old
+          # $RUNNER_TEMP rusty_v8 path so the fixed stable path takes effect.
+          key: ${{ matrix.target }}-rusty-v8-stable
 
       - name: Build bwrap and export digest
         if: contains(matrix.target, 'linux')
