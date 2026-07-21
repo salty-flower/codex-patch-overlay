@@ -303,6 +303,12 @@ jobs:
             dist/*.tar.gz
             dist/*.sha256
           fail_on_unmatched_files: true
+          # Use the write PAT (as auto-release.yml does). The default
+          # GITHUB_TOKEN, even with contents:write, returns
+          # "Resource not accessible by integration" when updating a release
+          # that already exists (e.g. a prerelease created out of band), which
+          # only the app token is restricted from doing.
+          token: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
 
       - name: Read release metadata
         id: release-metadata
