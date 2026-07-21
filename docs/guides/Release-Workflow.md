@@ -53,3 +53,35 @@ Consumers that want the newest published patch release can use:
 ```nix
 inputs.codex-patch-overlay.url = "github:salty-flower/codex-patch-overlay/latest-release";
 ```
+
+## Manual Prerelease
+
+`gh release create <tag> --prerelease --target <sha>`, then
+`gh workflow run release.yml --ref main -f tag=<tag>`. Requires
+`RELEASE_PUSH_TOKEN` (see below) — the default `GITHUB_TOKEN` can create a
+release on a tag push but cannot update one that already exists
+(`403 Resource not accessible by integration`). `isPrerelease=true` keeps
+`latest-release` from moving.
+
+## `RELEASE_PUSH_TOKEN`
+
+Read by `auto-release.yml` (commit/tag/dispatch) and `release.yml`'s publish
+step, falling back to `github.token` when unset.
+
+Fine-grained PAT requirements, repo-scoped to `codex-patch-overlay`:
+
+| Permission | Level | Used for |
+| --- | --- | --- |
+| Contents | Read and write | commit, tag, push, create/update release, upload assets |
+| Workflows | Read and write | `gh workflow run` dispatch; also required for release **update** (`Contents` alone 403s with `Resource not accessible by personal access token`) |
+
+Classic PAT with `repo` scope covers both and is the simpler fallback.
+
+## Known CI Failure Modes
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Build: `could not find native static library rusty_v8` | `Swatinem/rust-cache` full-matches on an unchanged `Cargo.lock` (e.g. a patch.N+1 re-release) and restores `v8`'s build-script output, whose baked linker path only the fresh build populates | `release.yml` stages the archive at `$GITHUB_WORKSPACE/.rusty_v8` (run-stable) and runs `cargo clean -p v8` after cache restore, forcing `v8` to rebuild every run |
+| `nix flake check` fails on `checks.<system>.latest-release-ref`: `no matches found` | `flake.nix` pins the build jobs' `Swatinem/rust-cache` key to `${{ matrix.target }}` via a `yq` assertion — do not change it to bust a cache | bust a poisoned cache with `gh cache delete <id>` instead of changing the key |
+| `publish`: `403 Resource not accessible by integration` | `GITHUB_TOKEN` cannot update a release that already exists (only create one on tag push) | pass `token: ${{ secrets.RELEASE_PUSH_TOKEN \|\| github.token }}` to `action-gh-release` |
+| `publish`: `403 Resource not accessible by personal access token` | fine-grained PAT has `Contents: write` but not `Workflows: write` | add `Workflows: write` to the PAT |
