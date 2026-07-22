@@ -769,3 +769,17 @@ index 646380a2fa..8524b9b699 100644
              | SlashCommand::Mention
              | SlashCommand::Skills
              | SlashCommand::Hooks
+diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
+index c334a7ab35..f9767ade05 100644
+--- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
++++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
+@@ -130,6 +130,9 @@ async fn parent_owned_thread_preserves_queued_input_before_draining() {
+         user_message: UserMessage::from("keep this queued prompt"),
+         action: QueuedInputAction::Plain,
+         pending_pastes: vec![("[Image 1]".to_string(), "pasted contents".to_string())],
++        not_before: None,
++        schedule_label: None,
++        schedule_target_time: None,
+     };
+     let history_record = UserMessageHistoryRecord::UserMessageText;
+     chat.input_queue
