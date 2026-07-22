@@ -36,9 +36,16 @@ in
       # webrtc-sys asks rustc to link libwebrtc statically by default,
       # but nixpkgs provides libwebrtc as a shared library.
       # use LK_CUSTOM_WEBRTC to point to the packaged library and adjust linking
-      # to use the shared library instead
-      substituteInPlace $cargoDepsCopy/*/webrtc-sys-*/build.rs \
-        --replace-fail "cargo:rustc-link-lib=static=webrtc" "cargo:rustc-link-lib=dylib=webrtc"
+      # to use the shared library instead.
+      # Upstream dropped the webrtc-sys dependency in rust-v0.145.0, so the glob
+      # can match nothing; substituteInPlace hard-errors when given no files
+      # ("called without any files to operate on"). Guard it so the overlay works
+      # whether or not the vendored crate is present.
+      for webrtc_build_rs in $cargoDepsCopy/*/webrtc-sys-*/build.rs; do
+        [ -e "$webrtc_build_rs" ] || continue
+        substituteInPlace "$webrtc_build_rs" \
+          --replace-fail "cargo:rustc-link-lib=static=webrtc" "cargo:rustc-link-lib=dylib=webrtc"
+      done
       substituteInPlace Cargo.toml \
         --replace-fail 'lto = "thin"' "" \
         --replace-fail 'codegen-units = 4' ""
