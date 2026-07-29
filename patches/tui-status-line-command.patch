@@ -629,7 +629,7 @@ index 72cdc89619..374c43f844 100644
          if self.composer.set_status_line_hyperlink(url) {
              self.request_redraw();
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 830f6ef84b..78a24d1edd 100644
+index 830f6ef84b..87bd099e6e 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
 @@ -406,6 +406,7 @@ mod settings;
@@ -657,14 +657,17 @@ index 830f6ef84b..78a24d1edd 100644
      }
  
      fn flush_active_cell(&mut self) {
-@@ -1623,7 +1627,9 @@ impl ChatWidget {
+@@ -1623,7 +1627,12 @@ impl ChatWidget {
      ///
      /// Live stream wrapping stays consistent with the current viewport while finalized transcript
      /// rebuilding runs through app-level resize reflow.
 -    pub(crate) fn on_terminal_resize(&mut self, width: u16) {
 +    pub(crate) fn on_terminal_resize(&mut self, size: ratatui::layout::Size) {
 +        let width = size.width;
-+        self.set_status_line_terminal_size(size);
++        let terminal_initialized = self.set_status_line_terminal_size(size);
++        if terminal_initialized {
++            self.refresh_status_line_command_if_due();
++        }
          let had_rendered_width = self.last_rendered_width.get().is_some();
          self.last_rendered_width.set(Some(width as usize));
          let stream_width = self.current_stream_width(/*reserved_cols*/ 2);
@@ -682,7 +685,7 @@ index eb979ceff1..e5097917bf 100644
              external_editor_state: ExternalEditorState::Closed,
 diff --git a/codex-rs/tui/src/chatwidget/status_line_command.rs b/codex-rs/tui/src/chatwidget/status_line_command.rs
 new file mode 100644
-index 0000000000..6cd3722191
+index 0000000000..6112b067f4
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/status_line_command.rs
 @@ -0,0 +1,215 @@
@@ -754,8 +757,8 @@ index 0000000000..6cd3722191
 +        self.status_line_command.output()
 +    }
 +
-+    pub(super) fn set_status_line_terminal_size(&mut self, size: ratatui::layout::Size) {
-+        self.status_line_command.set_terminal(size);
++    pub(super) fn set_status_line_terminal_size(&mut self, size: ratatui::layout::Size) -> bool {
++        self.status_line_command.set_terminal(size)
 +    }
 +
 +    fn status_line_command_input_v1(&mut self) -> StatusLineCommandInputV1 {
@@ -903,20 +906,26 @@ index 0000000000..6cd3722191
 +mod tests;
 diff --git a/codex-rs/tui/src/chatwidget/status_line_command_tests.rs b/codex-rs/tui/src/chatwidget/status_line_command_tests.rs
 new file mode 100644
-index 0000000000..2facebf8f7
+index 0000000000..609f852717
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/status_line_command_tests.rs
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,262 @@
 +use chrono::Local;
++use std::fs;
++
 +use pretty_assertions::assert_eq;
 +use ratatui::layout::Size;
 +
++use codex_config::types::StatusLineCommandConfig;
++
 +use super::*;
++use crate::app_event::AppEvent;
 +use crate::chatwidget::tests::make_chatwidget_manual_with_sender;
 +use crate::status::RateLimitSnapshotDisplay;
 +use crate::status::RateLimitWindowDisplay;
 +use crate::token_usage::TokenUsage;
 +use crate::token_usage::TokenUsageInfo;
++use tempfile::TempDir;
 +
 +#[tokio::test]
 +async fn snapshot_uses_cumulative_totals_current_context_and_terminal_size() {
@@ -1108,6 +1117,60 @@ index 0000000000..2facebf8f7
 +    assert!(value["context_window"]["context_window_size"].is_null());
 +    assert_eq!(value["context_window"]["total_input_tokens"], 0);
 +    assert_eq!(value["rate_limits"]["windows"], serde_json::json!([]));
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn startup_status_line_command_retries_after_terminal_initialization() {
++    let (mut chat, _sender, mut rx, _op_rx) = make_chatwidget_manual_with_sender().await;
++    let temp = TempDir::new().unwrap();
++    let invocations = temp.path().join("invocations");
++    chat.config.tui_status_line = Some(vec!["model".to_string()]);
++    chat.config.tui_status_line_command = Some(StatusLineCommandConfig {
++        command: vec![
++            "/bin/sh".to_string(),
++            "-c".to_string(),
++            "printf x >> $1; sleep 0.05; printf startup-custom".to_string(),
++            "/bin/sh".to_string(),
++            invocations.display().to_string(),
++        ],
++        timeout_ms: 1_000,
++        refresh_interval_ms: 10_000,
++    });
++
++    // Match the real startup order: construction refreshes before the first draw has supplied a
++    // terminal size, so the built-in status line remains active and no command is launched.
++    chat.refresh_status_surfaces();
++    assert_eq!(chat.status_line_command_output(), None);
++    assert!(!invocations.exists());
++
++    chat.on_terminal_resize(Size::new(80, 25));
++    chat.on_terminal_resize(Size::new(80, 25));
++
++    let completion = tokio::time::timeout(std::time::Duration::from_secs(2), async {
++        loop {
++            match rx.recv().await.expect("status-line event channel closed") {
++                AppEvent::StatusLineCommandCompleted(completion) => break completion,
++                _ => {}
++            }
++        }
++    })
++    .await
++    .expect("status-line command did not complete");
++    assert!(chat.complete_status_line_command(completion));
++    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
++    assert_eq!(fs::read(&invocations).unwrap(), b"x");
++    while let Ok(event) = rx.try_recv() {
++        assert!(!matches!(event, AppEvent::StatusLineCommandCompleted(_)));
++    }
++    assert_eq!(
++        chat.status_line_command_output()
++            .unwrap()
++            .iter()
++            .map(Line::to_string)
++            .collect::<Vec<_>>(),
++        vec!["startup-custom".to_string()]
++    );
 +}
 diff --git a/codex-rs/tui/src/chatwidget/status_surfaces.rs b/codex-rs/tui/src/chatwidget/status_surfaces.rs
 index 7120462330..32136f03c8 100644
@@ -1612,10 +1675,10 @@ index 0000000000..2547089d4a
 +}
 diff --git a/codex-rs/tui/src/status_line_command/mod.rs b/codex-rs/tui/src/status_line_command/mod.rs
 new file mode 100644
-index 0000000000..c8db91be28
+index 0000000000..0255926ff6
 --- /dev/null
 +++ b/codex-rs/tui/src/status_line_command/mod.rs
-@@ -0,0 +1,324 @@
+@@ -0,0 +1,328 @@
 +//! Safe command-backed status-line execution and its stable stdin contract.
 +
 +mod ansi;
@@ -1772,8 +1835,12 @@ index 0000000000..c8db91be28
 +        self.terminal
 +    }
 +
-+    pub(crate) fn set_terminal(&mut self, terminal: Size) {
++    pub(crate) fn set_terminal(&mut self, terminal: Size) -> bool {
++        let became_valid = (self.terminal.width == 0 || self.terminal.height == 0)
++            && terminal.width > 0
++            && terminal.height > 0;
 +        self.terminal = terminal;
++        became_valid
 +    }
 +
 +    pub(crate) fn sync_context(
