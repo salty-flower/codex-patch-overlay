@@ -91,7 +91,7 @@ upstream_issue = "https://github.com/openai/codex/issues/13222"
 status = "carried"
 risk = "low"
 owner = "local"
-notes = "Add a 'Context input' row to the TUI /status display showing non-cached vs cached input tokens with a cached percentage. Helps users identify how much of their context window is consumed by fresh (paid) vs cached (free/cheap) tokens. Verify by running /status in a session with conversation history; the new row appears below 'Context window' when cached tokens are present."
+notes = "Add a 'Context input' row to the TUI /status display showing non-cached vs cached input tokens with a cached percentage. Helps users identify how much of their context window is consumed by fresh (paid) vs cached (free/cheap) tokens. Carries the 15 upstream `/status` snapshots the new row changes, and narrows `status_card_token_usage_excludes_cached_tokens` to the 'Token usage' total while asserting the new breakdown row. Snapshots keep upstream's `v0.0.0` version line, so the only remaining `codex-tui` snapshot failures are the version-string ones every release-tag checkout has. Verify by running /status in a session with conversation history; the new row appears below 'Context window' when cached tokens are present."
 
 [[patches]]
 name = "plan-mode-default"
@@ -119,7 +119,7 @@ upstream_issue = "local-request"
 status = "carried"
 risk = "medium"
 owner = "local"
-notes = "Add `/later <delay> <prompt>` to queue a follow-up prompt for a strict future time. The time spec accepts a relative delay (`10m`, `1h30m`, `90s`, bare number = minutes), a clock time `HH:MM[:SS]` (today, or tomorrow if already past), or an absolute `YYYY-MM-DD HH:MM[:SS]`. Due prompts drain immediately when idle, or wait for the current turn to finish if Codex is still running. The pending-input preview shows both the target wall-clock time (HH:MM:SS) and a live countdown refreshed every 10 seconds."
+notes = "Add `/later <delay> <prompt>` to queue a follow-up prompt for a strict future time. The time spec accepts a relative delay (`10m`, `1h30m`, `90s`, bare number = minutes), a clock time `HH:MM[:SS]` (today, or tomorrow if already past), or an absolute `YYYY-MM-DD HH:MM[:SS]`. Due prompts drain immediately when idle, or wait for the current turn to finish if Codex is still running. The pending-input preview shows both the target wall-clock time (HH:MM:SS) and a live countdown refreshed every 10 seconds. Carries the default command-popup snapshot so the new `/later` entry does not fail `just test -p codex-tui`."
 
 [[patches]]
 name = "auto-thread-name"

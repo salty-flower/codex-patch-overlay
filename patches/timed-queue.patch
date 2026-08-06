@@ -42,6 +42,18 @@ index 0b178a8f37..df16eca1fb 100644
      /// Open the approval popup.
      FullScreenApprovalRequest(ApprovalRequest),
  
+diff --git a/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__command_popup__tests__command_popup_default_items.snap b/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__command_popup__tests__command_popup_default_items.snap
+index 93b3d93a8f..43f5673ce4 100644
+--- a/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__command_popup__tests__command_popup_default_items.snap
++++ b/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__command_popup__tests__command_popup_default_items.snap
+@@ -14,6 +14,7 @@ expression: commands
+ /import - import setup, this project, and recent chats from Claude Code
+ /hooks - view and manage lifecycle hooks
+ /review - review my current changes and find issues
++/later - schedule a prompt: /later 5m, /later 14:30, or /later 2026-07-15 09:00
+ /rename - rename the current thread
+ /new - start a new chat during a conversation
+ /archive - archive this session and exit
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
 index f7b352eef5..df13d5a975 100644
 --- a/codex-rs/tui/src/chatwidget.rs

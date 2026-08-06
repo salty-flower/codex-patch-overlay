@@ -1357,7 +1357,7 @@ index aaf54df448..1c064e8c21 100644
              }),
              credits: None,
 diff --git a/codex-rs/tui/src/status/tests.rs b/codex-rs/tui/src/status/tests.rs
-index d95bc217f5..82c0b22237 100644
+index cf6983b9fb..f7b20b1964 100644
 --- a/codex-rs/tui/src/status/tests.rs
 +++ b/codex-rs/tui/src/status/tests.rs
 @@ -68,6 +68,7 @@ fn stale_monthly_limit_marks_fresh_rolling_snapshot_stale() {
@@ -1368,7 +1368,7 @@ index d95bc217f5..82c0b22237 100644
              window_minutes: Some(300),
          }),
          secondary: None,
-@@ -1744,11 +1745,13 @@ async fn transcript_overlay_remeasures_status_after_rate_limit_refresh() {
+@@ -1756,11 +1757,13 @@ async fn transcript_overlay_remeasures_status_after_rate_limit_refresh() {
              primary: Some(RateLimitWindowDisplay {
                  used_percent: 45.0,
                  resets_at: Some("soon".to_string()),
