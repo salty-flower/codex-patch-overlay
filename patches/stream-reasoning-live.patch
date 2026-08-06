@@ -1,8 +1,8 @@
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index 32751315b6..77baf23f2f 100644
+index 5d82afc620..f6b076087a 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -2371,7 +2371,10 @@ async fn try_run_sampling_request(
+@@ -2432,7 +2432,10 @@ async fn try_run_sampling_request(
                      continue;
                  }
                  if let Some(active) = active_item.as_ref() {
@@ -14,7 +14,7 @@ index 32751315b6..77baf23f2f 100644
                          continue;
                      }
                      let event = ReasoningContentDeltaEvent {
-@@ -2392,7 +2395,10 @@ async fn try_run_sampling_request(
+@@ -2453,7 +2456,10 @@ async fn try_run_sampling_request(
                      continue;
                  }
                  if let Some(active) = active_item.as_ref() {
@@ -26,7 +26,7 @@ index 32751315b6..77baf23f2f 100644
                          continue;
                      }
                      let event =
-@@ -2506,6 +2512,13 @@ async fn try_run_sampling_request(
+@@ -2567,6 +2573,13 @@ async fn try_run_sampling_request(
      outcome
  }
  
@@ -41,10 +41,10 @@ index 32751315b6..77baf23f2f 100644
      for item in responses.iter().rev() {
          if let Some(message) = last_assistant_message_from_item(item, /*plan_mode*/ false) {
 diff --git a/codex-rs/core/src/session/turn_tests.rs b/codex-rs/core/src/session/turn_tests.rs
-index 7ef829f13d..a8fa803444 100644
+index 10043b0dc7..c664ba223e 100644
 --- a/codex-rs/core/src/session/turn_tests.rs
 +++ b/codex-rs/core/src/session/turn_tests.rs
-@@ -66,3 +66,26 @@ async fn plan_mode_uses_contributed_turn_item_for_last_agent_message() {
+@@ -85,3 +85,26 @@ async fn plan_mode_uses_contributed_turn_item_for_last_agent_message() {
          Some("plan contributed assistant text")
      );
  }
@@ -72,10 +72,10 @@ index 7ef829f13d..a8fa803444 100644
 +    assert!(!active_item_allows_reasoning_delta(false, Some(&item)));
 +}
 diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
-index 9586f5fd7d..4a5096f6da 100644
+index 79e2c3fe6e..a03ffbd11f 100644
 --- a/codex-rs/tui/src/chatwidget/protocol.rs
 +++ b/codex-rs/tui/src/chatwidget/protocol.rs
-@@ -299,6 +299,7 @@ impl ChatWidget {
+@@ -330,6 +330,7 @@ impl ChatWidget {
              ThreadItem::ImageGeneration(_) => {
                  self.on_image_generation_begin();
              }
@@ -84,10 +84,10 @@ index 9586f5fd7d..4a5096f6da 100644
                  id,
                  tool,
 diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
-index 2a16254647..c1f10feac3 100644
+index fad6eb8473..2d2996fbee 100644
 --- a/codex-rs/tui/src/chatwidget/replay.rs
 +++ b/codex-rs/tui/src/chatwidget/replay.rs
-@@ -125,7 +125,7 @@ impl ChatWidget {
+@@ -126,7 +126,7 @@ impl ChatWidget {
              ThreadItem::Reasoning {
                  summary, content, ..
              } => {
@@ -121,10 +121,10 @@ index 9201be6555..4d1e8bb3da 100644
  "                                                                                "
  "                                                                                "
 diff --git a/codex-rs/tui/src/chatwidget/streaming.rs b/codex-rs/tui/src/chatwidget/streaming.rs
-index 249b8c832b..a5474cc612 100644
+index dcccbd027f..ddc4a10218 100644
 --- a/codex-rs/tui/src/chatwidget/streaming.rs
 +++ b/codex-rs/tui/src/chatwidget/streaming.rs
-@@ -127,6 +127,10 @@ impl ChatWidget {
+@@ -142,6 +142,10 @@ impl ChatWidget {
          self.handle_streaming_delta(delta);
      }
  
@@ -135,7 +135,7 @@ index 249b8c832b..a5474cc612 100644
      pub(super) fn on_plan_delta(&mut self, delta: String) {
          if self.active_mode_kind() != ModeKind::Plan {
              return;
-@@ -212,10 +216,15 @@ impl ChatWidget {
+@@ -227,10 +231,15 @@ impl ChatWidget {
      }
  
      pub(super) fn on_agent_reasoning_delta(&mut self, delta: String) {
@@ -154,7 +154,7 @@ index 249b8c832b..a5474cc612 100644
  
          if self.safety_buffering_is_waiting() {
              return;
-@@ -256,12 +265,16 @@ impl ChatWidget {
+@@ -271,12 +280,16 @@ impl ChatWidget {
      }
  
      pub(super) fn on_agent_reasoning_final(&mut self) {
@@ -173,7 +173,7 @@ index 249b8c832b..a5474cc612 100644
              let reasoning_parts = std::mem::take(&mut self.reasoning_summary_parts);
              let cell = history_cell::new_reasoning_summary_block(reasoning_parts, &self.config.cwd);
              self.add_boxed_history(cell);
-@@ -475,6 +488,36 @@ impl ChatWidget {
+@@ -490,6 +503,36 @@ impl ChatWidget {
          })
      }
  
@@ -211,10 +211,10 @@ index 249b8c832b..a5474cc612 100644
          (self.stream_controller.is_some() || self.plan_stream_controller.is_some())
              && self.active_cell_is_stream_tail()
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index 8d68862eba..d2f918ce8e 100644
+index 0f421dc63d..3adfe94a7e 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-@@ -1193,6 +1193,111 @@ async fn deferred_mcp_lifecycle_events_keep_fifo_after_stream_finishes() {
+@@ -1243,6 +1243,111 @@ async fn deferred_mcp_lifecycle_events_keep_fifo_after_stream_finishes() {
      assert!(rendered.contains("deferred result"), "{rendered}");
  }
  
@@ -326,7 +326,7 @@ index 8d68862eba..d2f918ce8e 100644
  #[tokio::test]
  async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
      let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-@@ -1250,6 +1355,66 @@ async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
+@@ -1300,6 +1405,66 @@ async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
      assert_eq!(rendered.matches("Summary only").count(), 1);
  }
  
@@ -394,10 +394,10 @@ index 8d68862eba..d2f918ce8e 100644
  async fn live_reasoning_summary_drops_empty_parts_without_losing_content() {
      let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/history_cell/messages.rs b/codex-rs/tui/src/history_cell/messages.rs
-index 58892e4261..adcb292b1b 100644
+index f8fe26e7ad..99d42135d9 100644
 --- a/codex-rs/tui/src/history_cell/messages.rs
 +++ b/codex-rs/tui/src/history_cell/messages.rs
-@@ -555,6 +555,46 @@ pub(crate) fn new_reasoning_summary_block(
+@@ -562,6 +562,46 @@ pub(crate) fn new_reasoning_summary_block(
      ))
  }
  

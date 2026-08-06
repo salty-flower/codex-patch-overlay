@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index a5d408d4ca..e1cc933f5a 100644
+index 7009c74651..df6f66ac35 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -2070,6 +2070,18 @@ impl App {
+@@ -2152,6 +2152,18 @@ impl App {
                  self.chat_widget
                      .submit_user_message_with_mode(text, collaboration_mode);
              }
@@ -22,10 +22,10 @@ index a5d408d4ca..e1cc933f5a 100644
                  self.chat_widget.handle_manage_skills_closed();
              }
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 553a58d8d4..9a3c4d3215 100644
+index 0b178a8f37..df16eca1fb 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -971,6 +971,16 @@ pub(crate) enum AppEvent {
+@@ -1017,6 +1017,16 @@ pub(crate) enum AppEvent {
          collaboration_mode: CollaborationModeMask,
      },
  
@@ -43,10 +43,10 @@ index 553a58d8d4..9a3c4d3215 100644
      FullScreenApprovalRequest(ApprovalRequest),
  
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index fa745c652e..bd5f4a79a4 100644
+index f7b352eef5..df13d5a975 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -359,6 +359,7 @@ use self::session_header::SessionHeader;
+@@ -361,6 +361,7 @@ use self::session_header::SessionHeader;
  mod hook_lifecycle;
  mod hooks;
  mod interaction;
@@ -54,6 +54,304 @@ index fa745c652e..bd5f4a79a4 100644
  mod skills;
  mod slash_dispatch;
  use self::skills::collect_tool_mentions;
+diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
+index f26d50a2e7..e4259965c9 100644
+--- a/codex-rs/tui/src/chatwidget/input_flow.rs
++++ b/codex-rs/tui/src/chatwidget/input_flow.rs
+@@ -118,6 +118,9 @@ impl ChatWidget {
+                     user_message,
+                     action,
+                     pending_pastes,
++                    not_before: None,
++                    schedule_label: None,
++                    schedule_target_time: None,
+                 });
+             self.input_queue
+                 .queued_user_message_history_records
+@@ -141,7 +144,9 @@ impl ChatWidget {
+         }
+         let mut submitted_follow_up = false;
+         while !self.is_user_turn_pending_or_running() {
+-            let Some((queued_message, history_record)) = self.pop_next_queued_user_message() else {
++            let Some((queued_message, history_record)) =
++                self.pop_next_ready_queued_user_message(std::time::Instant::now())
++            else {
+                 break;
+             };
+             match queued_message.action {
+@@ -173,6 +178,49 @@ impl ChatWidget {
+         submitted_follow_up
+     }
+ 
++    pub(super) fn schedule_user_message(
++        &mut self,
++        user_message: UserMessage,
++        delay: std::time::Duration,
++        label: String,
++    ) {
++        let Some(thread_id) = self.thread_id else {
++            self.add_error_message(
++                "Session is still starting; try /later again in a moment.".to_string(),
++            );
++            return;
++        };
++        let not_before = std::time::Instant::now() + delay;
++        let target_time = chrono::Local::now() + delay;
++        self.input_queue.queued_user_messages.push_back(
++            QueuedUserMessage::from(user_message)
++                .scheduled_for(not_before)
++                .with_schedule_label(label.clone())
++                .with_schedule_target_time(target_time),
++        );
++        self.input_queue
++            .queued_user_message_history_records
++            .push_back(UserMessageHistoryRecord::UserMessageText);
++        self.refresh_pending_input_preview();
++        self.add_info_message(format!("Scheduled follow-up input {label}."), None);
++        let tx = self.app_event_tx.clone();
++        tokio::spawn(async move {
++            tokio::time::sleep(delay).await;
++            tx.send(AppEvent::ScheduledQueueDue { thread_id });
++        });
++        let tx = self.app_event_tx.clone();
++        tokio::spawn(async move {
++            let deadline = tokio::time::Instant::now() + delay;
++            loop {
++                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
++                if tokio::time::Instant::now() >= deadline {
++                    break;
++                }
++                tx.send(AppEvent::ScheduledQueueTick { thread_id });
++            }
++        });
++    }
++
+     pub(super) fn is_user_turn_pending_or_running(&self) -> bool {
+         self.input_queue.user_turn_pending_start || self.bottom_pane.is_task_running()
+     }
+@@ -187,7 +235,7 @@ impl ChatWidget {
+     }
+ 
+     /// Rebuild and update the bottom-pane pending-input preview.
+-    pub(super) fn refresh_pending_input_preview(&mut self) {
++    pub(crate) fn refresh_pending_input_preview(&mut self) {
+         let preview = self.input_queue.preview();
+         self.bottom_pane.set_pending_input_preview(
+             preview.queued_messages,
+diff --git a/codex-rs/tui/src/chatwidget/input_queue.rs b/codex-rs/tui/src/chatwidget/input_queue.rs
+index 67a306af22..cca2a4f3c8 100644
+--- a/codex-rs/tui/src/chatwidget/input_queue.rs
++++ b/codex-rs/tui/src/chatwidget/input_queue.rs
+@@ -4,6 +4,10 @@
+ //! apply UI/protocol effects around a focused reducer-style state bag.
+ 
+ use std::collections::VecDeque;
++use std::time::Instant;
++
++use chrono::DateTime;
++use chrono::Local;
+ 
+ use super::PendingSteer;
+ use super::QueuedUserMessage;
+@@ -59,16 +63,49 @@ impl InputQueueState {
+         self.submit_pending_steers_after_interrupt = false;
+     }
+ 
++    pub(super) fn pop_next_ready_queued_user_message(
++        &mut self,
++        now: Instant,
++    ) -> Option<(QueuedUserMessage, UserMessageHistoryRecord)> {
++        if !self
++            .queued_user_messages
++            .front()
++            .is_some_and(|message| message.is_ready_at(now))
++        {
++            return None;
++        }
++        let message = self.queued_user_messages.pop_front()?;
++        let history = self
++            .queued_user_message_history_records
++            .pop_front()
++            .unwrap_or(UserMessageHistoryRecord::UserMessageText);
++        Some((message, history))
++    }
++
+     pub(super) fn preview(&self) -> PendingInputPreview {
++        let now = Local::now();
+         let queued_messages = self
+             .queued_user_messages
+             .iter()
+             .enumerate()
+             .map(|(idx, message)| {
+-                user_message_preview_text(
++                let text = user_message_preview_text(
+                     message,
+                     self.queued_user_message_history_records.get(idx),
+-                )
++                );
++                match &message.schedule_target_time {
++                    Some(target) => {
++                        let countdown = format_countdown(*target, now);
++                        format!(
++                            "{text} (scheduled {target} \u{2014} {countdown})",
++                            target = target.format("%H:%M:%S"),
++                        )
++                    }
++                    None => match &message.schedule_label {
++                        Some(label) => format!("{text} (scheduled {label})"),
++                        None => text,
++                    },
++                }
+             })
+             .collect();
+         let pending_steers = self
+@@ -95,6 +132,24 @@ impl InputQueueState {
+     }
+ }
+ 
++fn format_countdown(target: DateTime<Local>, now: DateTime<Local>) -> String {
++    let remaining = target.signed_duration_since(now);
++    let total_secs = remaining.num_seconds();
++    if total_secs <= 0 {
++        return "due".to_string();
++    }
++    let hours = total_secs / 3600;
++    let minutes = (total_secs % 3600) / 60;
++    let seconds = total_secs % 60;
++    if hours > 0 {
++        format!("{hours}h {minutes:02}m {seconds:02}s left")
++    } else if minutes > 0 {
++        format!("{minutes}m {seconds:02}s left")
++    } else {
++        format!("{seconds}s left")
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use pretty_assertions::assert_eq;
+@@ -129,6 +184,92 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn next_ready_queued_message_waits_for_scheduled_time() {
++        let mut state = InputQueueState::default();
++        let now = std::time::Instant::now();
++        state.queued_user_messages.push_back(
++            QueuedUserMessage::from(UserMessage::from("later"))
++                .scheduled_for(now + std::time::Duration::from_secs(60)),
++        );
++        state
++            .queued_user_message_history_records
++            .push_back(UserMessageHistoryRecord::UserMessageText);
++
++        assert!(state.pop_next_ready_queued_user_message(now).is_none());
++
++        let (message, history) = state
++            .pop_next_ready_queued_user_message(now + std::time::Duration::from_secs(60))
++            .expect("scheduled message should be ready at its due time");
++        assert_eq!(message.text, "later");
++        assert_eq!(history, UserMessageHistoryRecord::UserMessageText);
++        assert!(state.queued_user_messages.is_empty());
++        assert!(state.queued_user_message_history_records.is_empty());
++    }
++
++    #[test]
++    fn format_countdown_shows_hours_minutes_seconds() {
++        let target = Local::now() + chrono::Duration::seconds(3661);
++        let now = Local::now();
++        let text = format_countdown(target, now);
++        assert!(text.starts_with("1h 01m"), "expected 1h 01m, got: {text}");
++        assert!(
++            text.ends_with("s left"),
++            "expected trailing 's left', got: {text}"
++        );
++    }
++
++    #[test]
++    fn format_countdown_shows_minutes_seconds() {
++        let now = Local::now();
++        let target = now + chrono::Duration::seconds(125);
++        assert_eq!(format_countdown(target, now), "2m 05s left");
++    }
++
++    #[test]
++    fn format_countdown_shows_seconds_only() {
++        let now = Local::now();
++        let target = now + chrono::Duration::seconds(45);
++        assert_eq!(format_countdown(target, now), "45s left");
++    }
++
++    #[test]
++    fn format_countdown_past_target_shows_due() {
++        let now = Local::now();
++        let target = now - chrono::Duration::seconds(5);
++        assert_eq!(format_countdown(target, now), "due");
++    }
++
++    #[test]
++    fn preview_scheduled_message_shows_target_time_and_countdown() {
++        let mut state = InputQueueState::default();
++        let target = Local::now() + chrono::Duration::seconds(600);
++        state.queued_user_messages.push_back(
++            QueuedUserMessage::from(UserMessage::from("later"))
++                .scheduled_for(std::time::Instant::now() + std::time::Duration::from_secs(600))
++                .with_schedule_label("in 10m".to_string())
++                .with_schedule_target_time(target),
++        );
++        state
++            .queued_user_message_history_records
++            .push_back(UserMessageHistoryRecord::UserMessageText);
++
++        let preview = state.preview();
++        let msg = &preview.queued_messages[0];
++        assert!(
++            msg.contains(&target.format("%H:%M:%S").to_string()),
++            "expected target time in preview, got: {msg}"
++        );
++        assert!(
++            msg.contains("left"),
++            "expected countdown in preview, got: {msg}"
++        );
++        assert!(
++            msg.contains("\u{2014}"),
++            "expected em-dash separator, got: {msg}"
++        );
++    }
++
+     #[test]
+     fn clear_resets_all_input_queues() {
+         let mut state = InputQueueState::default();
+diff --git a/codex-rs/tui/src/chatwidget/input_restore.rs b/codex-rs/tui/src/chatwidget/input_restore.rs
+index 101e3ec6bc..56584723b1 100644
+--- a/codex-rs/tui/src/chatwidget/input_restore.rs
++++ b/codex-rs/tui/src/chatwidget/input_restore.rs
+@@ -30,21 +30,12 @@ impl ChatWidget {
+         }
+     }
+ 
+-    pub(super) fn pop_next_queued_user_message(
++    pub(super) fn pop_next_ready_queued_user_message(
+         &mut self,
++        now: std::time::Instant,
+     ) -> Option<(QueuedUserMessage, UserMessageHistoryRecord)> {
+         if self.input_queue.rejected_steers_queue.is_empty() {
+-            self.input_queue
+-                .queued_user_messages
+-                .pop_front()
+-                .map(|user_message| {
+-                    let history_record = self
+-                        .input_queue
+-                        .queued_user_message_history_records
+-                        .pop_front()
+-                        .unwrap_or(UserMessageHistoryRecord::UserMessageText);
+-                    (user_message, history_record)
+-                })
++            self.input_queue.pop_next_ready_queued_user_message(now)
+         } else {
+             let rejected_messages = self
+                 .input_queue
 diff --git a/codex-rs/tui/src/chatwidget/scheduled_input.rs b/codex-rs/tui/src/chatwidget/scheduled_input.rs
 new file mode 100644
 index 0000000000..27d1020338
@@ -305,306 +603,8 @@ index 0000000000..27d1020338
 +        assert!(parse_schedule_args("09:30", now_at(9, 0)).is_err());
 +    }
 +}
-diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
-index 916c54cd5e..a73da9987e 100644
---- a/codex-rs/tui/src/chatwidget/input_flow.rs
-+++ b/codex-rs/tui/src/chatwidget/input_flow.rs
-@@ -109,6 +109,9 @@ impl ChatWidget {
-                     user_message,
-                     action,
-                     pending_pastes,
-+                    not_before: None,
-+                    schedule_label: None,
-+                    schedule_target_time: None,
-                 });
-             self.input_queue
-                 .queued_user_message_history_records
-@@ -129,7 +132,9 @@ impl ChatWidget {
-         }
-         let mut submitted_follow_up = false;
-         while !self.is_user_turn_pending_or_running() {
--            let Some((queued_message, history_record)) = self.pop_next_queued_user_message() else {
-+            let Some((queued_message, history_record)) =
-+                self.pop_next_ready_queued_user_message(std::time::Instant::now())
-+            else {
-                 break;
-             };
-             match queued_message.action {
-@@ -161,6 +166,49 @@ impl ChatWidget {
-         submitted_follow_up
-     }
- 
-+    pub(super) fn schedule_user_message(
-+        &mut self,
-+        user_message: UserMessage,
-+        delay: std::time::Duration,
-+        label: String,
-+    ) {
-+        let Some(thread_id) = self.thread_id else {
-+            self.add_error_message(
-+                "Session is still starting; try /later again in a moment.".to_string(),
-+            );
-+            return;
-+        };
-+        let not_before = std::time::Instant::now() + delay;
-+        let target_time = chrono::Local::now() + delay;
-+        self.input_queue.queued_user_messages.push_back(
-+            QueuedUserMessage::from(user_message)
-+                .scheduled_for(not_before)
-+                .with_schedule_label(label.clone())
-+                .with_schedule_target_time(target_time),
-+        );
-+        self.input_queue
-+            .queued_user_message_history_records
-+            .push_back(UserMessageHistoryRecord::UserMessageText);
-+        self.refresh_pending_input_preview();
-+        self.add_info_message(format!("Scheduled follow-up input {label}."), None);
-+        let tx = self.app_event_tx.clone();
-+        tokio::spawn(async move {
-+            tokio::time::sleep(delay).await;
-+            tx.send(AppEvent::ScheduledQueueDue { thread_id });
-+        });
-+        let tx = self.app_event_tx.clone();
-+        tokio::spawn(async move {
-+            let deadline = tokio::time::Instant::now() + delay;
-+            loop {
-+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-+                if tokio::time::Instant::now() >= deadline {
-+                    break;
-+                }
-+                tx.send(AppEvent::ScheduledQueueTick { thread_id });
-+            }
-+        });
-+    }
-+
-     pub(super) fn is_user_turn_pending_or_running(&self) -> bool {
-         self.input_queue.user_turn_pending_start || self.bottom_pane.is_task_running()
-     }
-@@ -175,7 +223,7 @@ impl ChatWidget {
-     }
- 
-     /// Rebuild and update the bottom-pane pending-input preview.
--    pub(super) fn refresh_pending_input_preview(&mut self) {
-+    pub(crate) fn refresh_pending_input_preview(&mut self) {
-         let preview = self.input_queue.preview();
-         self.bottom_pane.set_pending_input_preview(
-             preview.queued_messages,
-diff --git a/codex-rs/tui/src/chatwidget/input_queue.rs b/codex-rs/tui/src/chatwidget/input_queue.rs
-index 67a306af22..cca2a4f3c8 100644
---- a/codex-rs/tui/src/chatwidget/input_queue.rs
-+++ b/codex-rs/tui/src/chatwidget/input_queue.rs
-@@ -4,6 +4,10 @@
- //! apply UI/protocol effects around a focused reducer-style state bag.
- 
- use std::collections::VecDeque;
-+use std::time::Instant;
-+
-+use chrono::DateTime;
-+use chrono::Local;
- 
- use super::PendingSteer;
- use super::QueuedUserMessage;
-@@ -59,16 +63,49 @@ impl InputQueueState {
-         self.submit_pending_steers_after_interrupt = false;
-     }
- 
-+    pub(super) fn pop_next_ready_queued_user_message(
-+        &mut self,
-+        now: Instant,
-+    ) -> Option<(QueuedUserMessage, UserMessageHistoryRecord)> {
-+        if !self
-+            .queued_user_messages
-+            .front()
-+            .is_some_and(|message| message.is_ready_at(now))
-+        {
-+            return None;
-+        }
-+        let message = self.queued_user_messages.pop_front()?;
-+        let history = self
-+            .queued_user_message_history_records
-+            .pop_front()
-+            .unwrap_or(UserMessageHistoryRecord::UserMessageText);
-+        Some((message, history))
-+    }
-+
-     pub(super) fn preview(&self) -> PendingInputPreview {
-+        let now = Local::now();
-         let queued_messages = self
-             .queued_user_messages
-             .iter()
-             .enumerate()
-             .map(|(idx, message)| {
--                user_message_preview_text(
-+                let text = user_message_preview_text(
-                     message,
-                     self.queued_user_message_history_records.get(idx),
--                )
-+                );
-+                match &message.schedule_target_time {
-+                    Some(target) => {
-+                        let countdown = format_countdown(*target, now);
-+                        format!(
-+                            "{text} (scheduled {target} \u{2014} {countdown})",
-+                            target = target.format("%H:%M:%S"),
-+                        )
-+                    }
-+                    None => match &message.schedule_label {
-+                        Some(label) => format!("{text} (scheduled {label})"),
-+                        None => text,
-+                    },
-+                }
-             })
-             .collect();
-         let pending_steers = self
-@@ -95,6 +132,24 @@ impl InputQueueState {
-     }
- }
- 
-+fn format_countdown(target: DateTime<Local>, now: DateTime<Local>) -> String {
-+    let remaining = target.signed_duration_since(now);
-+    let total_secs = remaining.num_seconds();
-+    if total_secs <= 0 {
-+        return "due".to_string();
-+    }
-+    let hours = total_secs / 3600;
-+    let minutes = (total_secs % 3600) / 60;
-+    let seconds = total_secs % 60;
-+    if hours > 0 {
-+        format!("{hours}h {minutes:02}m {seconds:02}s left")
-+    } else if minutes > 0 {
-+        format!("{minutes}m {seconds:02}s left")
-+    } else {
-+        format!("{seconds}s left")
-+    }
-+}
-+
- #[cfg(test)]
- mod tests {
-     use pretty_assertions::assert_eq;
-@@ -129,6 +184,92 @@ mod tests {
-         );
-     }
- 
-+    #[test]
-+    fn next_ready_queued_message_waits_for_scheduled_time() {
-+        let mut state = InputQueueState::default();
-+        let now = std::time::Instant::now();
-+        state.queued_user_messages.push_back(
-+            QueuedUserMessage::from(UserMessage::from("later"))
-+                .scheduled_for(now + std::time::Duration::from_secs(60)),
-+        );
-+        state
-+            .queued_user_message_history_records
-+            .push_back(UserMessageHistoryRecord::UserMessageText);
-+
-+        assert!(state.pop_next_ready_queued_user_message(now).is_none());
-+
-+        let (message, history) = state
-+            .pop_next_ready_queued_user_message(now + std::time::Duration::from_secs(60))
-+            .expect("scheduled message should be ready at its due time");
-+        assert_eq!(message.text, "later");
-+        assert_eq!(history, UserMessageHistoryRecord::UserMessageText);
-+        assert!(state.queued_user_messages.is_empty());
-+        assert!(state.queued_user_message_history_records.is_empty());
-+    }
-+
-+    #[test]
-+    fn format_countdown_shows_hours_minutes_seconds() {
-+        let target = Local::now() + chrono::Duration::seconds(3661);
-+        let now = Local::now();
-+        let text = format_countdown(target, now);
-+        assert!(text.starts_with("1h 01m"), "expected 1h 01m, got: {text}");
-+        assert!(
-+            text.ends_with("s left"),
-+            "expected trailing 's left', got: {text}"
-+        );
-+    }
-+
-+    #[test]
-+    fn format_countdown_shows_minutes_seconds() {
-+        let now = Local::now();
-+        let target = now + chrono::Duration::seconds(125);
-+        assert_eq!(format_countdown(target, now), "2m 05s left");
-+    }
-+
-+    #[test]
-+    fn format_countdown_shows_seconds_only() {
-+        let now = Local::now();
-+        let target = now + chrono::Duration::seconds(45);
-+        assert_eq!(format_countdown(target, now), "45s left");
-+    }
-+
-+    #[test]
-+    fn format_countdown_past_target_shows_due() {
-+        let now = Local::now();
-+        let target = now - chrono::Duration::seconds(5);
-+        assert_eq!(format_countdown(target, now), "due");
-+    }
-+
-+    #[test]
-+    fn preview_scheduled_message_shows_target_time_and_countdown() {
-+        let mut state = InputQueueState::default();
-+        let target = Local::now() + chrono::Duration::seconds(600);
-+        state.queued_user_messages.push_back(
-+            QueuedUserMessage::from(UserMessage::from("later"))
-+                .scheduled_for(std::time::Instant::now() + std::time::Duration::from_secs(600))
-+                .with_schedule_label("in 10m".to_string())
-+                .with_schedule_target_time(target),
-+        );
-+        state
-+            .queued_user_message_history_records
-+            .push_back(UserMessageHistoryRecord::UserMessageText);
-+
-+        let preview = state.preview();
-+        let msg = &preview.queued_messages[0];
-+        assert!(
-+            msg.contains(&target.format("%H:%M:%S").to_string()),
-+            "expected target time in preview, got: {msg}"
-+        );
-+        assert!(
-+            msg.contains("left"),
-+            "expected countdown in preview, got: {msg}"
-+        );
-+        assert!(
-+            msg.contains("\u{2014}"),
-+            "expected em-dash separator, got: {msg}"
-+        );
-+    }
-+
-     #[test]
-     fn clear_resets_all_input_queues() {
-         let mut state = InputQueueState::default();
-diff --git a/codex-rs/tui/src/chatwidget/input_restore.rs b/codex-rs/tui/src/chatwidget/input_restore.rs
-index bcc4e956a7..14813d8417 100644
---- a/codex-rs/tui/src/chatwidget/input_restore.rs
-+++ b/codex-rs/tui/src/chatwidget/input_restore.rs
-@@ -55,21 +55,12 @@ impl ChatWidget {
-         }
-     }
- 
--    pub(super) fn pop_next_queued_user_message(
-+    pub(super) fn pop_next_ready_queued_user_message(
-         &mut self,
-+        now: std::time::Instant,
-     ) -> Option<(QueuedUserMessage, UserMessageHistoryRecord)> {
-         if self.input_queue.rejected_steers_queue.is_empty() {
--            self.input_queue
--                .queued_user_messages
--                .pop_front()
--                .map(|user_message| {
--                    let history_record = self
--                        .input_queue
--                        .queued_user_message_history_records
--                        .pop_front()
--                        .unwrap_or(UserMessageHistoryRecord::UserMessageText);
--                    (user_message, history_record)
--                })
-+            self.input_queue.pop_next_ready_queued_user_message(now)
-         } else {
-             let rejected_messages = self
-                 .input_queue
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index df9c65f8ce..770d76b6f0 100644
+index e28cfd7043..0262d9c54a 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 @@ -14,6 +14,7 @@ use crate::bottom_pane::slash_commands::SlashCommandItem;
@@ -624,7 +624,7 @@ index df9c65f8ce..770d76b6f0 100644
  const USAGE_CHATGPT_LOGIN_REQUIRED: &str = "Sign in with ChatGPT to use /usage.";
  
  impl ChatWidget {
-@@ -263,6 +266,9 @@ impl ChatWidget {
+@@ -267,6 +270,9 @@ impl ChatWidget {
              SlashCommand::Review => {
                  self.open_review_popup();
              }
@@ -634,9 +634,9 @@ index df9c65f8ce..770d76b6f0 100644
              SlashCommand::Rename => {
                  self.session_telemetry
                      .counter("codex.thread.rename", /*inc*/ 1, &[]);
-@@ -721,6 +727,28 @@ impl ChatWidget {
-                 };
-                 self.app_event_tx.set_thread_name(name);
+@@ -735,6 +741,28 @@ impl ChatWidget {
+                     name: Some(trimmed.to_string()),
+                 });
              }
 +            SlashCommand::Later if !trimmed.is_empty() => {
 +                let parsed =
@@ -663,7 +663,7 @@ index df9c65f8ce..770d76b6f0 100644
              SlashCommand::Plan if !trimmed.is_empty() => {
                  if !self.apply_plan_slash_command() {
                      return;
-@@ -1058,6 +1086,7 @@ impl ChatWidget {
+@@ -1073,6 +1101,7 @@ impl ChatWidget {
              | SlashCommand::Diff
              | SlashCommand::App
              | SlashCommand::Rename
@@ -671,8 +671,22 @@ index df9c65f8ce..770d76b6f0 100644
              | SlashCommand::TestApproval => QueueDrain::Continue,
              SlashCommand::Feedback
              | SlashCommand::New
+diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
+index 84125d932c..1d853ea76f 100644
+--- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
++++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
+@@ -130,6 +130,9 @@ async fn parent_owned_thread_preserves_queued_input_before_draining() {
+         user_message: UserMessage::from("keep this queued prompt"),
+         action: QueuedInputAction::Plain,
+         pending_pastes: vec![("[Image 1]".to_string(), "pasted contents".to_string())],
++        not_before: None,
++        schedule_label: None,
++        schedule_target_time: None,
+     };
+     let history_record = UserMessageHistoryRecord::UserMessageText;
+     chat.input_queue
 diff --git a/codex-rs/tui/src/chatwidget/user_messages.rs b/codex-rs/tui/src/chatwidget/user_messages.rs
-index 6cfb739da5..c793714981 100644
+index ca92adbee6..eb932800e2 100644
 --- a/codex-rs/tui/src/chatwidget/user_messages.rs
 +++ b/codex-rs/tui/src/chatwidget/user_messages.rs
 @@ -10,6 +10,10 @@ use std::collections::HashSet;
@@ -686,7 +700,7 @@ index 6cfb739da5..c793714981 100644
  
  use crate::bottom_pane::LocalImageAttachment;
  use crate::bottom_pane::MentionBinding;
-@@ -61,6 +65,9 @@ pub(super) struct QueuedUserMessage {
+@@ -63,6 +67,9 @@ pub(super) struct QueuedUserMessage {
      pub(super) user_message: UserMessage,
      pub(super) action: QueuedInputAction,
      pub(super) pending_pastes: Vec<(String, String)>,
@@ -696,7 +710,7 @@ index 6cfb739da5..c793714981 100644
  }
  
  impl QueuedUserMessage {
-@@ -69,12 +76,34 @@ impl QueuedUserMessage {
+@@ -71,12 +78,34 @@ impl QueuedUserMessage {
              user_message,
              action,
              pending_pastes: Vec::new(),
@@ -732,7 +746,7 @@ index 6cfb739da5..c793714981 100644
  
  impl From<UserMessage> for QueuedUserMessage {
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index 646380a2fa..8524b9b699 100644
+index abd1386932..fef9f6316b 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
 @@ -29,6 +29,7 @@ pub enum SlashCommand {
@@ -759,9 +773,9 @@ index 646380a2fa..8524b9b699 100644
              SlashCommand::Review
 +                | SlashCommand::Later
                  | SlashCommand::Rename
-                 | SlashCommand::Plan
-                 | SlashCommand::Goal
-@@ -214,6 +219,7 @@ impl SlashCommand {
+                 | SlashCommand::New
+                 | SlashCommand::Clear
+@@ -216,6 +221,7 @@ impl SlashCommand {
              | SlashCommand::Copy
              | SlashCommand::Raw
              | SlashCommand::Rename
@@ -769,17 +783,3 @@ index 646380a2fa..8524b9b699 100644
              | SlashCommand::Mention
              | SlashCommand::Skills
              | SlashCommand::Hooks
-diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index c334a7ab35..f9767ade05 100644
---- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-+++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-@@ -130,6 +130,9 @@ async fn parent_owned_thread_preserves_queued_input_before_draining() {
-         user_message: UserMessage::from("keep this queued prompt"),
-         action: QueuedInputAction::Plain,
-         pending_pastes: vec![("[Image 1]".to_string(), "pasted contents".to_string())],
-+        not_before: None,
-+        schedule_label: None,
-+        schedule_target_time: None,
-     };
-     let history_record = UserMessageHistoryRecord::UserMessageText;
-     chat.input_queue

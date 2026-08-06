@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/schema/json/ClientRequest.json b/codex-rs/app-server-protocol/schema/json/ClientRequest.json
-index 996f9ea93c..859540674b 100644
+index 8588a34069..8f793bb785 100644
 --- a/codex-rs/app-server-protocol/schema/json/ClientRequest.json
 +++ b/codex-rs/app-server-protocol/schema/json/ClientRequest.json
-@@ -3877,6 +3877,28 @@
+@@ -4023,6 +4023,28 @@
        ],
        "type": "object"
      },
@@ -31,7 +31,7 @@ index 996f9ea93c..859540674b 100644
      "ThreadGoalClearParams": {
        "properties": {
          "threadId": {
-@@ -5234,6 +5256,30 @@
+@@ -5394,6 +5416,30 @@
        "title": "Thread/name/setRequest",
        "type": "object"
      },
@@ -63,10 +63,10 @@ index 996f9ea93c..859540674b 100644
        "properties": {
          "id": {
 diff --git a/codex-rs/app-server-protocol/schema/json/ServerNotification.json b/codex-rs/app-server-protocol/schema/json/ServerNotification.json
-index 3fbb2df3e4..d77a10da96 100644
+index 636a2433c2..1a18df80bd 100644
 --- a/codex-rs/app-server-protocol/schema/json/ServerNotification.json
 +++ b/codex-rs/app-server-protocol/schema/json/ServerNotification.json
-@@ -4754,8 +4754,25 @@
+@@ -4770,8 +4770,25 @@
          }
        ]
      },
@@ -93,7 +93,7 @@ index 3fbb2df3e4..d77a10da96 100644
            "type": "string"
          },
 diff --git a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
-index 78348e6a43..04961399ab 100644
+index e8e7d35692..23f63e92b0 100644
 --- a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
 +++ b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
 @@ -396,6 +396,30 @@
@@ -127,7 +127,7 @@ index 78348e6a43..04961399ab 100644
          {
            "properties": {
              "id": {
-@@ -18281,6 +18305,44 @@
+@@ -18505,6 +18529,44 @@
          "title": "ThreadForkResponse",
          "type": "object"
        },
@@ -172,7 +172,7 @@ index 78348e6a43..04961399ab 100644
        "ThreadGoal": {
          "properties": {
            "createdAt": {
-@@ -19534,9 +19596,26 @@
+@@ -19788,9 +19850,26 @@
          "title": "ThreadMetadataUpdateResponse",
          "type": "object"
        },
@@ -200,10 +200,10 @@ index 78348e6a43..04961399ab 100644
              "type": "string"
            },
 diff --git a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
-index e0cfbc1d9f..7fb2901816 100644
+index 3e9ea97932..590f0c4703 100644
 --- a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
 +++ b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
-@@ -1527,6 +1527,30 @@
+@@ -1546,6 +1546,30 @@
            "title": "Thread/name/setRequest",
            "type": "object"
          },
@@ -234,7 +234,7 @@ index e0cfbc1d9f..7fb2901816 100644
          {
            "properties": {
              "id": {
-@@ -16045,6 +16069,44 @@
+@@ -16269,6 +16293,44 @@
        "title": "ThreadForkResponse",
        "type": "object"
      },
@@ -279,7 +279,7 @@ index e0cfbc1d9f..7fb2901816 100644
      "ThreadGoal": {
        "properties": {
          "createdAt": {
-@@ -17298,9 +17360,26 @@
+@@ -17552,9 +17614,26 @@
        "title": "ThreadMetadataUpdateResponse",
        "type": "object"
      },
@@ -389,10 +389,10 @@ index 8c3b2095f5..734f7544d8 100644
        "type": "string"
      },
 diff --git a/codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts b/codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts
-index bcfcaf6d4d..2aef24ec55 100644
+index b67f518ac4..e3f365786f 100644
 --- a/codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts
 +++ b/codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts
-@@ -67,6 +67,7 @@ import type { ThreadArchiveParams } from "./v2/ThreadArchiveParams";
+@@ -68,6 +68,7 @@ import type { ThreadArchiveParams } from "./v2/ThreadArchiveParams";
  import type { ThreadCompactStartParams } from "./v2/ThreadCompactStartParams";
  import type { ThreadDeleteParams } from "./v2/ThreadDeleteParams";
  import type { ThreadForkParams } from "./v2/ThreadForkParams";
@@ -400,12 +400,12 @@ index bcfcaf6d4d..2aef24ec55 100644
  import type { ThreadGoalClearParams } from "./v2/ThreadGoalClearParams";
  import type { ThreadGoalGetParams } from "./v2/ThreadGoalGetParams";
  import type { ThreadGoalSetParams } from "./v2/ThreadGoalSetParams";
-@@ -90,4 +91,4 @@ import type { WindowsSandboxSetupStartParams } from "./v2/WindowsSandboxSetupSta
+@@ -91,4 +92,4 @@ import type { WindowsSandboxSetupStartParams } from "./v2/WindowsSandboxSetupSta
  /**
   * Request from the client to the server.
   */
--export type ClientRequest ={ "method": "initialize", id: RequestId, params: InitializeParams, } | { "method": "thread/start", id: RequestId, params: ThreadStartParams, } | { "method": "thread/resume", id: RequestId, params: ThreadResumeParams, } | { "method": "thread/fork", id: RequestId, params: ThreadForkParams, } | { "method": "thread/archive", id: RequestId, params: ThreadArchiveParams, } | { "method": "thread/delete", id: RequestId, params: ThreadDeleteParams, } | { "method": "thread/unsubscribe", id: RequestId, params: ThreadUnsubscribeParams, } | { "method": "thread/name/set", id: RequestId, params: ThreadSetNameParams, } | { "method": "thread/goal/set", id: RequestId, params: ThreadGoalSetParams, } | { "method": "thread/goal/get", id: RequestId, params: ThreadGoalGetParams, } | { "method": "thread/goal/clear", id: RequestId, params: ThreadGoalClearParams, } | { "method": "thread/metadata/update", id: RequestId, params: ThreadMetadataUpdateParams, } | { "method": "thread/unarchive", id: RequestId, params: ThreadUnarchiveParams, } | { "method": "thread/compact/start", id: RequestId, params: ThreadCompactStartParams, } | { "method": "thread/shellCommand", id: RequestId, params: ThreadShellCommandParams, } | { "method": "thread/approveGuardianDeniedAction", id: RequestId, params: ThreadApproveGuardianDeniedActionParams, } | { "method": "thread/rollback", id: RequestId, params: ThreadRollbackParams, } | { "method": "thread/list", id: RequestId, params: ThreadListParams, } | { "method": "thread/loaded/list", id: RequestId, params: ThreadLoadedListParams, } | { "method": "thread/read", id: RequestId, params: ThreadReadParams, } | { "method": "thread/inject_items", id: RequestId, params: ThreadInjectItemsParams, } | { "method": "skills/list", id: RequestId, params: SkillsListParams, } | { "method": "skills/extraRoots/set", id: RequestId, params: SkillsExtraRootsSetParams, } | { "method": "hooks/list", id: RequestId, params: HooksListParams, } | { "method": "marketplace/add", id: RequestId, params: MarketplaceAddParams, } | { "method": "marketplace/remove", id: RequestId, params: MarketplaceRemoveParams, } | { "method": "marketplace/upgrade", id: RequestId, params: MarketplaceUpgradeParams, } | { "method": "plugin/list", id: RequestId, params: PluginListParams, } | { "method": "plugin/installed", id: RequestId, params: PluginInstalledParams, } | { "method": "plugin/read", id: RequestId, params: PluginReadParams, } | { "method": "plugin/skill/read", id: RequestId, params: PluginSkillReadParams, } | { "method": "plugin/share/save", id: RequestId, params: PluginShareSaveParams, } | { "method": "plugin/share/updateTargets", id: RequestId, params: PluginShareUpdateTargetsParams, } | { "method": "plugin/share/list", id: RequestId, params: PluginShareListParams, } | { "method": "plugin/share/checkout", id: RequestId, params: PluginShareCheckoutParams, } | { "method": "plugin/share/delete", id: RequestId, params: PluginShareDeleteParams, } | { "method": "app/read", id: RequestId, params: AppsReadParams, } | { "method": "app/list", id: RequestId, params: AppsListParams, } | { "method": "app/installed", id: RequestId, params: AppsInstalledParams, } | { "method": "fs/readFile", id: RequestId, params: FsReadFileParams, } | { "method": "fs/writeFile", id: RequestId, params: FsWriteFileParams, } | { "method": "fs/createDirectory", id: RequestId, params: FsCreateDirectoryParams, } | { "method": "fs/getMetadata", id: RequestId, params: FsGetMetadataParams, } | { "method": "fs/readDirectory", id: RequestId, params: FsReadDirectoryParams, } | { "method": "fs/remove", id: RequestId, params: FsRemoveParams, } | { "method": "fs/copy", id: RequestId, params: FsCopyParams, } | { "method": "fs/watch", id: RequestId, params: FsWatchParams, } | { "method": "fs/unwatch", id: RequestId, params: FsUnwatchParams, } | { "method": "skills/config/write", id: RequestId, params: SkillsConfigWriteParams, } | { "method": "plugin/install", id: RequestId, params: PluginInstallParams, } | { "method": "plugin/uninstall", id: RequestId, params: PluginUninstallParams, } | { "method": "turn/start", id: RequestId, params: TurnStartParams, } | { "method": "turn/steer", id: RequestId, params: TurnSteerParams, } | { "method": "turn/interrupt", id: RequestId, params: TurnInterruptParams, } | { "method": "review/start", id: RequestId, params: ReviewStartParams, } | { "method": "model/list", id: RequestId, params: ModelListParams, } | { "method": "modelProvider/capabilities/read", id: RequestId, params: ModelProviderCapabilitiesReadParams, } | { "method": "experimentalFeature/list", id: RequestId, params: ExperimentalFeatureListParams, } | { "method": "permissionProfile/list", id: RequestId, params: PermissionProfileListParams, } | { "method": "experimentalFeature/enablement/set", id: RequestId, params: ExperimentalFeatureEnablementSetParams, } | { "method": "mcpServer/oauth/login", id: RequestId, params: McpServerOauthLoginParams, } | { "method": "config/mcpServer/reload", id: RequestId, params: undefined, } | { "method": "mcpServerStatus/list", id: RequestId, params: ListMcpServerStatusParams, } | { "method": "mcpServer/resource/read", id: RequestId, params: McpResourceReadParams, } | { "method": "mcpServer/tool/call", id: RequestId, params: McpServerToolCallParams, } | { "method": "windowsSandbox/setupStart", id: RequestId, params: WindowsSandboxSetupStartParams, } | { "method": "windowsSandbox/readiness", id: RequestId, params: undefined, } | { "method": "account/login/start", id: RequestId, params: LoginAccountParams, } | { "method": "account/login/cancel", id: RequestId, params: CancelLoginAccountParams, } | { "method": "account/logout", id: RequestId, params: undefined, } | { "method": "account/rateLimits/read", id: RequestId, params: undefined, } | { "method": "account/rateLimitResetCredit/consume", id: RequestId, params: ConsumeAccountRateLimitResetCreditParams, } | { "method": "account/usage/read", id: RequestId, params: undefined, } | { "method": "account/workspaceMessages/read", id: RequestId, params: undefined, } | { "method": "account/sendAddCreditsNudgeEmail", id: RequestId, params: SendAddCreditsNudgeEmailParams, } | { "method": "feedback/upload", id: RequestId, params: FeedbackUploadParams, } | { "method": "command/exec", id: RequestId, params: CommandExecParams, } | { "method": "command/exec/write", id: RequestId, params: CommandExecWriteParams, } | { "method": "command/exec/terminate", id: RequestId, params: CommandExecTerminateParams, } | { "method": "command/exec/resize", id: RequestId, params: CommandExecResizeParams, } | { "method": "config/read", id: RequestId, params: ConfigReadParams, } | { "method": "externalAgentConfig/detect", id: RequestId, params: ExternalAgentConfigDetectParams, } | { "method": "externalAgentConfig/import", id: RequestId, params: ExternalAgentConfigImportParams, } | { "method": "externalAgentConfig/import/readHistories", id: RequestId, params: undefined, } | { "method": "config/value/write", id: RequestId, params: ConfigValueWriteParams, } | { "method": "config/batchWrite", id: RequestId, params: ConfigBatchWriteParams, } | { "method": "configRequirements/read", id: RequestId, params: undefined, } | { "method": "account/read", id: RequestId, params: GetAccountParams, } | { "method": "getConversationSummary", id: RequestId, params: GetConversationSummaryParams, } | { "method": "gitDiffToRemote", id: RequestId, params: GitDiffToRemoteParams, } | { "method": "getAuthStatus", id: RequestId, params: GetAuthStatusParams, } | { "method": "fuzzyFileSearch", id: RequestId, params: FuzzyFileSearchParams, };
-+export type ClientRequest ={ "method": "initialize", id: RequestId, params: InitializeParams, } | { "method": "thread/start", id: RequestId, params: ThreadStartParams, } | { "method": "thread/resume", id: RequestId, params: ThreadResumeParams, } | { "method": "thread/fork", id: RequestId, params: ThreadForkParams, } | { "method": "thread/archive", id: RequestId, params: ThreadArchiveParams, } | { "method": "thread/delete", id: RequestId, params: ThreadDeleteParams, } | { "method": "thread/unsubscribe", id: RequestId, params: ThreadUnsubscribeParams, } | { "method": "thread/name/set", id: RequestId, params: ThreadSetNameParams, } | { "method": "thread/name/generate", id: RequestId, params: ThreadGenerateNameParams, } | { "method": "thread/goal/set", id: RequestId, params: ThreadGoalSetParams, } | { "method": "thread/goal/get", id: RequestId, params: ThreadGoalGetParams, } | { "method": "thread/goal/clear", id: RequestId, params: ThreadGoalClearParams, } | { "method": "thread/metadata/update", id: RequestId, params: ThreadMetadataUpdateParams, } | { "method": "thread/unarchive", id: RequestId, params: ThreadUnarchiveParams, } | { "method": "thread/compact/start", id: RequestId, params: ThreadCompactStartParams, } | { "method": "thread/shellCommand", id: RequestId, params: ThreadShellCommandParams, } | { "method": "thread/approveGuardianDeniedAction", id: RequestId, params: ThreadApproveGuardianDeniedActionParams, } | { "method": "thread/rollback", id: RequestId, params: ThreadRollbackParams, } | { "method": "thread/list", id: RequestId, params: ThreadListParams, } | { "method": "thread/loaded/list", id: RequestId, params: ThreadLoadedListParams, } | { "method": "thread/read", id: RequestId, params: ThreadReadParams, } | { "method": "thread/inject_items", id: RequestId, params: ThreadInjectItemsParams, } | { "method": "skills/list", id: RequestId, params: SkillsListParams, } | { "method": "skills/extraRoots/set", id: RequestId, params: SkillsExtraRootsSetParams, } | { "method": "hooks/list", id: RequestId, params: HooksListParams, } | { "method": "marketplace/add", id: RequestId, params: MarketplaceAddParams, } | { "method": "marketplace/remove", id: RequestId, params: MarketplaceRemoveParams, } | { "method": "marketplace/upgrade", id: RequestId, params: MarketplaceUpgradeParams, } | { "method": "plugin/list", id: RequestId, params: PluginListParams, } | { "method": "plugin/installed", id: RequestId, params: PluginInstalledParams, } | { "method": "plugin/read", id: RequestId, params: PluginReadParams, } | { "method": "plugin/skill/read", id: RequestId, params: PluginSkillReadParams, } | { "method": "plugin/share/save", id: RequestId, params: PluginShareSaveParams, } | { "method": "plugin/share/updateTargets", id: RequestId, params: PluginShareUpdateTargetsParams, } | { "method": "plugin/share/list", id: RequestId, params: PluginShareListParams, } | { "method": "plugin/share/checkout", id: RequestId, params: PluginShareCheckoutParams, } | { "method": "plugin/share/delete", id: RequestId, params: PluginShareDeleteParams, } | { "method": "app/read", id: RequestId, params: AppsReadParams, } | { "method": "app/list", id: RequestId, params: AppsListParams, } | { "method": "app/installed", id: RequestId, params: AppsInstalledParams, } | { "method": "fs/readFile", id: RequestId, params: FsReadFileParams, } | { "method": "fs/writeFile", id: RequestId, params: FsWriteFileParams, } | { "method": "fs/createDirectory", id: RequestId, params: FsCreateDirectoryParams, } | { "method": "fs/getMetadata", id: RequestId, params: FsGetMetadataParams, } | { "method": "fs/readDirectory", id: RequestId, params: FsReadDirectoryParams, } | { "method": "fs/remove", id: RequestId, params: FsRemoveParams, } | { "method": "fs/copy", id: RequestId, params: FsCopyParams, } | { "method": "fs/watch", id: RequestId, params: FsWatchParams, } | { "method": "fs/unwatch", id: RequestId, params: FsUnwatchParams, } | { "method": "skills/config/write", id: RequestId, params: SkillsConfigWriteParams, } | { "method": "plugin/install", id: RequestId, params: PluginInstallParams, } | { "method": "plugin/uninstall", id: RequestId, params: PluginUninstallParams, } | { "method": "turn/start", id: RequestId, params: TurnStartParams, } | { "method": "turn/steer", id: RequestId, params: TurnSteerParams, } | { "method": "turn/interrupt", id: RequestId, params: TurnInterruptParams, } | { "method": "review/start", id: RequestId, params: ReviewStartParams, } | { "method": "model/list", id: RequestId, params: ModelListParams, } | { "method": "modelProvider/capabilities/read", id: RequestId, params: ModelProviderCapabilitiesReadParams, } | { "method": "experimentalFeature/list", id: RequestId, params: ExperimentalFeatureListParams, } | { "method": "permissionProfile/list", id: RequestId, params: PermissionProfileListParams, } | { "method": "experimentalFeature/enablement/set", id: RequestId, params: ExperimentalFeatureEnablementSetParams, } | { "method": "mcpServer/oauth/login", id: RequestId, params: McpServerOauthLoginParams, } | { "method": "config/mcpServer/reload", id: RequestId, params: undefined, } | { "method": "mcpServerStatus/list", id: RequestId, params: ListMcpServerStatusParams, } | { "method": "mcpServer/resource/read", id: RequestId, params: McpResourceReadParams, } | { "method": "mcpServer/tool/call", id: RequestId, params: McpServerToolCallParams, } | { "method": "windowsSandbox/setupStart", id: RequestId, params: WindowsSandboxSetupStartParams, } | { "method": "windowsSandbox/readiness", id: RequestId, params: undefined, } | { "method": "account/login/start", id: RequestId, params: LoginAccountParams, } | { "method": "account/login/cancel", id: RequestId, params: CancelLoginAccountParams, } | { "method": "account/logout", id: RequestId, params: undefined, } | { "method": "account/rateLimits/read", id: RequestId, params: undefined, } | { "method": "account/rateLimitResetCredit/consume", id: RequestId, params: ConsumeAccountRateLimitResetCreditParams, } | { "method": "account/usage/read", id: RequestId, params: undefined, } | { "method": "account/workspaceMessages/read", id: RequestId, params: undefined, } | { "method": "account/sendAddCreditsNudgeEmail", id: RequestId, params: SendAddCreditsNudgeEmailParams, } | { "method": "feedback/upload", id: RequestId, params: FeedbackUploadParams, } | { "method": "command/exec", id: RequestId, params: CommandExecParams, } | { "method": "command/exec/write", id: RequestId, params: CommandExecWriteParams, } | { "method": "command/exec/terminate", id: RequestId, params: CommandExecTerminateParams, } | { "method": "command/exec/resize", id: RequestId, params: CommandExecResizeParams, } | { "method": "config/read", id: RequestId, params: ConfigReadParams, } | { "method": "externalAgentConfig/detect", id: RequestId, params: ExternalAgentConfigDetectParams, } | { "method": "externalAgentConfig/import", id: RequestId, params: ExternalAgentConfigImportParams, } | { "method": "externalAgentConfig/import/readHistories", id: RequestId, params: undefined, } | { "method": "config/value/write", id: RequestId, params: ConfigValueWriteParams, } | { "method": "config/batchWrite", id: RequestId, params: ConfigBatchWriteParams, } | { "method": "configRequirements/read", id: RequestId, params: undefined, } | { "method": "account/read", id: RequestId, params: GetAccountParams, } | { "method": "getConversationSummary", id: RequestId, params: GetConversationSummaryParams, } | { "method": "gitDiffToRemote", id: RequestId, params: GitDiffToRemoteParams, } | { "method": "getAuthStatus", id: RequestId, params: GetAuthStatusParams, } | { "method": "fuzzyFileSearch", id: RequestId, params: FuzzyFileSearchParams, };
+-export type ClientRequest ={ "method": "initialize", id: RequestId, params: InitializeParams, } | { "method": "thread/start", id: RequestId, params: ThreadStartParams, } | { "method": "thread/resume", id: RequestId, params: ThreadResumeParams, } | { "method": "thread/fork", id: RequestId, params: ThreadForkParams, } | { "method": "thread/archive", id: RequestId, params: ThreadArchiveParams, } | { "method": "thread/delete", id: RequestId, params: ThreadDeleteParams, } | { "method": "thread/unsubscribe", id: RequestId, params: ThreadUnsubscribeParams, } | { "method": "thread/name/set", id: RequestId, params: ThreadSetNameParams, } | { "method": "thread/goal/set", id: RequestId, params: ThreadGoalSetParams, } | { "method": "thread/goal/get", id: RequestId, params: ThreadGoalGetParams, } | { "method": "thread/goal/clear", id: RequestId, params: ThreadGoalClearParams, } | { "method": "thread/metadata/update", id: RequestId, params: ThreadMetadataUpdateParams, } | { "method": "thread/unarchive", id: RequestId, params: ThreadUnarchiveParams, } | { "method": "thread/compact/start", id: RequestId, params: ThreadCompactStartParams, } | { "method": "thread/shellCommand", id: RequestId, params: ThreadShellCommandParams, } | { "method": "thread/approveGuardianDeniedAction", id: RequestId, params: ThreadApproveGuardianDeniedActionParams, } | { "method": "thread/rollback", id: RequestId, params: ThreadRollbackParams, } | { "method": "thread/list", id: RequestId, params: ThreadListParams, } | { "method": "thread/loaded/list", id: RequestId, params: ThreadLoadedListParams, } | { "method": "thread/read", id: RequestId, params: ThreadReadParams, } | { "method": "thread/inject_items", id: RequestId, params: ThreadInjectItemsParams, } | { "method": "skills/list", id: RequestId, params: SkillsListParams, } | { "method": "skills/extraRoots/set", id: RequestId, params: SkillsExtraRootsSetParams, } | { "method": "hooks/list", id: RequestId, params: HooksListParams, } | { "method": "marketplace/add", id: RequestId, params: MarketplaceAddParams, } | { "method": "marketplace/remove", id: RequestId, params: MarketplaceRemoveParams, } | { "method": "marketplace/upgrade", id: RequestId, params: MarketplaceUpgradeParams, } | { "method": "plugin/list", id: RequestId, params: PluginListParams, } | { "method": "plugin/installed", id: RequestId, params: PluginInstalledParams, } | { "method": "plugin/read", id: RequestId, params: PluginReadParams, } | { "method": "plugin/skill/read", id: RequestId, params: PluginSkillReadParams, } | { "method": "plugin/share/save", id: RequestId, params: PluginShareSaveParams, } | { "method": "plugin/share/updateTargets", id: RequestId, params: PluginShareUpdateTargetsParams, } | { "method": "plugin/share/list", id: RequestId, params: PluginShareListParams, } | { "method": "plugin/share/checkout", id: RequestId, params: PluginShareCheckoutParams, } | { "method": "plugin/share/delete", id: RequestId, params: PluginShareDeleteParams, } | { "method": "app/read", id: RequestId, params: AppsReadParams, } | { "method": "app/list", id: RequestId, params: AppsListParams, } | { "method": "app/installed", id: RequestId, params: AppsInstalledParams, } | { "method": "fs/readFile", id: RequestId, params: FsReadFileParams, } | { "method": "fs/writeFile", id: RequestId, params: FsWriteFileParams, } | { "method": "fs/createDirectory", id: RequestId, params: FsCreateDirectoryParams, } | { "method": "fs/getMetadata", id: RequestId, params: FsGetMetadataParams, } | { "method": "fs/readDirectory", id: RequestId, params: FsReadDirectoryParams, } | { "method": "fs/remove", id: RequestId, params: FsRemoveParams, } | { "method": "fs/copy", id: RequestId, params: FsCopyParams, } | { "method": "fs/watch", id: RequestId, params: FsWatchParams, } | { "method": "fs/unwatch", id: RequestId, params: FsUnwatchParams, } | { "method": "skills/config/write", id: RequestId, params: SkillsConfigWriteParams, } | { "method": "plugin/install", id: RequestId, params: PluginInstallParams, } | { "method": "plugin/uninstall", id: RequestId, params: PluginUninstallParams, } | { "method": "turn/start", id: RequestId, params: TurnStartParams, } | { "method": "turn/steer", id: RequestId, params: TurnSteerParams, } | { "method": "turn/interrupt", id: RequestId, params: TurnInterruptParams, } | { "method": "review/start", id: RequestId, params: ReviewStartParams, } | { "method": "model/list", id: RequestId, params: ModelListParams, } | { "method": "modelProvider/capabilities/read", id: RequestId, params: ModelProviderCapabilitiesReadParams, } | { "method": "experimentalFeature/list", id: RequestId, params: ExperimentalFeatureListParams, } | { "method": "permissionProfile/list", id: RequestId, params: PermissionProfileListParams, } | { "method": "experimentalFeature/enablement/set", id: RequestId, params: ExperimentalFeatureEnablementSetParams, } | { "method": "mcpServer/oauth/login", id: RequestId, params: McpServerOauthLoginParams, } | { "method": "config/mcpServer/reload", id: RequestId, params: undefined, } | { "method": "mcpServerStatus/list", id: RequestId, params: ListMcpServerStatusParams, } | { "method": "mcpServer/resource/read", id: RequestId, params: McpResourceReadParams, } | { "method": "mcpServer/tool/call", id: RequestId, params: McpServerToolCallParams, } | { "method": "windowsSandbox/setupStart", id: RequestId, params: WindowsSandboxSetupStartParams, } | { "method": "windowsSandbox/readiness", id: RequestId, params: undefined, } | { "method": "account/login/start", id: RequestId, params: LoginAccountParams, } | { "method": "account/login/cancel", id: RequestId, params: CancelLoginAccountParams, } | { "method": "account/logout", id: RequestId, params: undefined, } | { "method": "account/rateLimits/read", id: RequestId, params: undefined, } | { "method": "account/rateLimitResetCredit/consume", id: RequestId, params: ConsumeAccountRateLimitResetCreditParams, } | { "method": "account/usage/read", id: RequestId, params: undefined, } | { "method": "account/workspaceMessages/read", id: RequestId, params: undefined, } | { "method": "account/sendAddCreditsNudgeEmail", id: RequestId, params: SendAddCreditsNudgeEmailParams, } | { "method": "feedback/upload", id: RequestId, params: FeedbackUploadParams, } | { "method": "command/exec", id: RequestId, params: CommandExecParams, } | { "method": "command/exec/write", id: RequestId, params: CommandExecWriteParams, } | { "method": "command/exec/terminate", id: RequestId, params: CommandExecTerminateParams, } | { "method": "command/exec/resize", id: RequestId, params: CommandExecResizeParams, } | { "method": "config/read", id: RequestId, params: ConfigReadParams, } | { "method": "externalAgentConfig/detect", id: RequestId, params: ExternalAgentConfigDetectParams, } | { "method": "externalAgentConfig/import", id: RequestId, params: ExternalAgentConfigImportParams, } | { "method": "externalAgentConfig/import/recordHistory", id: RequestId, params: ExternalAgentConfigImportHistoryRecordParams, } | { "method": "externalAgentConfig/import/readHistories", id: RequestId, params: undefined, } | { "method": "config/value/write", id: RequestId, params: ConfigValueWriteParams, } | { "method": "config/batchWrite", id: RequestId, params: ConfigBatchWriteParams, } | { "method": "configRequirements/read", id: RequestId, params: undefined, } | { "method": "account/read", id: RequestId, params: GetAccountParams, } | { "method": "getConversationSummary", id: RequestId, params: GetConversationSummaryParams, } | { "method": "gitDiffToRemote", id: RequestId, params: GitDiffToRemoteParams, } | { "method": "getAuthStatus", id: RequestId, params: GetAuthStatusParams, } | { "method": "fuzzyFileSearch", id: RequestId, params: FuzzyFileSearchParams, };
++export type ClientRequest ={ "method": "initialize", id: RequestId, params: InitializeParams, } | { "method": "thread/start", id: RequestId, params: ThreadStartParams, } | { "method": "thread/resume", id: RequestId, params: ThreadResumeParams, } | { "method": "thread/fork", id: RequestId, params: ThreadForkParams, } | { "method": "thread/archive", id: RequestId, params: ThreadArchiveParams, } | { "method": "thread/delete", id: RequestId, params: ThreadDeleteParams, } | { "method": "thread/unsubscribe", id: RequestId, params: ThreadUnsubscribeParams, } | { "method": "thread/name/set", id: RequestId, params: ThreadSetNameParams, } | { "method": "thread/name/generate", id: RequestId, params: ThreadGenerateNameParams, } | { "method": "thread/goal/set", id: RequestId, params: ThreadGoalSetParams, } | { "method": "thread/goal/get", id: RequestId, params: ThreadGoalGetParams, } | { "method": "thread/goal/clear", id: RequestId, params: ThreadGoalClearParams, } | { "method": "thread/metadata/update", id: RequestId, params: ThreadMetadataUpdateParams, } | { "method": "thread/unarchive", id: RequestId, params: ThreadUnarchiveParams, } | { "method": "thread/compact/start", id: RequestId, params: ThreadCompactStartParams, } | { "method": "thread/shellCommand", id: RequestId, params: ThreadShellCommandParams, } | { "method": "thread/approveGuardianDeniedAction", id: RequestId, params: ThreadApproveGuardianDeniedActionParams, } | { "method": "thread/rollback", id: RequestId, params: ThreadRollbackParams, } | { "method": "thread/list", id: RequestId, params: ThreadListParams, } | { "method": "thread/loaded/list", id: RequestId, params: ThreadLoadedListParams, } | { "method": "thread/read", id: RequestId, params: ThreadReadParams, } | { "method": "thread/inject_items", id: RequestId, params: ThreadInjectItemsParams, } | { "method": "skills/list", id: RequestId, params: SkillsListParams, } | { "method": "skills/extraRoots/set", id: RequestId, params: SkillsExtraRootsSetParams, } | { "method": "hooks/list", id: RequestId, params: HooksListParams, } | { "method": "marketplace/add", id: RequestId, params: MarketplaceAddParams, } | { "method": "marketplace/remove", id: RequestId, params: MarketplaceRemoveParams, } | { "method": "marketplace/upgrade", id: RequestId, params: MarketplaceUpgradeParams, } | { "method": "plugin/list", id: RequestId, params: PluginListParams, } | { "method": "plugin/installed", id: RequestId, params: PluginInstalledParams, } | { "method": "plugin/read", id: RequestId, params: PluginReadParams, } | { "method": "plugin/skill/read", id: RequestId, params: PluginSkillReadParams, } | { "method": "plugin/share/save", id: RequestId, params: PluginShareSaveParams, } | { "method": "plugin/share/updateTargets", id: RequestId, params: PluginShareUpdateTargetsParams, } | { "method": "plugin/share/list", id: RequestId, params: PluginShareListParams, } | { "method": "plugin/share/checkout", id: RequestId, params: PluginShareCheckoutParams, } | { "method": "plugin/share/delete", id: RequestId, params: PluginShareDeleteParams, } | { "method": "app/read", id: RequestId, params: AppsReadParams, } | { "method": "app/list", id: RequestId, params: AppsListParams, } | { "method": "app/installed", id: RequestId, params: AppsInstalledParams, } | { "method": "fs/readFile", id: RequestId, params: FsReadFileParams, } | { "method": "fs/writeFile", id: RequestId, params: FsWriteFileParams, } | { "method": "fs/createDirectory", id: RequestId, params: FsCreateDirectoryParams, } | { "method": "fs/getMetadata", id: RequestId, params: FsGetMetadataParams, } | { "method": "fs/readDirectory", id: RequestId, params: FsReadDirectoryParams, } | { "method": "fs/remove", id: RequestId, params: FsRemoveParams, } | { "method": "fs/copy", id: RequestId, params: FsCopyParams, } | { "method": "fs/watch", id: RequestId, params: FsWatchParams, } | { "method": "fs/unwatch", id: RequestId, params: FsUnwatchParams, } | { "method": "skills/config/write", id: RequestId, params: SkillsConfigWriteParams, } | { "method": "plugin/install", id: RequestId, params: PluginInstallParams, } | { "method": "plugin/uninstall", id: RequestId, params: PluginUninstallParams, } | { "method": "turn/start", id: RequestId, params: TurnStartParams, } | { "method": "turn/steer", id: RequestId, params: TurnSteerParams, } | { "method": "turn/interrupt", id: RequestId, params: TurnInterruptParams, } | { "method": "review/start", id: RequestId, params: ReviewStartParams, } | { "method": "model/list", id: RequestId, params: ModelListParams, } | { "method": "modelProvider/capabilities/read", id: RequestId, params: ModelProviderCapabilitiesReadParams, } | { "method": "experimentalFeature/list", id: RequestId, params: ExperimentalFeatureListParams, } | { "method": "permissionProfile/list", id: RequestId, params: PermissionProfileListParams, } | { "method": "experimentalFeature/enablement/set", id: RequestId, params: ExperimentalFeatureEnablementSetParams, } | { "method": "mcpServer/oauth/login", id: RequestId, params: McpServerOauthLoginParams, } | { "method": "config/mcpServer/reload", id: RequestId, params: undefined, } | { "method": "mcpServerStatus/list", id: RequestId, params: ListMcpServerStatusParams, } | { "method": "mcpServer/resource/read", id: RequestId, params: McpResourceReadParams, } | { "method": "mcpServer/tool/call", id: RequestId, params: McpServerToolCallParams, } | { "method": "windowsSandbox/setupStart", id: RequestId, params: WindowsSandboxSetupStartParams, } | { "method": "windowsSandbox/readiness", id: RequestId, params: undefined, } | { "method": "account/login/start", id: RequestId, params: LoginAccountParams, } | { "method": "account/login/cancel", id: RequestId, params: CancelLoginAccountParams, } | { "method": "account/logout", id: RequestId, params: undefined, } | { "method": "account/rateLimits/read", id: RequestId, params: undefined, } | { "method": "account/rateLimitResetCredit/consume", id: RequestId, params: ConsumeAccountRateLimitResetCreditParams, } | { "method": "account/usage/read", id: RequestId, params: undefined, } | { "method": "account/workspaceMessages/read", id: RequestId, params: undefined, } | { "method": "account/sendAddCreditsNudgeEmail", id: RequestId, params: SendAddCreditsNudgeEmailParams, } | { "method": "feedback/upload", id: RequestId, params: FeedbackUploadParams, } | { "method": "command/exec", id: RequestId, params: CommandExecParams, } | { "method": "command/exec/write", id: RequestId, params: CommandExecWriteParams, } | { "method": "command/exec/terminate", id: RequestId, params: CommandExecTerminateParams, } | { "method": "command/exec/resize", id: RequestId, params: CommandExecResizeParams, } | { "method": "config/read", id: RequestId, params: ConfigReadParams, } | { "method": "externalAgentConfig/detect", id: RequestId, params: ExternalAgentConfigDetectParams, } | { "method": "externalAgentConfig/import", id: RequestId, params: ExternalAgentConfigImportParams, } | { "method": "externalAgentConfig/import/recordHistory", id: RequestId, params: ExternalAgentConfigImportHistoryRecordParams, } | { "method": "externalAgentConfig/import/readHistories", id: RequestId, params: undefined, } | { "method": "config/value/write", id: RequestId, params: ConfigValueWriteParams, } | { "method": "config/batchWrite", id: RequestId, params: ConfigBatchWriteParams, } | { "method": "configRequirements/read", id: RequestId, params: undefined, } | { "method": "account/read", id: RequestId, params: GetAccountParams, } | { "method": "getConversationSummary", id: RequestId, params: GetConversationSummaryParams, } | { "method": "gitDiffToRemote", id: RequestId, params: GitDiffToRemoteParams, } | { "method": "getAuthStatus", id: RequestId, params: GetAuthStatusParams, } | { "method": "fuzzyFileSearch", id: RequestId, params: FuzzyFileSearchParams, };
 diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameParams.ts b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameParams.ts
 new file mode 100644
 index 0000000000..3177900a2c
@@ -463,10 +463,10 @@ index c944b5aae3..c0c1fd643e 100644
 + */
 +source?: ThreadNameUpdateSource, };
 diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/index.ts b/codex-rs/app-server-protocol/schema/typescript/v2/index.ts
-index f818e310ed..cd9749fbd9 100644
+index 9cdebd57b3..ddcd9f796b 100644
 --- a/codex-rs/app-server-protocol/schema/typescript/v2/index.ts
 +++ b/codex-rs/app-server-protocol/schema/typescript/v2/index.ts
-@@ -421,6 +421,8 @@ export type { ThreadDeletedNotification } from "./ThreadDeletedNotification";
+@@ -425,6 +425,8 @@ export type { ThreadDeletedNotification } from "./ThreadDeletedNotification";
  export type { ThreadExtra } from "./ThreadExtra";
  export type { ThreadForkParams } from "./ThreadForkParams";
  export type { ThreadForkResponse } from "./ThreadForkResponse";
@@ -475,7 +475,7 @@ index f818e310ed..cd9749fbd9 100644
  export type { ThreadGoal } from "./ThreadGoal";
  export type { ThreadGoalClearParams } from "./ThreadGoalClearParams";
  export type { ThreadGoalClearResponse } from "./ThreadGoalClearResponse";
-@@ -443,6 +445,7 @@ export type { ThreadLoadedListResponse } from "./ThreadLoadedListResponse";
+@@ -447,6 +449,7 @@ export type { ThreadLoadedListResponse } from "./ThreadLoadedListResponse";
  export type { ThreadMetadataGitInfoUpdateParams } from "./ThreadMetadataGitInfoUpdateParams";
  export type { ThreadMetadataUpdateParams } from "./ThreadMetadataUpdateParams";
  export type { ThreadMetadataUpdateResponse } from "./ThreadMetadataUpdateResponse";
@@ -484,10 +484,10 @@ index f818e310ed..cd9749fbd9 100644
  export type { ThreadReadParams } from "./ThreadReadParams";
  export type { ThreadReadResponse } from "./ThreadReadResponse";
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index a4d87e202c..01dece2982 100644
+index 1f624e529c..4cf5dbe668 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -536,6 +536,11 @@ client_request_definitions! {
+@@ -545,6 +545,11 @@ client_request_definitions! {
          serialization: thread_id(params.thread_id),
          response: v2::ThreadSetNameResponse,
      },
@@ -500,7 +500,7 @@ index a4d87e202c..01dece2982 100644
          params: v2::ThreadGoalSetParams,
          serialization: thread_id(params.thread_id),
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index acebeb546a..6c306ce565 100644
+index 966f45aa49..16dd0a90f8 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -744,6 +744,16 @@ pub struct ThreadSetNameParams {
@@ -535,7 +535,7 @@ index acebeb546a..6c306ce565 100644
  v2_enum_from_core! {
      pub enum ThreadGoalStatus from CoreThreadGoalStatus {
          Active,
-@@ -1578,6 +1596,17 @@ pub struct ThreadNameUpdatedNotification {
+@@ -1584,6 +1602,17 @@ pub struct ThreadNameUpdatedNotification {
      #[serde(default, skip_serializing_if = "Option::is_none")]
      #[ts(optional)]
      pub thread_name: Option<String>,
@@ -554,7 +554,7 @@ index acebeb546a..6c306ce565 100644
  
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 diff --git a/codex-rs/app-server/src/bespoke_event_handling.rs b/codex-rs/app-server/src/bespoke_event_handling.rs
-index c51fd7ffd8..341e8eb7eb 100644
+index 1f10da7ec4..30894c3634 100644
 --- a/codex-rs/app-server/src/bespoke_event_handling.rs
 +++ b/codex-rs/app-server/src/bespoke_event_handling.rs
 @@ -2,6 +2,7 @@ use crate::error_code::internal_error;
@@ -574,7 +574,7 @@ index c51fd7ffd8..341e8eb7eb 100644
  use codex_app_server_protocol::ThreadRealtimeClosedNotification;
  use codex_app_server_protocol::ThreadRealtimeErrorNotification;
  use codex_app_server_protocol::ThreadRealtimeItemAddedNotification;
-@@ -1168,6 +1171,41 @@ pub(crate) async fn apply_bespoke_event_handling(
+@@ -1180,6 +1183,41 @@ pub(crate) async fn apply_bespoke_event_handling(
                  ))
                  .await;
          }
@@ -617,10 +617,10 @@ index c51fd7ffd8..341e8eb7eb 100644
              let thread_settings =
                  thread_settings_from_core_snapshot(thread_settings_event.thread_settings);
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 133c0c84fc..3e4d79272c 100644
+index 4ca6ddea9d..99f2aa4051 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1086,6 +1086,9 @@ impl MessageProcessor {
+@@ -1098,6 +1098,9 @@ impl MessageProcessor {
                      .thread_set_name(request_id.clone(), params)
                      .await
              }
@@ -631,7 +631,7 @@ index 133c0c84fc..3e4d79272c 100644
                  self.thread_goal_processor
                      .thread_goal_set(request_id.clone(), params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index a6d1794af0..ba521e6d61 100644
+index 13fbf124c5..9fa28be75b 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
 @@ -209,6 +209,8 @@ use codex_app_server_protocol::ThreadDeleteResponse;
@@ -659,7 +659,7 @@ index a6d1794af0..ba521e6d61 100644
  use codex_protocol::protocol::TurnEnvironmentSelection;
  use codex_protocol::protocol::TurnEnvironmentSelections;
  use codex_protocol::protocol::W3cTraceContext;
-@@ -559,6 +563,7 @@ pub(crate) use remote_control_processor::RemoteControlRequestProcessor;
+@@ -561,6 +565,7 @@ pub(crate) use remote_control_processor::RemoteControlRequestProcessor;
  pub(crate) use search::SearchRequestProcessor;
  pub(crate) use thread_goal_processor::ThreadGoalRequestProcessor;
  pub(crate) use thread_processor::ThreadRequestProcessor;
@@ -668,10 +668,10 @@ index a6d1794af0..ba521e6d61 100644
  pub(crate) use windows_sandbox_processor::WindowsSandboxRequestProcessor;
  
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 7f1a30a39e..42da9b9923 100644
+index 85dfb9ecfe..8d32066dee 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -25,6 +25,33 @@ struct ThreadListFilters {
+@@ -27,6 +27,33 @@ struct ThreadListFilters {
      relation_filter: Option<StoreThreadRelationFilter>,
  }
  
@@ -705,7 +705,7 @@ index 7f1a30a39e..42da9b9923 100644
  fn collect_resume_override_mismatches(
      request: &ThreadResumeParams,
      config_snapshot: &ThreadConfigSnapshot,
-@@ -393,6 +420,8 @@ pub(crate) struct ThreadRequestProcessor {
+@@ -387,6 +414,8 @@ pub(crate) struct ThreadRequestProcessor {
      pub(super) state_db: Option<StateDbHandle>,
      pub(super) log_db: Option<LogDbLayer>,
      pub(super) background_tasks: TaskTracker,
@@ -714,7 +714,7 @@ index 7f1a30a39e..42da9b9923 100644
      pub(super) skills_watcher: Arc<SkillsWatcher>,
      pub(super) initial_config_warnings: Arc<Vec<ConfigWarningNotification>>,
  }
-@@ -444,6 +473,8 @@ impl ThreadRequestProcessor {
+@@ -438,6 +467,8 @@ impl ThreadRequestProcessor {
              state_db,
              log_db,
              background_tasks: TaskTracker::new(),
@@ -723,7 +723,7 @@ index 7f1a30a39e..42da9b9923 100644
              skills_watcher,
              initial_config_warnings: Arc::new(initial_config_warnings),
          }
-@@ -582,6 +613,109 @@ impl ThreadRequestProcessor {
+@@ -576,6 +607,111 @@ impl ThreadRequestProcessor {
          }
      }
  
@@ -783,7 +783,9 @@ index 7f1a30a39e..42da9b9923 100644
 +                    }
 +                }
 +                Ok(None) => {}
-+                Err(CodexErr::Interrupted) if cancellation.is_cancelled() => {}
++                Err(error)
++                    if cancellation.is_cancelled()
++                        && matches!(error.details(), CodexErrorDetails::Interrupted) => {}
 +                Err(error) => {
 +                    warn!(
 +                        thread_id = %thread_id,
@@ -833,7 +835,7 @@ index 7f1a30a39e..42da9b9923 100644
      pub(crate) async fn thread_metadata_update(
          &self,
          params: ThreadMetadataUpdateParams,
-@@ -1055,6 +1189,7 @@ impl ThreadRequestProcessor {
+@@ -1049,6 +1185,7 @@ impl ThreadRequestProcessor {
      }
  
      pub(crate) async fn drain_background_tasks(&self) {
@@ -841,7 +843,7 @@ index 7f1a30a39e..42da9b9923 100644
          self.background_tasks.close();
          if tokio::time::timeout(Duration::from_secs(10), self.background_tasks.wait())
              .await
-@@ -1603,6 +1738,7 @@ impl ThreadRequestProcessor {
+@@ -1578,6 +1715,7 @@ impl ThreadRequestProcessor {
              Some(ThreadNameUpdatedNotification {
                  thread_id: thread_id.to_string(),
                  thread_name: Some(name),
@@ -849,7 +851,7 @@ index 7f1a30a39e..42da9b9923 100644
              }),
          ))
      }
-@@ -4913,6 +5049,62 @@ fn conversation_summary_rollout_path_read_error(
+@@ -5018,6 +5156,62 @@ fn conversation_summary_rollout_path_read_error(
      }
  }
  
@@ -910,10 +912,10 @@ index 7f1a30a39e..42da9b9923 100644
 +}
 +
  pub(super) fn core_thread_write_error(operation: &str, err: CodexErr) -> JSONRPCErrorError {
-     match err {
-         CodexErr::ThreadNotFound(thread_id) => {
+     match err.details() {
+         CodexErrorDetails::ThreadNotFound(thread_id) => {
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-index 38a94ab812..131c0ad5f8 100644
+index 461e1793bb..bc26bdcb5b 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
 @@ -95,6 +95,46 @@ mod background_terminal_pagination_tests {
@@ -964,10 +966,10 @@ index 38a94ab812..131c0ad5f8 100644
      async fn forked_from_id_from_rollout(path: &Path) -> Option<String> {
          codex_core::read_session_meta_line(path)
 diff --git a/codex-rs/app-server/tests/common/test_app_server.rs b/codex-rs/app-server/tests/common/test_app_server.rs
-index 26055f6aec..0178ed94e1 100644
+index 63dcc844f7..a73045f267 100644
 --- a/codex-rs/app-server/tests/common/test_app_server.rs
 +++ b/codex-rs/app-server/tests/common/test_app_server.rs
-@@ -85,6 +85,7 @@ use codex_app_server_protocol::ThreadArchiveParams;
+@@ -86,6 +86,7 @@ use codex_app_server_protocol::ThreadArchiveParams;
  use codex_app_server_protocol::ThreadCompactStartParams;
  use codex_app_server_protocol::ThreadDeleteParams;
  use codex_app_server_protocol::ThreadForkParams;
@@ -975,7 +977,7 @@ index 26055f6aec..0178ed94e1 100644
  use codex_app_server_protocol::ThreadInjectItemsParams;
  use codex_app_server_protocol::ThreadItemsListParams;
  use codex_app_server_protocol::ThreadListParams;
-@@ -506,6 +507,15 @@ impl TestAppServer {
+@@ -529,6 +530,15 @@ impl TestAppServer {
          self.send_request("thread/name/set", params).await
      }
  
@@ -1155,10 +1157,10 @@ index 951e4d74e9..00f530f016 100644
      create_fake_rollout_with_text_elements(
          codex_home,
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_read.rs b/codex-rs/app-server/tests/suite/v2/thread_read.rs
-index 1a44dcecbb..6fc1f2d6d7 100644
+index a42a2a91c7..6927438d7a 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_read.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_read.rs
-@@ -19,12 +19,15 @@ use codex_app_server_protocol::SessionSource;
+@@ -20,12 +20,15 @@ use codex_app_server_protocol::SessionSource;
  use codex_app_server_protocol::SortDirection;
  use codex_app_server_protocol::ThreadForkParams;
  use codex_app_server_protocol::ThreadForkResponse;
@@ -1174,7 +1176,7 @@ index 1a44dcecbb..6fc1f2d6d7 100644
  use codex_app_server_protocol::ThreadNameUpdatedNotification;
  use codex_app_server_protocol::ThreadReadParams;
  use codex_app_server_protocol::ThreadReadResponse;
-@@ -1282,6 +1285,7 @@ async fn paginated_thread_name_set_is_reflected_in_read_list_and_metadata_resume
+@@ -1291,6 +1294,7 @@ async fn paginated_thread_name_set_is_reflected_in_read_list_and_metadata_resume
          serde_json::from_value(notification.params.expect("thread/name/updated params"))?;
      assert_eq!(notification.thread_id, conversation_id);
      assert_eq!(notification.thread_name.as_deref(), Some(new_name));
@@ -1182,7 +1184,7 @@ index 1a44dcecbb..6fc1f2d6d7 100644
  
      // Read should now surface `thread.name`, and the wire payload must include `name`.
      let read_id = mcp
-@@ -1397,6 +1401,484 @@ async fn paginated_thread_name_set_is_reflected_in_read_list_and_metadata_resume
+@@ -1407,6 +1411,485 @@ async fn paginated_thread_name_set_is_reflected_in_read_list_and_metadata_resume
          "thread/resume must serialize `thread.ephemeral` on the wire"
      );
  
@@ -1527,6 +1529,7 @@ index 1a44dcecbb..6fc1f2d6d7 100644
 +            model_providers: None,
 +            source_kinds: None,
 +            archived: None,
++            is_pinned: None,
 +            cwd: None,
 +            use_state_db_only: true,
 +            search_term: None,
@@ -1667,10 +1670,34 @@ index 1a44dcecbb..6fc1f2d6d7 100644
      Ok(())
  }
  
-@@ -2349,3 +2831,32 @@ stream_max_retries = 0
-         ),
-     )
+@@ -2276,3 +2759,56 @@ fn store_history_items() -> Vec<RolloutItem> {
+         },
+     ))]
  }
++
++// Helper to create a config.toml pointing at the mock model server.
++fn create_config_toml(codex_home: &Path, server_uri: &str) -> std::io::Result<()> {
++    let config_toml = codex_home.join("config.toml");
++    std::fs::write(
++        config_toml,
++        format!(
++            r#"
++model = "mock-model"
++approval_policy = "never"
++sandbox_mode = "read-only"
++
++model_provider = "mock_provider"
++
++[model_providers.mock_provider]
++name = "Mock provider for test"
++base_url = "{server_uri}/v1"
++wire_api = "responses"
++request_max_retries = 0
++stream_max_retries = 0
++"#
++        ),
++    )
++}
 +
 +fn create_config_toml_with_auto_thread_name(
 +    codex_home: &Path,
@@ -1701,10 +1728,10 @@ index 1a44dcecbb..6fc1f2d6d7 100644
 +    )
 +}
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 37e698bf2e..71affa8896 100644
+index a4436bc790..36229440f4 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -721,6 +721,7 @@ pub struct ModelAvailabilityNuxConfig {
+@@ -719,6 +719,7 @@ pub struct ModelAvailabilityNuxConfig {
  
  /// Fallback resize-reflow row cap when Codex cannot identify a terminal-specific scrollback size.
  pub const DEFAULT_TERMINAL_RESIZE_REFLOW_FALLBACK_MAX_ROWS: usize = 1_000;
@@ -1712,7 +1739,7 @@ index 37e698bf2e..71affa8896 100644
  
  /// Collection of settings that are specific to the TUI.
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
-@@ -762,6 +763,16 @@ pub struct Tui {
+@@ -760,6 +761,16 @@ pub struct Tui {
      #[serde(default)]
      pub default_collaboration_mode: Option<ModeKind>,
  
@@ -1730,10 +1757,10 @@ index 37e698bf2e..71affa8896 100644
      ///
      /// - `auto` (default): Use alternate screen.
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 1bbc849d9e..d652386dc1 100644
+index f3fb1b36c6..b7d4e4fe58 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1581,6 +1581,14 @@
+@@ -1626,6 +1626,14 @@
        },
        "type": "object"
      },
@@ -1748,7 +1775,7 @@ index 1bbc849d9e..d652386dc1 100644
      "ModelAvailabilityNuxConfig": {
        "additionalProperties": {
          "format": "uint32",
-@@ -3110,6 +3118,27 @@
+@@ -3216,6 +3224,27 @@
            "description": "Enable animations (welcome screen, shimmer effects, spinners). Defaults to `true`.",
            "type": "boolean"
          },
@@ -1776,7 +1803,7 @@ index 1bbc849d9e..d652386dc1 100644
          "keymap": {
            "allOf": [
              {
-@@ -3279,6 +3308,18 @@
+@@ -3386,6 +3415,18 @@
            "default": "auto",
            "description": "Notification method to use for terminal notifications. Defaults to `auto`."
          },
@@ -1795,7 +1822,7 @@ index 1bbc849d9e..d652386dc1 100644
          "notifications": {
            "allOf": [
              {
-@@ -4054,6 +4095,25 @@
+@@ -4170,6 +4211,25 @@
        },
        "type": "object"
      },
@@ -1822,7 +1849,7 @@ index 1bbc849d9e..d652386dc1 100644
        "additionalProperties": false,
        "description": "Pager context keybindings for transcript and static overlays.",
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index 9b0592d35a..5653956971 100644
+index b132420620..0d9ef23eb6 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
 @@ -273,6 +273,7 @@ pub struct ModelClient {
@@ -1833,7 +1860,7 @@ index 9b0592d35a..5653956971 100644
      /// Turn state for sticky routing.
      ///
      /// This is an `OnceLock` that stores the turn state value received from the server
-@@ -481,6 +482,17 @@ impl ModelClient {
+@@ -494,6 +495,17 @@ impl ModelClient {
          ModelClientSession {
              client: self.clone(),
              websocket_session: self.take_cached_websocket_session(),
@@ -1851,7 +1878,7 @@ index 9b0592d35a..5653956971 100644
              turn_state: Arc::new(OnceLock::new()),
          }
      }
-@@ -1106,6 +1118,9 @@ impl ModelClient {
+@@ -1114,6 +1126,9 @@ impl ModelClient {
  
  impl Drop for ModelClientSession {
      fn drop(&mut self) {
@@ -1862,10 +1889,10 @@ index 9b0592d35a..5653956971 100644
          self.client
              .store_cached_websocket_session(websocket_session);
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 2b22f37c1c..81c3fa606e 100644
+index c0423c87e3..c2aa6ded92 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -563,6 +563,20 @@ impl CodexThread {
+@@ -583,6 +583,20 @@ impl CodexThread {
          self.session.thread_config_snapshot().await
      }
  
@@ -1887,10 +1914,10 @@ index 2b22f37c1c..81c3fa606e 100644
      pub async fn instruction_sources(&self) -> Vec<PathUri> {
          self.session.instruction_sources().await
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 69d8e59535..bde84b39e6 100644
+index 68cb69e2ff..07d3da5af0 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -939,6 +939,9 @@ fn config_toml_deserializes_model_availability_nux() {
+@@ -1030,6 +1030,9 @@ fn config_toml_deserializes_model_availability_nux() {
              show_tooltips: true,
              vim_mode_default: false,
              raw_output_mode: false,
@@ -1900,7 +1927,7 @@ index 69d8e59535..bde84b39e6 100644
              alternate_screen: AltScreenMode::default(),
              status_line: None,
              status_line_use_colors: true,
-@@ -975,6 +978,41 @@ fn config_toml_status_line_use_colors_defaults_to_enabled() {
+@@ -1066,6 +1069,41 @@ fn config_toml_status_line_use_colors_defaults_to_enabled() {
      );
  }
  
@@ -1942,7 +1969,7 @@ index 69d8e59535..bde84b39e6 100644
  #[test]
  fn config_toml_deserializes_status_line_use_colors_disabled() {
      let toml = r#"
-@@ -3792,6 +3830,9 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+@@ -3922,6 +3960,9 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
              show_tooltips: true,
              vim_mode_default: false,
              raw_output_mode: false,
@@ -1953,10 +1980,10 @@ index 69d8e59535..bde84b39e6 100644
              status_line: None,
              status_line_use_colors: true,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 0b011e567c..c400ee08fb 100644
+index b8f5c2cefe..099e696eab 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -758,6 +758,12 @@ pub struct Config {
+@@ -757,6 +757,12 @@ pub struct Config {
      /// When `Some(ModeKind::Plan)`, the TUI launches in Plan mode.
      pub tui_default_collaboration_mode: Option<ModeKind>,
  
@@ -1969,7 +1996,7 @@ index 0b011e567c..c400ee08fb 100644
      /// Controls whether the TUI uses the terminal's alternate screen buffer.
      ///
      /// This is the same `tui.alternate_screen` value from `config.toml`.
-@@ -4082,6 +4088,17 @@ impl Config {
+@@ -4192,6 +4198,17 @@ impl Config {
                  .tui
                  .as_ref()
                  .and_then(|t| t.default_collaboration_mode),
@@ -1988,10 +2015,10 @@ index 0b011e567c..c400ee08fb 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/core/src/lib.rs b/codex-rs/core/src/lib.rs
-index a3f29eb972..6ba2b14bda 100644
+index e37c17ca5d..04b59e95f4 100644
 --- a/codex-rs/core/src/lib.rs
 +++ b/codex-rs/core/src/lib.rs
-@@ -139,6 +139,7 @@ pub mod spawn;
+@@ -140,6 +140,7 @@ pub mod spawn;
  pub(crate) mod state_db_bridge;
  pub use state_db_bridge::StateDbHandle;
  pub use state_db_bridge::init_state_db;
@@ -2000,10 +2027,10 @@ index a3f29eb972..6ba2b14bda 100644
  pub use thread_rollout_truncation::truncate_rollout_after_turn_id;
  pub use thread_rollout_truncation::truncate_rollout_before_turn_id;
 diff --git a/codex-rs/core/src/responses_metadata.rs b/codex-rs/core/src/responses_metadata.rs
-index c76d3078cd..371fdca132 100644
+index 794b50930e..d37f71bde0 100644
 --- a/codex-rs/core/src/responses_metadata.rs
 +++ b/codex-rs/core/src/responses_metadata.rs
-@@ -117,6 +117,7 @@ pub(crate) enum CodexResponsesRequestKind {
+@@ -120,6 +120,7 @@ pub(crate) enum CodexResponsesRequestKind {
      Prewarm,
      Compaction(CompactionTurnMetadata),
      Memory,
@@ -2011,7 +2038,7 @@ index c76d3078cd..371fdca132 100644
  }
  
  impl CodexResponsesRequestKind {
-@@ -126,11 +127,15 @@ impl CodexResponsesRequestKind {
+@@ -129,11 +130,15 @@ impl CodexResponsesRequestKind {
              CodexResponsesRequestKind::Prewarm => ("prewarm", None),
              CodexResponsesRequestKind::Compaction(metadata) => ("compaction", Some(metadata)),
              CodexResponsesRequestKind::Memory => ("memory", None),
@@ -2029,10 +2056,10 @@ index c76d3078cd..371fdca132 100644
  }
  
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index 89cb0c8d9f..dc6e8720f9 100644
+index cf0d43c3b4..bff6c976c5 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -471,6 +471,24 @@ impl Session {
+@@ -489,6 +489,24 @@ impl Session {
          state.session_configuration.originator.clone()
      }
  
@@ -2058,10 +2085,10 @@ index 89cb0c8d9f..dc6e8720f9 100644
      #[allow(clippy::too_many_arguments)]
      pub(crate) async fn new(
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index 32751315b6..a45ad4ebe3 100644
+index f6b076087a..1dffb6ce00 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -1557,6 +1557,7 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<(String, Option<
+@@ -1619,6 +1619,7 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<(String, Option<
          | EventMsg::EnvironmentConnected(_)
          | EventMsg::EnvironmentDisconnected(_)
          | EventMsg::ThreadGoalUpdated(_)
@@ -2291,7 +2318,7 @@ index 0000000000..9d9fb459c1
 +    }
 +}
 diff --git a/codex-rs/core/src/tools/handlers/mod.rs b/codex-rs/core/src/tools/handlers/mod.rs
-index 6ae144663a..7c6636f0e4 100644
+index 3033e7b08c..bb3c3200e2 100644
 --- a/codex-rs/core/src/tools/handlers/mod.rs
 +++ b/codex-rs/core/src/tools/handlers/mod.rs
 @@ -23,6 +23,8 @@ mod request_plugin_install;
@@ -2484,7 +2511,7 @@ index 0000000000..e0e4364f37
 +    })
 +}
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
-index 1694c1b98a..e470a01d95 100644
+index 5ff9e392f3..9ef27e73d1 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
 @@ -23,6 +23,7 @@ use crate::tools::handlers::ReadMcpResourceHandler;
@@ -2495,9 +2522,9 @@ index 1694c1b98a..e470a01d95 100644
  use crate::tools::handlers::ShellCommandHandler;
  use crate::tools::handlers::ShellCommandHandlerOptions;
  use crate::tools::handlers::SleepHandler;
-@@ -692,6 +693,13 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
- 
-     planned_tools.add(PlanHandler);
+@@ -737,6 +738,13 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
+         planned_tools.add(PlanHandler);
+     }
  
 +    // In-process thread titling, gated by the same opt-in as automatic naming
 +    // and scoped to primary threads so subagents can never rename a thread.
@@ -2507,10 +2534,10 @@ index 1694c1b98a..e470a01d95 100644
 +    }
 +
      if features.enabled(Feature::DeferredExecutor) {
-         planned_tools.add(WaitForEnvironmentHandler);
-     }
+         planned_tools.add(
+             context
 diff --git a/codex-rs/core/src/tools/spec_plan_tests.rs b/codex-rs/core/src/tools/spec_plan_tests.rs
-index 6d51754ef5..9532db659a 100644
+index 87be4d9275..d0d3635a38 100644
 --- a/codex-rs/core/src/tools/spec_plan_tests.rs
 +++ b/codex-rs/core/src/tools/spec_plan_tests.rs
 @@ -15,6 +15,8 @@ use codex_protocol::openai_models::ConfigShellToolType;
@@ -2522,7 +2549,7 @@ index 6d51754ef5..9532db659a 100644
  use codex_tools::DiscoverablePluginInfo;
  use codex_tools::DiscoverableTool;
  use codex_tools::ResponsesApiNamespaceTool;
-@@ -702,6 +704,35 @@ async fn environment_tools_follow_the_step_context() {
+@@ -846,6 +848,35 @@ async fn environment_tools_follow_the_step_context() {
      plan.assert_visible_contains(&["exec_command", "apply_patch", "view_image"]);
  }
  
@@ -2559,10 +2586,10 @@ index 6d51754ef5..9532db659a 100644
  async fn sleep_tool_follows_current_time_config() {
      let disabled = probe(|turn| {
 diff --git a/codex-rs/mcp-server/src/codex_tool_runner.rs b/codex-rs/mcp-server/src/codex_tool_runner.rs
-index 64acffd464..5f1f86ff97 100644
+index 0e9131b234..25651b10a3 100644
 --- a/codex-rs/mcp-server/src/codex_tool_runner.rs
 +++ b/codex-rs/mcp-server/src/codex_tool_runner.rs
-@@ -324,6 +324,9 @@ async fn run_codex_tool_session_inner(
+@@ -330,6 +330,9 @@ async fn run_codex_tool_session_inner(
                      EventMsg::ThreadGoalUpdated(_) => {
                          // Ignore thread goal metadata updates in MCP tool runner.
                      }
@@ -2573,10 +2600,10 @@ index 64acffd464..5f1f86ff97 100644
                          // Ignored in MCP tool runner.
                      }
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 0c16bf66ee..8efcb0511b 100644
+index c692d040d2..772fa67996 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -1368,6 +1368,11 @@ pub enum EventMsg {
+@@ -1362,6 +1362,11 @@ pub enum EventMsg {
      /// Updated long-running goal metadata for the thread.
      ThreadGoalUpdated(ThreadGoalUpdatedEvent),
  
@@ -2588,7 +2615,7 @@ index 0c16bf66ee..8efcb0511b 100644
      /// Incremental MCP startup progress updates.
      McpStartupUpdate(McpStartupUpdateEvent),
  
-@@ -4100,6 +4105,19 @@ pub struct ThreadGoalUpdatedEvent {
+@@ -4091,6 +4096,19 @@ pub struct ThreadGoalUpdatedEvent {
      pub goal: ThreadGoal,
  }
  
@@ -2609,10 +2636,10 @@ index 0c16bf66ee..8efcb0511b 100644
  #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Display, JsonSchema, TS)]
  #[serde(rename_all = "snake_case")]
 diff --git a/codex-rs/rollout-trace/src/protocol_event.rs b/codex-rs/rollout-trace/src/protocol_event.rs
-index 2d6ed4ee82..97db10699c 100644
+index 22d2974514..4489b4b9e2 100644
 --- a/codex-rs/rollout-trace/src/protocol_event.rs
 +++ b/codex-rs/rollout-trace/src/protocol_event.rs
-@@ -355,6 +355,7 @@ pub(crate) fn tool_runtime_trace_event(event: &EventMsg) -> Option<ToolRuntimeTr
+@@ -371,6 +371,7 @@ pub(crate) fn tool_runtime_trace_event(event: &EventMsg) -> Option<ToolRuntimeTr
          | EventMsg::ContextCompacted(_)
          | EventMsg::ThreadRolledBack(_)
          | EventMsg::ThreadGoalUpdated(_)
@@ -2620,7 +2647,7 @@ index 2d6ed4ee82..97db10699c 100644
          | EventMsg::TurnStarted(_)
          | EventMsg::ThreadSettingsApplied(_)
          | EventMsg::TurnComplete(_)
-@@ -441,6 +442,7 @@ pub(crate) fn wrapped_protocol_event_type(event: &EventMsg) -> Option<&'static s
+@@ -457,6 +458,7 @@ pub(crate) fn wrapped_protocol_event_type(event: &EventMsg) -> Option<&'static s
          | EventMsg::AgentReasoningRawContent(_)
          | EventMsg::AgentReasoningSectionBreak(_)
          | EventMsg::ThreadGoalUpdated(_)
@@ -2758,12 +2785,12 @@ index 188fbd8dc8..5d2c5036c3 100644
 +    }
 +}
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 58420de1e3..26852a034a 100644
+index df6f66ac35..af650481c1 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -423,6 +423,25 @@ impl App {
-                 self.chat_widget.prepare_local_op_submission(&op);
-                 self.submit_active_thread_op(app_server, op).await?;
+@@ -440,6 +440,25 @@ impl App {
+                     tracing::error!(error = ?err, "failed to start turn through app server");
+                 }
              }
 +            AppEvent::GenerateAutoThreadName {
 +                thread_id,
@@ -2788,10 +2815,10 @@ index 58420de1e3..26852a034a 100644
                  thread_id,
                  turn_id,
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 2e3b11ccae..150c74d66c 100644
+index df16eca1fb..6f42e6ed70 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -303,6 +303,10 @@ pub(crate) enum AppEvent {
+@@ -307,6 +307,10 @@ pub(crate) enum AppEvent {
      /// Forward a command to the Agent. Using an `AppEvent` for this avoids
      /// bubbling channels through layers of widgets.
      CodexOp(AppCommand),
@@ -2803,7 +2830,7 @@ index 2e3b11ccae..150c74d66c 100644
      /// Approve one retry of a recent auto-review denial selected in the TUI.
      ApproveRecentAutoReviewDenial {
 diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index 825103ce0c..1a9d9a3e28 100644
+index 56ad03059a..0d2ec6d1b7 100644
 --- a/codex-rs/tui/src/app_server_session.rs
 +++ b/codex-rs/tui/src/app_server_session.rs
 @@ -63,6 +63,8 @@ use codex_app_server_protocol::ThreadDeleteParams;
@@ -2815,7 +2842,7 @@ index 825103ce0c..1a9d9a3e28 100644
  use codex_app_server_protocol::ThreadGoalClearParams;
  use codex_app_server_protocol::ThreadGoalClearResponse;
  use codex_app_server_protocol::ThreadGoalGetParams;
-@@ -1008,6 +1010,25 @@ impl AppServerSession {
+@@ -1010,6 +1012,25 @@ impl AppServerSession {
          Ok(())
      }
  
@@ -2842,7 +2869,7 @@ index 825103ce0c..1a9d9a3e28 100644
          &mut self,
          thread_id: ThreadId,
 diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
-index 9586f5fd7d..0f06a0a1ed 100644
+index a03ffbd11f..a0b9b47385 100644
 --- a/codex-rs/tui/src/chatwidget/protocol.rs
 +++ b/codex-rs/tui/src/chatwidget/protocol.rs
 @@ -35,9 +35,13 @@ impl ChatWidget {
@@ -2877,10 +2904,10 @@ index 52218e022a..f072296a0f 100644
                  self.add_boxed_history(Box::new(cell));
              }
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index a0728e017f..4fdbb2cbb1 100644
+index 3edeacf40d..b28d4b7254 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-@@ -1375,6 +1375,7 @@ async fn live_app_server_invalid_thread_name_update_is_ignored() {
+@@ -1442,6 +1442,7 @@ async fn live_app_server_invalid_thread_name_update_is_ignored() {
              codex_app_server_protocol::ThreadNameUpdatedNotification {
                  thread_id: "not-a-thread-id".to_string(),
                  thread_name: Some("bad update".to_string()),
@@ -2888,7 +2915,7 @@ index a0728e017f..4fdbb2cbb1 100644
              },
          ),
          /*replay_kind*/ None,
-@@ -1396,6 +1397,7 @@ async fn live_app_server_thread_name_update_shows_resume_hint() {
+@@ -1463,6 +1464,7 @@ async fn live_app_server_thread_name_update_shows_resume_hint() {
              codex_app_server_protocol::ThreadNameUpdatedNotification {
                  thread_id: thread_id.to_string(),
                  thread_name: Some("review-fix".to_string()),
@@ -2896,7 +2923,7 @@ index a0728e017f..4fdbb2cbb1 100644
              },
          ),
          /*replay_kind*/ None,
-@@ -1408,6 +1410,40 @@ async fn live_app_server_thread_name_update_shows_resume_hint() {
+@@ -1475,6 +1477,40 @@ async fn live_app_server_thread_name_update_shows_resume_hint() {
      assert_chatwidget_snapshot!("thread_name_update_resume_hint", rendered);
  }
  
@@ -2938,7 +2965,7 @@ index a0728e017f..4fdbb2cbb1 100644
  async fn live_app_server_thread_closed_requests_immediate_exit() {
      let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
-index 04a303291c..1eba666e03 100644
+index 47d597db92..bf9fda3faa 100644
 --- a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 @@ -479,6 +479,7 @@ async fn queued_bare_rename_drains_next_input_after_name_update() {
@@ -2958,7 +2985,7 @@ index 04a303291c..1eba666e03 100644
          ),
          /*replay_kind*/ None,
 diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-index 7c0e2e94da..3a4056e7e5 100644
+index 5719e04dcb..9cec93e3d1 100644
 --- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
 @@ -3243,6 +3243,7 @@ async fn renamed_thread_footer_title_snapshot() {

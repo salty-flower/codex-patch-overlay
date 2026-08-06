@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 7b634a5188..22997c957e 100644
+index c78ed69867..479cb151ca 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -637,6 +637,40 @@ pub struct TuiNotificationSettings {
+@@ -673,6 +673,40 @@ pub struct TuiNotificationSettings {
      /// regardless of focus. Defaults to `unfocused`.
      #[serde(default, rename = "notification_condition")]
      pub condition: NotificationCondition,
@@ -41,15 +41,15 @@ index 7b634a5188..22997c957e 100644
 +        }
 +    }
  }
-
+ 
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 3a3b490d69..c82c0e12ec 100644
+index 75288ca52b..68cb69e2ff 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -10937,3 +10937,37 @@ fn test_tui_notification_condition_rejects_unknown_value() {
-         "unexpected error: {err}"
-     );
+@@ -12092,3 +12092,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
+ 
+     Ok(())
  }
 +
 +#[test]
@@ -86,22 +86,22 @@ index 3a3b490d69..c82c0e12ec 100644
 +    assert_eq!(sound.command, None);
 +}
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index de43b32755..80eb0fc59e 100644
+index c70d1ea5d6..3f82ffe1ed 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -746,6 +746,7 @@ impl App {
+@@ -794,6 +794,7 @@ impl App {
          tui.set_notification_settings(
              config.tui_notifications.method,
              config.tui_notifications.condition,
 +            config.tui_notifications.sound.clone(),
          );
-
+ 
          let harness_overrides =
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 5e7985f108..1fa3c67085 100644
+index f31c63c96b..9999d935d8 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -724,6 +724,7 @@ impl App {
+@@ -978,6 +978,7 @@ impl App {
                  tui.set_notification_settings(
                      self.config.tui_notifications.method,
                      self.config.tui_notifications.condition,
@@ -117,9 +117,9 @@ index ee6694b357..fdafce9857 100644
  mod bel;
  mod osc9;
 +mod sound;
-
+ 
  use std::io;
-
+ 
  use bel::BelBackend;
  use codex_config::types::NotificationMethod;
 +use codex_config::types::TuiNotificationSoundConfig;
@@ -128,13 +128,13 @@ index ee6694b357..fdafce9857 100644
  use codex_terminal_detection::terminal_info;
  use osc9::Osc9Backend;
 +use sound::play_notification_sound;
-
+ 
  #[derive(Debug)]
  pub enum DesktopNotificationBackend {
 @@ -46,10 +49,29 @@ impl DesktopNotificationBackend {
      }
  }
-
+ 
 +pub fn notify_with_sound(
 +    backend: &mut DesktopNotificationBackend,
 +    message: &str,
@@ -153,7 +153,7 @@ index ee6694b357..fdafce9857 100644
  pub fn detect_backend(method: NotificationMethod) -> DesktopNotificationBackend {
      DesktopNotificationBackend::for_method(method)
  }
-
+ 
 +fn should_play_notification_sound(method: NotificationMethod) -> bool {
 +    method != NotificationMethod::Bel
 +}
@@ -172,7 +172,7 @@ index ee6694b357..fdafce9857 100644
 @@ -96,6 +119,19 @@ mod tests {
          ));
      }
-
+ 
 +    #[test]
 +    fn skips_extra_sound_for_bel_notifications() {
 +        assert_eq!(
@@ -393,10 +393,10 @@ index 0000000000..eb9fe52e83
 +    }
 +}
 diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
-index 681e0cb397..c3048aaaff 100644
+index 33509874fa..a018427273 100644
 --- a/codex-rs/tui/src/tui.rs
 +++ b/codex-rs/tui/src/tui.rs
-@@ -44,6 +44,7 @@ use crate::insert_history::HistoryLineWrapPolicy;
+@@ -45,6 +45,7 @@ use crate::insert_history::HistoryLineWrapPolicy;
  use crate::insert_history::InsertHistoryMode;
  use crate::notifications::DesktopNotificationBackend;
  use crate::notifications::detect_backend;
@@ -404,15 +404,15 @@ index 681e0cb397..c3048aaaff 100644
  use crate::terminal_hyperlinks::HyperlinkLine;
  use crate::terminal_hyperlinks::plain_hyperlink_lines;
  use crate::tui::event_stream::EventBroker;
-@@ -52,6 +53,7 @@ use crate::tui::event_stream::TuiEventStream;
+@@ -53,6 +54,7 @@ use crate::tui::event_stream::TuiEventStream;
  use crate::tui::job_control::SuspendContext;
  use codex_config::types::NotificationCondition;
  use codex_config::types::NotificationMethod;
 +use codex_config::types::TuiNotificationSoundConfig;
-
+ 
  mod event_stream;
  mod frame_rate_limiter;
-@@ -528,6 +530,7 @@ pub struct Tui {
+@@ -574,6 +576,7 @@ pub struct Tui {
      enhanced_keys_supported: bool,
      notification_backend: Option<DesktopNotificationBackend>,
      notification_condition: NotificationCondition,
@@ -420,7 +420,7 @@ index 681e0cb397..c3048aaaff 100644
      // Raw terminal-wrapped history needs a non-scroll-region insertion path in Zellij.
      is_zellij: bool,
      // When false, enter_alt_screen() becomes a no-op.
-@@ -583,6 +586,7 @@ impl Tui {
+@@ -629,6 +632,7 @@ impl Tui {
              enhanced_keys_supported,
              notification_backend: Some(detect_backend(NotificationMethod::default())),
              notification_condition: NotificationCondition::default(),
@@ -428,7 +428,7 @@ index 681e0cb397..c3048aaaff 100644
              is_zellij,
              alt_screen_enabled: true,
              _stderr_guard: stderr_guard,
-@@ -598,9 +602,11 @@ impl Tui {
+@@ -644,9 +648,11 @@ impl Tui {
          &mut self,
          method: NotificationMethod,
          condition: NotificationCondition,
@@ -438,11 +438,11 @@ index 681e0cb397..c3048aaaff 100644
          self.notification_condition = condition;
 +        self.notification_sound = sound;
      }
-
+ 
      pub fn frame_requester(&self) -> FrameRequester {
-@@ -684,7 +690,7 @@ impl Tui {
+@@ -730,7 +736,7 @@ impl Tui {
          };
-
+ 
          let message = message.as_ref().to_string();
 -        match backend.notify(&message) {
 +        match notify_with_sound(backend, &message, &self.notification_sound) {
