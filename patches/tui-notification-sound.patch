@@ -1,5 +1,5 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index c78ed69867..479cb151ca 100644
+index c78ed69..479cb15 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
 @@ -673,6 +673,40 @@ pub struct TuiNotificationSettings {
@@ -44,10 +44,10 @@ index c78ed69867..479cb151ca 100644
  
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 75288ca52b..68cb69e2ff 100644
+index e3e91a6..badb8af 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -12092,3 +12092,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
+@@ -12261,3 +12261,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
  
      Ok(())
  }
@@ -86,10 +86,10 @@ index 75288ca52b..68cb69e2ff 100644
 +    assert_eq!(sound.command, None);
 +}
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index c70d1ea5d6..3f82ffe1ed 100644
+index 1b3e6f2..58a204e 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -794,6 +794,7 @@ impl App {
+@@ -802,6 +802,7 @@ impl App {
          tui.set_notification_settings(
              config.tui_notifications.method,
              config.tui_notifications.condition,
@@ -98,10 +98,10 @@ index c70d1ea5d6..3f82ffe1ed 100644
  
          let harness_overrides =
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index f31c63c96b..9999d935d8 100644
+index 51877ce..6712a2d 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -978,6 +978,7 @@ impl App {
+@@ -1022,6 +1022,7 @@ impl App {
                  tui.set_notification_settings(
                      self.config.tui_notifications.method,
                      self.config.tui_notifications.condition,
@@ -110,7 +110,7 @@ index f31c63c96b..9999d935d8 100644
                  self.file_search
                      .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/notifications/mod.rs b/codex-rs/tui/src/notifications/mod.rs
-index ee6694b357..fdafce9857 100644
+index ee6694b..fdafce9 100644
 --- a/codex-rs/tui/src/notifications/mod.rs
 +++ b/codex-rs/tui/src/notifications/mod.rs
 @@ -1,14 +1,17 @@
@@ -191,7 +191,7 @@ index ee6694b357..fdafce9857 100644
          for name in [
 diff --git a/codex-rs/tui/src/notifications/sound.rs b/codex-rs/tui/src/notifications/sound.rs
 new file mode 100644
-index 0000000000..eb9fe52e83
+index 0000000..eb9fe52
 --- /dev/null
 +++ b/codex-rs/tui/src/notifications/sound.rs
 @@ -0,0 +1,197 @@
@@ -393,10 +393,10 @@ index 0000000000..eb9fe52e83
 +    }
 +}
 diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
-index 33509874fa..a018427273 100644
+index 51a8b17..9d405e0 100644
 --- a/codex-rs/tui/src/tui.rs
 +++ b/codex-rs/tui/src/tui.rs
-@@ -45,6 +45,7 @@ use crate::insert_history::HistoryLineWrapPolicy;
+@@ -47,6 +47,7 @@ use crate::insert_history::HistoryLineWrapPolicy;
  use crate::insert_history::InsertHistoryMode;
  use crate::notifications::DesktopNotificationBackend;
  use crate::notifications::detect_backend;
@@ -404,15 +404,15 @@ index 33509874fa..a018427273 100644
  use crate::terminal_hyperlinks::HyperlinkLine;
  use crate::terminal_hyperlinks::plain_hyperlink_lines;
  use crate::tui::event_stream::EventBroker;
-@@ -53,6 +54,7 @@ use crate::tui::event_stream::TuiEventStream;
- use crate::tui::job_control::SuspendContext;
+@@ -56,6 +57,7 @@ use crate::tui::job_control::SuspendContext;
+ use crate::tui::screen_size::ScreenSizePolicy;
  use codex_config::types::NotificationCondition;
  use codex_config::types::NotificationMethod;
 +use codex_config::types::TuiNotificationSoundConfig;
  
  mod event_stream;
  mod frame_rate_limiter;
-@@ -574,6 +576,7 @@ pub struct Tui {
+@@ -584,6 +586,7 @@ pub struct Tui {
      enhanced_keys_supported: bool,
      notification_backend: Option<DesktopNotificationBackend>,
      notification_condition: NotificationCondition,
@@ -420,7 +420,7 @@ index 33509874fa..a018427273 100644
      // Raw terminal-wrapped history needs a non-scroll-region insertion path in Zellij.
      is_zellij: bool,
      // When false, enter_alt_screen() becomes a no-op.
-@@ -629,6 +632,7 @@ impl Tui {
+@@ -640,6 +643,7 @@ impl Tui {
              enhanced_keys_supported,
              notification_backend: Some(detect_backend(NotificationMethod::default())),
              notification_condition: NotificationCondition::default(),
@@ -428,7 +428,7 @@ index 33509874fa..a018427273 100644
              is_zellij,
              alt_screen_enabled: true,
              _stderr_guard: stderr_guard,
-@@ -644,9 +648,11 @@ impl Tui {
+@@ -655,9 +659,11 @@ impl Tui {
          &mut self,
          method: NotificationMethod,
          condition: NotificationCondition,
@@ -440,7 +440,7 @@ index 33509874fa..a018427273 100644
      }
  
      pub fn frame_requester(&self) -> FrameRequester {
-@@ -730,7 +736,7 @@ impl Tui {
+@@ -742,7 +748,7 @@ impl Tui {
          };
  
          let message = message.as_ref().to_string();

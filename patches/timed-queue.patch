@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 7009c74651..df6f66ac35 100644
+index 2d55735..8224b00 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -2152,6 +2152,18 @@ impl App {
+@@ -2228,6 +2228,18 @@ impl App {
                  self.chat_widget
                      .submit_user_message_with_mode(text, collaboration_mode);
              }
@@ -22,10 +22,10 @@ index 7009c74651..df6f66ac35 100644
                  self.chat_widget.handle_manage_skills_closed();
              }
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 0b178a8f37..df16eca1fb 100644
+index 4e55cca..b0d9e1f 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -1017,6 +1017,16 @@ pub(crate) enum AppEvent {
+@@ -1047,6 +1047,16 @@ pub(crate) enum AppEvent {
          collaboration_mode: CollaborationModeMask,
      },
  
@@ -43,7 +43,7 @@ index 0b178a8f37..df16eca1fb 100644
      FullScreenApprovalRequest(ApprovalRequest),
  
 diff --git a/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__command_popup__tests__command_popup_default_items.snap b/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__command_popup__tests__command_popup_default_items.snap
-index 93b3d93a8f..43f5673ce4 100644
+index 93b3d93..43f5673 100644
 --- a/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__command_popup__tests__command_popup_default_items.snap
 +++ b/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__command_popup__tests__command_popup_default_items.snap
 @@ -14,6 +14,7 @@ expression: commands
@@ -55,10 +55,10 @@ index 93b3d93a8f..43f5673ce4 100644
  /new - start a new chat during a conversation
  /archive - archive this session and exit
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index f7b352eef5..df13d5a975 100644
+index bb1d3aa..daa40d1 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -361,6 +361,7 @@ use self::session_header::SessionHeader;
+@@ -370,6 +370,7 @@ use self::session_header::SessionHeader;
  mod hook_lifecycle;
  mod hooks;
  mod interaction;
@@ -67,10 +67,10 @@ index f7b352eef5..df13d5a975 100644
  mod slash_dispatch;
  use self::skills::collect_tool_mentions;
 diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
-index f26d50a2e7..e4259965c9 100644
+index 0631cf8..dae94c5 100644
 --- a/codex-rs/tui/src/chatwidget/input_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/input_flow.rs
-@@ -118,6 +118,9 @@ impl ChatWidget {
+@@ -120,6 +120,9 @@ impl ChatWidget {
                      user_message,
                      action,
                      pending_pastes,
@@ -80,7 +80,7 @@ index f26d50a2e7..e4259965c9 100644
                  });
              self.input_queue
                  .queued_user_message_history_records
-@@ -141,7 +144,9 @@ impl ChatWidget {
+@@ -146,7 +149,9 @@ impl ChatWidget {
          }
          let mut submitted_follow_up = false;
          while !self.is_user_turn_pending_or_running() {
@@ -91,7 +91,7 @@ index f26d50a2e7..e4259965c9 100644
                  break;
              };
              match queued_message.action {
-@@ -173,6 +178,49 @@ impl ChatWidget {
+@@ -178,6 +183,49 @@ impl ChatWidget {
          submitted_follow_up
      }
  
@@ -139,9 +139,9 @@ index f26d50a2e7..e4259965c9 100644
 +    }
 +
      pub(super) fn is_user_turn_pending_or_running(&self) -> bool {
-         self.input_queue.user_turn_pending_start || self.bottom_pane.is_task_running()
-     }
-@@ -187,7 +235,7 @@ impl ChatWidget {
+         self.input_queue.user_turn_pending_start
+             || self.turn_lifecycle.agent_turn_running
+@@ -195,7 +243,7 @@ impl ChatWidget {
      }
  
      /// Rebuild and update the bottom-pane pending-input preview.
@@ -151,7 +151,7 @@ index f26d50a2e7..e4259965c9 100644
          self.bottom_pane.set_pending_input_preview(
              preview.queued_messages,
 diff --git a/codex-rs/tui/src/chatwidget/input_queue.rs b/codex-rs/tui/src/chatwidget/input_queue.rs
-index 67a306af22..cca2a4f3c8 100644
+index 67a306a..cca2a4f 100644
 --- a/codex-rs/tui/src/chatwidget/input_queue.rs
 +++ b/codex-rs/tui/src/chatwidget/input_queue.rs
 @@ -4,6 +4,10 @@
@@ -336,7 +336,7 @@ index 67a306af22..cca2a4f3c8 100644
      fn clear_resets_all_input_queues() {
          let mut state = InputQueueState::default();
 diff --git a/codex-rs/tui/src/chatwidget/input_restore.rs b/codex-rs/tui/src/chatwidget/input_restore.rs
-index 101e3ec6bc..56584723b1 100644
+index 101e3ec..5658472 100644
 --- a/codex-rs/tui/src/chatwidget/input_restore.rs
 +++ b/codex-rs/tui/src/chatwidget/input_restore.rs
 @@ -30,21 +30,12 @@ impl ChatWidget {
@@ -366,7 +366,7 @@ index 101e3ec6bc..56584723b1 100644
                  .input_queue
 diff --git a/codex-rs/tui/src/chatwidget/scheduled_input.rs b/codex-rs/tui/src/chatwidget/scheduled_input.rs
 new file mode 100644
-index 0000000000..27d1020338
+index 0000000..27d1020
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/scheduled_input.rs
 @@ -0,0 +1,245 @@
@@ -616,7 +616,7 @@ index 0000000000..27d1020338
 +    }
 +}
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index e28cfd7043..0262d9c54a 100644
+index e0d19d8..0d186ba 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 @@ -14,6 +14,7 @@ use crate::bottom_pane::slash_commands::SlashCommandItem;
@@ -636,9 +636,9 @@ index e28cfd7043..0262d9c54a 100644
  const USAGE_CHATGPT_LOGIN_REQUIRED: &str = "Sign in with ChatGPT to use /usage.";
  
  impl ChatWidget {
-@@ -267,6 +270,9 @@ impl ChatWidget {
-             SlashCommand::Review => {
-                 self.open_review_popup();
+@@ -277,6 +280,9 @@ impl ChatWidget {
+                     self.defer_input_until_settings_applied();
+                 }
              }
 +            SlashCommand::Later => {
 +                self.add_info_message(SCHEDULE_USAGE.to_string(), None);
@@ -646,7 +646,7 @@ index e28cfd7043..0262d9c54a 100644
              SlashCommand::Rename => {
                  self.session_telemetry
                      .counter("codex.thread.rename", /*inc*/ 1, &[]);
-@@ -735,6 +741,28 @@ impl ChatWidget {
+@@ -750,6 +756,28 @@ impl ChatWidget {
                      name: Some(trimmed.to_string()),
                  });
              }
@@ -675,7 +675,7 @@ index e28cfd7043..0262d9c54a 100644
              SlashCommand::Plan if !trimmed.is_empty() => {
                  if !self.apply_plan_slash_command() {
                      return;
-@@ -1073,6 +1101,7 @@ impl ChatWidget {
+@@ -1088,6 +1116,7 @@ impl ChatWidget {
              | SlashCommand::Diff
              | SlashCommand::App
              | SlashCommand::Rename
@@ -684,7 +684,7 @@ index e28cfd7043..0262d9c54a 100644
              SlashCommand::Feedback
              | SlashCommand::New
 diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index 84125d932c..1d853ea76f 100644
+index 49fa1dd..6c7b0ef 100644
 --- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 @@ -130,6 +130,9 @@ async fn parent_owned_thread_preserves_queued_input_before_draining() {
@@ -698,7 +698,7 @@ index 84125d932c..1d853ea76f 100644
      let history_record = UserMessageHistoryRecord::UserMessageText;
      chat.input_queue
 diff --git a/codex-rs/tui/src/chatwidget/user_messages.rs b/codex-rs/tui/src/chatwidget/user_messages.rs
-index ca92adbee6..eb932800e2 100644
+index ca92adb..eb93280 100644
 --- a/codex-rs/tui/src/chatwidget/user_messages.rs
 +++ b/codex-rs/tui/src/chatwidget/user_messages.rs
 @@ -10,6 +10,10 @@ use std::collections::HashSet;
@@ -758,7 +758,7 @@ index ca92adbee6..eb932800e2 100644
  
  impl From<UserMessage> for QueuedUserMessage {
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index abd1386932..fef9f6316b 100644
+index 07cb2c1..093f5f3 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
 @@ -29,6 +29,7 @@ pub enum SlashCommand {
@@ -787,7 +787,7 @@ index abd1386932..fef9f6316b 100644
                  | SlashCommand::Rename
                  | SlashCommand::New
                  | SlashCommand::Clear
-@@ -216,6 +221,7 @@ impl SlashCommand {
+@@ -217,6 +222,7 @@ impl SlashCommand {
              | SlashCommand::Copy
              | SlashCommand::Raw
              | SlashCommand::Rename
