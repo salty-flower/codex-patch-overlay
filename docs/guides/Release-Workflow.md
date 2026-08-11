@@ -9,6 +9,37 @@
 | Patch check | `nu scripts/check-release.nu` |
 | Tracking check | Carried patches are recorded in `patches/manifest.toml` |
 
+## Packaged Binaries
+
+A release must ship every executable the `codex` entrypoint resolves at runtime,
+because neither the tarball nor the Nix package fetches a missing helper later.
+
+| Path in package | Built by | Needed for |
+| --- | --- | --- |
+| `bin/codex` | `--bin codex` | the CLI/TUI entrypoint |
+| `bin/codex-responses-api-proxy` | `--bin codex-responses-api-proxy` | `codex responses-api-proxy` |
+| `bin/codex-code-mode-host` | `--bin codex-code-mode-host` | code mode, mandatory from upstream 0.147.0 |
+| `codex-resources/bwrap` | `--bin bwrap`, Linux only | sandboxed exec on Linux |
+
+`codex-rs/install-context` looks for `codex-code-mode-host` under
+`codex-resources/` first and then next to the running `codex` executable,
+so `bin/` placement satisfies both upstream's own layout
+(`scripts/codex_package/layout.py`) and a Nix install that copies only `bin/`.
+
+Upstream 0.147.0 promoted `features.code_mode_host` to stable with
+`default_enabled: true` and dropped the in-process runtime.
+With the host binary absent, codex reports
+`Code Mode is unavailable because failed to spawn code-mode host …` and code mode
+fails closed.
+Setting `features.code_mode_host = false` does not restore an in-process
+fallback: it selects `DisabledCodeModeSessionProvider`, which rejects every
+session.
+
+Re-check this table on each upstream bump.
+A new helper binary shows up as a `--bin` target in
+`scripts/codex_package/cargo.py` and as a `required_files` entry in
+`scripts/codex_package/layout.py`.
+
 ## Release Steps
 
 1. Set `release.patch_suffix` in `patches/manifest.toml`.

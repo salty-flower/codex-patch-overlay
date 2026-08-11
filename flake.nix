@@ -73,6 +73,24 @@
             ${pkgs.yq-go}/bin/yq -e '.jobs.build.steps[] | select(.uses == "Swatinem/rust-cache@v2").with.key == "''${{ matrix.target }}"' ${./.github/workflows/release.yml} > /dev/null
             touch $out
           '';
+          # Codex resolves helper executables next to its own binary at runtime
+          # and never fetches a missing one, so a release that forgets a --bin
+          # target ships a silently degraded package: from upstream 0.147.0 a
+          # missing codex-code-mode-host makes code mode fail closed.
+          release-binaries = pkgs.runCommand "codex-release-binaries-check" { } ''
+            workflow=${./.github/workflows/release.yml}
+            build_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Build release binaries").run' "$workflow")"
+            package_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Package artifact").run' "$workflow")"
+            for binary in codex codex-responses-api-proxy codex-code-mode-host; do
+              printf '%s' "$build_run" | ${pkgs.ripgrep}/bin/rg -qF -- "--bin $binary" \
+                || { echo "release.yml build step does not build $binary" >&2; exit 1; }
+              printf '%s' "$package_run" | ${pkgs.ripgrep}/bin/rg -qF -- "$binary" \
+                || { echo "release.yml package step does not ship $binary" >&2; exit 1; }
+            done
+            printf '%s' "$package_run" | ${pkgs.ripgrep}/bin/rg -qF -- '$package_dir/bin/' \
+              || { echo "release.yml package step does not populate bin/" >&2; exit 1; }
+            touch $out
+          '';
           auto-release = pkgs.runCommand "codex-auto-release-check" { } ''
             ${pkgs.nushell}/bin/nu --no-config-file -c '
               source ${./scripts/auto-release.nu}

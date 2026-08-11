@@ -234,7 +234,15 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          cargo build --release --target "$TARGET" --bin codex --bin codex-responses-api-proxy
+          # codex-code-mode-host is mandatory from upstream 0.147.0: the
+          # `code_mode_host` feature is stable and default-enabled, and the
+          # in-process runtime is gone, so codex resolves a sibling
+          # `codex-code-mode-host` next to its own executable and fails code
+          # mode closed when it is missing.
+          cargo build --release --target "$TARGET" \
+            --bin codex \
+            --bin codex-responses-api-proxy \
+            --bin codex-code-mode-host
 
       - name: Package artifact
         shell: bash
@@ -245,9 +253,13 @@ jobs:
           package_dir="dist/${RELEASE_TAG}-${TARGET}"
           mkdir -p "$package_dir/bin" "$package_dir/codex-resources"
           printf '{}\n' > "$package_dir/codex-package.json"
-          cp "staging/openai-codex/codex-rs/target/${TARGET}/release/codex" "$package_dir/bin/"
-          cp "staging/openai-codex/codex-rs/target/${TARGET}/release/codex-responses-api-proxy" "$package_dir/bin/"
-          chmod 0755 "$package_dir/bin/codex" "$package_dir/bin/codex-responses-api-proxy"
+          # Keep codex-code-mode-host in bin/ next to codex, matching upstream's
+          # package layout (scripts/codex_package/layout.py) and the sibling
+          # lookup in codex-rs/install-context.
+          for binary in codex codex-responses-api-proxy codex-code-mode-host; do
+            cp "staging/openai-codex/codex-rs/target/${TARGET}/release/${binary}" "$package_dir/bin/"
+            chmod 0755 "$package_dir/bin/${binary}"
+          done
           if [[ -f "staging/openai-codex/codex-rs/target/${TARGET}/release/bwrap" ]]; then
             cp "staging/openai-codex/codex-rs/target/${TARGET}/release/bwrap" "$package_dir/codex-resources/bwrap"
             chmod 0755 "$package_dir/codex-resources/bwrap"
@@ -298,7 +310,7 @@ jobs:
             echo
             echo "- Upstream: ${upstream_repo}@${upstream_base} (${upstream_sha})"
             echo "- Versioning: patch overlay release from \`patches/manifest.toml\`"
-            echo "- Binaries: \`codex\`, \`codex-responses-api-proxy\`"
+            echo "- Binaries: \`codex\`, \`codex-responses-api-proxy\`, \`codex-code-mode-host\`"
             echo
             echo "Enabled patches:"
             awk '
