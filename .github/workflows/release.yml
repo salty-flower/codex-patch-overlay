@@ -266,9 +266,12 @@ jobs:
           fi
           cp README.md LICENSE NOTICE patches/manifest.toml "$package_dir/"
 
-          archive="dist/${RELEASE_TAG}-${TARGET}.tar.gz"
-          tar -C dist -czf "$archive" "${RELEASE_TAG}-${TARGET}"
-          shasum -a 256 "$archive" > "${archive}.sha256"
+          # Name the archive, not "dist/<archive>", inside the sidecar: the
+          # README tells consumers to run `shasum -a 256 -c <archive>.sha256`
+          # from the download directory, where a dist/ prefix cannot resolve.
+          archive_name="${RELEASE_TAG}-${TARGET}.tar.gz"
+          tar -C dist -czf "dist/${archive_name}" "${RELEASE_TAG}-${TARGET}"
+          ( cd dist && shasum -a 256 "$archive_name" > "${archive_name}.sha256" )
 
       - uses: actions/upload-artifact@v4
         with:

@@ -94,6 +94,36 @@ release on a tag push but cannot update one that already exists
 (`403 Resource not accessible by integration`). `isPrerelease=true` keeps
 `latest-release` from moving.
 
+## Hand-Assembled Release
+
+Reuse published binaries instead of rebuilding when a release only has to add or
+replace a helper binary — a full CI run spends one to two hours rebuilding v8 for
+artifacts that would be equivalent.
+`codex-0.147.0-patch.2` did this: `codex` and `codex-responses-api-proxy` came
+from `codex-0.147.0-patch.1`, `codex-code-mode-host` came from upstream's own
+`rust-v0.147.0` release assets.
+
+1. Bump `release.patch_suffix`, commit, push `main`.
+2. Rebuild each `<tag>-<target>/` tree from the previous release's tarball, drop
+   the added binary into `bin/`, and refresh the packaged `manifest.toml` from the
+   released commit.
+3. Re-tar with GNU tar and write a `shasum -a 256` sidecar naming the archive
+   itself.
+4. `gh release create <tag> --target <full-sha> --notes-file … <assets>`.
+5. **Cancel the `release.yml` run that this triggers, immediately.** Creating a
+   release through the API creates the tag, which fires `on: push: tags:`; that
+   run would rebuild from source and overwrite the uploaded assets with different
+   SHA-256 digests, breaking any pin made in the meantime.
+6. Move the release ref: `nu scripts/move-latest-release-ref.nu <tag>` with `HEAD`
+   at the released commit — nothing else does it when the publish job never runs.
+7. Record the provenance in `docs/records/`, since the release notes are the only
+   other place that says the artifacts are not purely CI-built.
+
+Only reuse binaries whose source is unaffected by the patch stack, and say why in
+the record.
+For a helper taken from upstream, check that no enabled patch touches its crate
+or the protocol it speaks before mixing it with a patched `codex`.
+
 ## `RELEASE_PUSH_TOKEN`
 
 Read by `auto-release.yml` (commit/tag/dispatch) and `release.yml`'s publish
