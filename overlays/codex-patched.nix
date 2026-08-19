@@ -19,7 +19,8 @@ in
       # Codex 0.147.0 moved to rusty_v8 150.4.0 and enabled the sandbox
       # pointer-compression feature for code mode.  nixpkgs still provides the
       # older 146.4.0 archive, so use the matching artifacts published with
-      # the Codex release instead.  Keep these targets aligned with
+      # the Codex releases instead.  0.148.0 retains the same v8 release.
+      # Keep these targets aligned with
       # .github/workflows/release.yml's rusty_v8 staging step.
       rustyV8Version = "150.4.0";
       rustyV8Target = final.stdenv.hostPlatform.rust.rustcTarget;
@@ -80,7 +81,7 @@ in
       '';
 
       __structuredAttrs = false;
-      env = (old.env or { }) // lib.optionalAttrs (upstreamVersion == "0.147.0") {
+      env = (old.env or { }) // lib.optionalAttrs (lib.elem upstreamVersion [ "0.147.0" "0.148.0" ]) {
         RUSTY_V8_ARCHIVE = rustyV8Archive;
         RUSTY_V8_SRC_BINDING_PATH = rustyV8Binding;
       };

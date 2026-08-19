@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/schema/json/ClientRequest.json b/codex-rs/app-server-protocol/schema/json/ClientRequest.json
-index a4d3194..8159f6b 100644
+index 42df7b055..a5b6d9467 100644
 --- a/codex-rs/app-server-protocol/schema/json/ClientRequest.json
 +++ b/codex-rs/app-server-protocol/schema/json/ClientRequest.json
-@@ -4056,6 +4056,28 @@
+@@ -4101,6 +4101,28 @@
        ],
        "type": "object"
      },
@@ -31,7 +31,7 @@ index a4d3194..8159f6b 100644
      "ThreadGoalClearParams": {
        "properties": {
          "threadId": {
-@@ -5523,6 +5545,30 @@
+@@ -5608,6 +5630,30 @@
        "title": "Thread/name/setRequest",
        "type": "object"
      },
@@ -63,10 +63,10 @@ index a4d3194..8159f6b 100644
        "properties": {
          "id": {
 diff --git a/codex-rs/app-server-protocol/schema/json/ServerNotification.json b/codex-rs/app-server-protocol/schema/json/ServerNotification.json
-index 813952c..7d47669 100644
+index 6152d7b2e..2291d9396 100644
 --- a/codex-rs/app-server-protocol/schema/json/ServerNotification.json
 +++ b/codex-rs/app-server-protocol/schema/json/ServerNotification.json
-@@ -4825,8 +4825,25 @@
+@@ -4869,8 +4869,25 @@
          }
        ]
      },
@@ -93,7 +93,7 @@ index 813952c..7d47669 100644
            "type": "string"
          },
 diff --git a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
-index 1159075..1cc0dd0 100644
+index 96c2d04b7..59bc75d1f 100644
 --- a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
 +++ b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
 @@ -396,6 +396,30 @@
@@ -127,7 +127,7 @@ index 1159075..1cc0dd0 100644
          {
            "properties": {
              "id": {
-@@ -18861,6 +18885,44 @@
+@@ -19287,6 +19311,44 @@
          "title": "ThreadForkResponse",
          "type": "object"
        },
@@ -172,7 +172,7 @@ index 1159075..1cc0dd0 100644
        "ThreadGoal": {
          "properties": {
            "createdAt": {
-@@ -20150,9 +20212,26 @@
+@@ -20587,9 +20649,26 @@
          "title": "ThreadMetadataUpdateResponse",
          "type": "object"
        },
@@ -200,10 +200,10 @@ index 1159075..1cc0dd0 100644
              "type": "string"
            },
 diff --git a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
-index 97c7f79..76cb389 100644
+index 3ec952020..82897e760 100644
 --- a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
 +++ b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
-@@ -1556,6 +1556,30 @@
+@@ -1586,6 +1586,30 @@
            "title": "Thread/name/setRequest",
            "type": "object"
          },
@@ -234,7 +234,7 @@ index 97c7f79..76cb389 100644
          {
            "properties": {
              "id": {
-@@ -16620,6 +16644,44 @@
+@@ -17039,6 +17063,44 @@
        "title": "ThreadForkResponse",
        "type": "object"
      },
@@ -279,7 +279,7 @@ index 97c7f79..76cb389 100644
      "ThreadGoal": {
        "properties": {
          "createdAt": {
-@@ -17909,9 +17971,26 @@
+@@ -18339,9 +18401,26 @@
        "title": "ThreadMetadataUpdateResponse",
        "type": "object"
      },
@@ -306,60 +306,8 @@ index 97c7f79..76cb389 100644
          "threadId": {
            "type": "string"
          },
-diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadGenerateNameParams.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadGenerateNameParams.json
-new file mode 100644
-index 0000000..a0540e5
---- /dev/null
-+++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadGenerateNameParams.json
-@@ -0,0 +1,24 @@
-+{
-+  "$schema": "http://json-schema.org/draft-07/schema#",
-+  "description": "Parameters for a hidden, best-effort automatic thread-name request.",
-+  "properties": {
-+    "afterTurns": {
-+      "format": "uint",
-+      "minimum": 0.0,
-+      "type": "integer"
-+    },
-+    "completedTurnId": {
-+      "type": "string"
-+    },
-+    "threadId": {
-+      "type": "string"
-+    }
-+  },
-+  "required": [
-+    "afterTurns",
-+    "completedTurnId",
-+    "threadId"
-+  ],
-+  "title": "ThreadGenerateNameParams",
-+  "type": "object"
-+}
-\ No newline at end of file
-diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadGenerateNameResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadGenerateNameResponse.json
-new file mode 100644
-index 0000000..ef3a69e
---- /dev/null
-+++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadGenerateNameResponse.json
-@@ -0,0 +1,14 @@
-+{
-+  "$schema": "http://json-schema.org/draft-07/schema#",
-+  "properties": {
-+    "accepted": {
-+      "description": "Whether a background naming request was launched.",
-+      "type": "boolean"
-+    }
-+  },
-+  "required": [
-+    "accepted"
-+  ],
-+  "title": "ThreadGenerateNameResponse",
-+  "type": "object"
-+}
-\ No newline at end of file
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadNameUpdatedNotification.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadNameUpdatedNotification.json
-index 8c3b209..734f754 100644
+index 8c3b2095f..734f7544d 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadNameUpdatedNotification.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadNameUpdatedNotification.json
 @@ -1,6 +1,25 @@
@@ -389,10 +337,10 @@ index 8c3b209..734f754 100644
        "type": "string"
      },
 diff --git a/codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts b/codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts
-index d746912..4c133cb 100644
+index dffd07fbf..8ae3be0ca 100644
 --- a/codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts
 +++ b/codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts
-@@ -68,6 +68,7 @@ import type { ThreadArchiveParams } from "./v2/ThreadArchiveParams";
+@@ -69,6 +69,7 @@ import type { ThreadArchiveParams } from "./v2/ThreadArchiveParams";
  import type { ThreadCompactStartParams } from "./v2/ThreadCompactStartParams";
  import type { ThreadDeleteParams } from "./v2/ThreadDeleteParams";
  import type { ThreadForkParams } from "./v2/ThreadForkParams";
@@ -400,62 +348,22 @@ index d746912..4c133cb 100644
  import type { ThreadGoalClearParams } from "./v2/ThreadGoalClearParams";
  import type { ThreadGoalGetParams } from "./v2/ThreadGoalGetParams";
  import type { ThreadGoalSetParams } from "./v2/ThreadGoalSetParams";
-@@ -96,4 +97,4 @@ import type { WindowsSandboxSetupStartParams } from "./v2/WindowsSandboxSetupSta
+@@ -97,4 +98,4 @@ import type { WindowsSandboxSetupStartParams } from "./v2/WindowsSandboxSetupSta
  /**
   * Request from the client to the server.
   */
--export type ClientRequest ={ "method": "initialize", id: RequestId, params: InitializeParams, } | { "method": "thread/start", id: RequestId, params: ThreadStartParams, } | { "method": "thread/resume", id: RequestId, params: ThreadResumeParams, } | { "method": "thread/fork", id: RequestId, params: ThreadForkParams, } | { "method": "thread/archive", id: RequestId, params: ThreadArchiveParams, } | { "method": "thread/delete", id: RequestId, params: ThreadDeleteParams, } | { "method": "thread/unsubscribe", id: RequestId, params: ThreadUnsubscribeParams, } | { "method": "thread/name/set", id: RequestId, params: ThreadSetNameParams, } | { "method": "thread/goal/set", id: RequestId, params: ThreadGoalSetParams, } | { "method": "thread/goal/get", id: RequestId, params: ThreadGoalGetParams, } | { "method": "thread/goal/clear", id: RequestId, params: ThreadGoalClearParams, } | { "method": "thread/metadata/update", id: RequestId, params: ThreadMetadataUpdateParams, } | { "method": "thread/section/move", id: RequestId, params: ThreadSectionMoveParams, } | { "method": "thread/unarchive", id: RequestId, params: ThreadUnarchiveParams, } | { "method": "thread/compact/start", id: RequestId, params: ThreadCompactStartParams, } | { "method": "thread/shellCommand", id: RequestId, params: ThreadShellCommandParams, } | { "method": "thread/approveGuardianDeniedAction", id: RequestId, params: ThreadApproveGuardianDeniedActionParams, } | { "method": "thread/rollback", id: RequestId, params: ThreadRollbackParams, } | { "method": "thread/list", id: RequestId, params: ThreadListParams, } | { "method": "threadSection/list", id: RequestId, params: ThreadSectionListParams, } | { "method": "threadSection/create", id: RequestId, params: ThreadSectionCreateParams, } | { "method": "threadSection/update", id: RequestId, params: ThreadSectionUpdateParams, } | { "method": "threadSection/delete", id: RequestId, params: ThreadSectionDeleteParams, } | { "method": "thread/loaded/list", id: RequestId, params: ThreadLoadedListParams, } | { "method": "thread/read", id: RequestId, params: ThreadReadParams, } | { "method": "thread/inject_items", id: RequestId, params: ThreadInjectItemsParams, } | { "method": "skills/list", id: RequestId, params: SkillsListParams, } | { "method": "skills/extraRoots/set", id: RequestId, params: SkillsExtraRootsSetParams, } | { "method": "hooks/list", id: RequestId, params: HooksListParams, } | { "method": "marketplace/add", id: RequestId, params: MarketplaceAddParams, } | { "method": "marketplace/remove", id: RequestId, params: MarketplaceRemoveParams, } | { "method": "marketplace/upgrade", id: RequestId, params: MarketplaceUpgradeParams, } | { "method": "plugin/list", id: RequestId, params: PluginListParams, } | { "method": "plugin/installed", id: RequestId, params: PluginInstalledParams, } | { "method": "plugin/read", id: RequestId, params: PluginReadParams, } | { "method": "plugin/skill/read", id: RequestId, params: PluginSkillReadParams, } | { "method": "plugin/share/save", id: RequestId, params: PluginShareSaveParams, } | { "method": "plugin/share/updateTargets", id: RequestId, params: PluginShareUpdateTargetsParams, } | { "method": "plugin/share/list", id: RequestId, params: PluginShareListParams, } | { "method": "plugin/share/checkout", id: RequestId, params: PluginShareCheckoutParams, } | { "method": "plugin/share/delete", id: RequestId, params: PluginShareDeleteParams, } | { "method": "app/read", id: RequestId, params: AppsReadParams, } | { "method": "app/list", id: RequestId, params: AppsListParams, } | { "method": "app/installed", id: RequestId, params: AppsInstalledParams, } | { "method": "fs/readFile", id: RequestId, params: FsReadFileParams, } | { "method": "fs/writeFile", id: RequestId, params: FsWriteFileParams, } | { "method": "fs/createDirectory", id: RequestId, params: FsCreateDirectoryParams, } | { "method": "fs/getMetadata", id: RequestId, params: FsGetMetadataParams, } | { "method": "fs/readDirectory", id: RequestId, params: FsReadDirectoryParams, } | { "method": "fs/remove", id: RequestId, params: FsRemoveParams, } | { "method": "fs/copy", id: RequestId, params: FsCopyParams, } | { "method": "fs/watch", id: RequestId, params: FsWatchParams, } | { "method": "fs/unwatch", id: RequestId, params: FsUnwatchParams, } | { "method": "skills/config/write", id: RequestId, params: SkillsConfigWriteParams, } | { "method": "plugin/install", id: RequestId, params: PluginInstallParams, } | { "method": "plugin/uninstall", id: RequestId, params: PluginUninstallParams, } | { "method": "turn/start", id: RequestId, params: TurnStartParams, } | { "method": "turn/steer", id: RequestId, params: TurnSteerParams, } | { "method": "turn/interrupt", id: RequestId, params: TurnInterruptParams, } | { "method": "review/start", id: RequestId, params: ReviewStartParams, } | { "method": "model/list", id: RequestId, params: ModelListParams, } | { "method": "modelProvider/capabilities/read", id: RequestId, params: ModelProviderCapabilitiesReadParams, } | { "method": "experimentalFeature/list", id: RequestId, params: ExperimentalFeatureListParams, } | { "method": "permissionProfile/list", id: RequestId, params: PermissionProfileListParams, } | { "method": "experimentalFeature/enablement/set", id: RequestId, params: ExperimentalFeatureEnablementSetParams, } | { "method": "mcpServer/oauth/login", id: RequestId, params: McpServerOauthLoginParams, } | { "method": "config/mcpServer/reload", id: RequestId, params: undefined, } | { "method": "mcpServerStatus/list", id: RequestId, params: ListMcpServerStatusParams, } | { "method": "mcpServer/resource/read", id: RequestId, params: McpResourceReadParams, } | { "method": "mcpServer/tool/call", id: RequestId, params: McpServerToolCallParams, } | { "method": "windowsSandbox/setupStart", id: RequestId, params: WindowsSandboxSetupStartParams, } | { "method": "windowsSandbox/readiness", id: RequestId, params: undefined, } | { "method": "account/login/start", id: RequestId, params: LoginAccountParams, } | { "method": "account/login/cancel", id: RequestId, params: CancelLoginAccountParams, } | { "method": "account/logout", id: RequestId, params: undefined, } | { "method": "account/rateLimits/read", id: RequestId, params: undefined, } | { "method": "account/rateLimitResetCredit/consume", id: RequestId, params: ConsumeAccountRateLimitResetCreditParams, } | { "method": "account/usage/read", id: RequestId, params: undefined, } | { "method": "account/workspaceMessages/read", id: RequestId, params: undefined, } | { "method": "account/sendAddCreditsNudgeEmail", id: RequestId, params: SendAddCreditsNudgeEmailParams, } | { "method": "feedback/upload", id: RequestId, params: FeedbackUploadParams, } | { "method": "command/exec", id: RequestId, params: CommandExecParams, } | { "method": "command/exec/write", id: RequestId, params: CommandExecWriteParams, } | { "method": "command/exec/terminate", id: RequestId, params: CommandExecTerminateParams, } | { "method": "command/exec/resize", id: RequestId, params: CommandExecResizeParams, } | { "method": "config/read", id: RequestId, params: ConfigReadParams, } | { "method": "externalAgentConfig/detect", id: RequestId, params: ExternalAgentConfigDetectParams, } | { "method": "externalAgentConfig/import", id: RequestId, params: ExternalAgentConfigImportParams, } | { "method": "externalAgentConfig/import/recordHistory", id: RequestId, params: ExternalAgentConfigImportHistoryRecordParams, } | { "method": "externalAgentConfig/import/readHistories", id: RequestId, params: undefined, } | { "method": "config/value/write", id: RequestId, params: ConfigValueWriteParams, } | { "method": "config/batchWrite", id: RequestId, params: ConfigBatchWriteParams, } | { "method": "configRequirements/read", id: RequestId, params: undefined, } | { "method": "account/read", id: RequestId, params: GetAccountParams, } | { "method": "getConversationSummary", id: RequestId, params: GetConversationSummaryParams, } | { "method": "gitDiffToRemote", id: RequestId, params: GitDiffToRemoteParams, } | { "method": "getAuthStatus", id: RequestId, params: GetAuthStatusParams, } | { "method": "fuzzyFileSearch", id: RequestId, params: FuzzyFileSearchParams, };
-+export type ClientRequest ={ "method": "initialize", id: RequestId, params: InitializeParams, } | { "method": "thread/start", id: RequestId, params: ThreadStartParams, } | { "method": "thread/resume", id: RequestId, params: ThreadResumeParams, } | { "method": "thread/fork", id: RequestId, params: ThreadForkParams, } | { "method": "thread/archive", id: RequestId, params: ThreadArchiveParams, } | { "method": "thread/delete", id: RequestId, params: ThreadDeleteParams, } | { "method": "thread/unsubscribe", id: RequestId, params: ThreadUnsubscribeParams, } | { "method": "thread/name/set", id: RequestId, params: ThreadSetNameParams, } | { "method": "thread/name/generate", id: RequestId, params: ThreadGenerateNameParams, } | { "method": "thread/goal/set", id: RequestId, params: ThreadGoalSetParams, } | { "method": "thread/goal/get", id: RequestId, params: ThreadGoalGetParams, } | { "method": "thread/goal/clear", id: RequestId, params: ThreadGoalClearParams, } | { "method": "thread/metadata/update", id: RequestId, params: ThreadMetadataUpdateParams, } | { "method": "thread/section/move", id: RequestId, params: ThreadSectionMoveParams, } | { "method": "thread/unarchive", id: RequestId, params: ThreadUnarchiveParams, } | { "method": "thread/compact/start", id: RequestId, params: ThreadCompactStartParams, } | { "method": "thread/shellCommand", id: RequestId, params: ThreadShellCommandParams, } | { "method": "thread/approveGuardianDeniedAction", id: RequestId, params: ThreadApproveGuardianDeniedActionParams, } | { "method": "thread/rollback", id: RequestId, params: ThreadRollbackParams, } | { "method": "thread/list", id: RequestId, params: ThreadListParams, } | { "method": "threadSection/list", id: RequestId, params: ThreadSectionListParams, } | { "method": "threadSection/create", id: RequestId, params: ThreadSectionCreateParams, } | { "method": "threadSection/update", id: RequestId, params: ThreadSectionUpdateParams, } | { "method": "threadSection/delete", id: RequestId, params: ThreadSectionDeleteParams, } | { "method": "thread/loaded/list", id: RequestId, params: ThreadLoadedListParams, } | { "method": "thread/read", id: RequestId, params: ThreadReadParams, } | { "method": "thread/inject_items", id: RequestId, params: ThreadInjectItemsParams, } | { "method": "skills/list", id: RequestId, params: SkillsListParams, } | { "method": "skills/extraRoots/set", id: RequestId, params: SkillsExtraRootsSetParams, } | { "method": "hooks/list", id: RequestId, params: HooksListParams, } | { "method": "marketplace/add", id: RequestId, params: MarketplaceAddParams, } | { "method": "marketplace/remove", id: RequestId, params: MarketplaceRemoveParams, } | { "method": "marketplace/upgrade", id: RequestId, params: MarketplaceUpgradeParams, } | { "method": "plugin/list", id: RequestId, params: PluginListParams, } | { "method": "plugin/installed", id: RequestId, params: PluginInstalledParams, } | { "method": "plugin/read", id: RequestId, params: PluginReadParams, } | { "method": "plugin/skill/read", id: RequestId, params: PluginSkillReadParams, } | { "method": "plugin/share/save", id: RequestId, params: PluginShareSaveParams, } | { "method": "plugin/share/updateTargets", id: RequestId, params: PluginShareUpdateTargetsParams, } | { "method": "plugin/share/list", id: RequestId, params: PluginShareListParams, } | { "method": "plugin/share/checkout", id: RequestId, params: PluginShareCheckoutParams, } | { "method": "plugin/share/delete", id: RequestId, params: PluginShareDeleteParams, } | { "method": "app/read", id: RequestId, params: AppsReadParams, } | { "method": "app/list", id: RequestId, params: AppsListParams, } | { "method": "app/installed", id: RequestId, params: AppsInstalledParams, } | { "method": "fs/readFile", id: RequestId, params: FsReadFileParams, } | { "method": "fs/writeFile", id: RequestId, params: FsWriteFileParams, } | { "method": "fs/createDirectory", id: RequestId, params: FsCreateDirectoryParams, } | { "method": "fs/getMetadata", id: RequestId, params: FsGetMetadataParams, } | { "method": "fs/readDirectory", id: RequestId, params: FsReadDirectoryParams, } | { "method": "fs/remove", id: RequestId, params: FsRemoveParams, } | { "method": "fs/copy", id: RequestId, params: FsCopyParams, } | { "method": "fs/watch", id: RequestId, params: FsWatchParams, } | { "method": "fs/unwatch", id: RequestId, params: FsUnwatchParams, } | { "method": "skills/config/write", id: RequestId, params: SkillsConfigWriteParams, } | { "method": "plugin/install", id: RequestId, params: PluginInstallParams, } | { "method": "plugin/uninstall", id: RequestId, params: PluginUninstallParams, } | { "method": "turn/start", id: RequestId, params: TurnStartParams, } | { "method": "turn/steer", id: RequestId, params: TurnSteerParams, } | { "method": "turn/interrupt", id: RequestId, params: TurnInterruptParams, } | { "method": "review/start", id: RequestId, params: ReviewStartParams, } | { "method": "model/list", id: RequestId, params: ModelListParams, } | { "method": "modelProvider/capabilities/read", id: RequestId, params: ModelProviderCapabilitiesReadParams, } | { "method": "experimentalFeature/list", id: RequestId, params: ExperimentalFeatureListParams, } | { "method": "permissionProfile/list", id: RequestId, params: PermissionProfileListParams, } | { "method": "experimentalFeature/enablement/set", id: RequestId, params: ExperimentalFeatureEnablementSetParams, } | { "method": "mcpServer/oauth/login", id: RequestId, params: McpServerOauthLoginParams, } | { "method": "config/mcpServer/reload", id: RequestId, params: undefined, } | { "method": "mcpServerStatus/list", id: RequestId, params: ListMcpServerStatusParams, } | { "method": "mcpServer/resource/read", id: RequestId, params: McpResourceReadParams, } | { "method": "mcpServer/tool/call", id: RequestId, params: McpServerToolCallParams, } | { "method": "windowsSandbox/setupStart", id: RequestId, params: WindowsSandboxSetupStartParams, } | { "method": "windowsSandbox/readiness", id: RequestId, params: undefined, } | { "method": "account/login/start", id: RequestId, params: LoginAccountParams, } | { "method": "account/login/cancel", id: RequestId, params: CancelLoginAccountParams, } | { "method": "account/logout", id: RequestId, params: undefined, } | { "method": "account/rateLimits/read", id: RequestId, params: undefined, } | { "method": "account/rateLimitResetCredit/consume", id: RequestId, params: ConsumeAccountRateLimitResetCreditParams, } | { "method": "account/usage/read", id: RequestId, params: undefined, } | { "method": "account/workspaceMessages/read", id: RequestId, params: undefined, } | { "method": "account/sendAddCreditsNudgeEmail", id: RequestId, params: SendAddCreditsNudgeEmailParams, } | { "method": "feedback/upload", id: RequestId, params: FeedbackUploadParams, } | { "method": "command/exec", id: RequestId, params: CommandExecParams, } | { "method": "command/exec/write", id: RequestId, params: CommandExecWriteParams, } | { "method": "command/exec/terminate", id: RequestId, params: CommandExecTerminateParams, } | { "method": "command/exec/resize", id: RequestId, params: CommandExecResizeParams, } | { "method": "config/read", id: RequestId, params: ConfigReadParams, } | { "method": "externalAgentConfig/detect", id: RequestId, params: ExternalAgentConfigDetectParams, } | { "method": "externalAgentConfig/import", id: RequestId, params: ExternalAgentConfigImportParams, } | { "method": "externalAgentConfig/import/recordHistory", id: RequestId, params: ExternalAgentConfigImportHistoryRecordParams, } | { "method": "externalAgentConfig/import/readHistories", id: RequestId, params: undefined, } | { "method": "config/value/write", id: RequestId, params: ConfigValueWriteParams, } | { "method": "config/batchWrite", id: RequestId, params: ConfigBatchWriteParams, } | { "method": "configRequirements/read", id: RequestId, params: undefined, } | { "method": "account/read", id: RequestId, params: GetAccountParams, } | { "method": "getConversationSummary", id: RequestId, params: GetConversationSummaryParams, } | { "method": "gitDiffToRemote", id: RequestId, params: GitDiffToRemoteParams, } | { "method": "getAuthStatus", id: RequestId, params: GetAuthStatusParams, } | { "method": "fuzzyFileSearch", id: RequestId, params: FuzzyFileSearchParams, };
-diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameParams.ts b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameParams.ts
-new file mode 100644
-index 0000000..3177900
---- /dev/null
-+++ b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameParams.ts
-@@ -0,0 +1,8 @@
-+// GENERATED CODE! DO NOT MODIFY BY HAND!
-+
-+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.
-+
-+/**
-+ * Parameters for a hidden, best-effort automatic thread-name request.
-+ */
-+export type ThreadGenerateNameParams = { threadId: string, completedTurnId: string, afterTurns: number, };
-diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameResponse.ts b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameResponse.ts
-new file mode 100644
-index 0000000..6dfab28
---- /dev/null
-+++ b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameResponse.ts
-@@ -0,0 +1,9 @@
-+// GENERATED CODE! DO NOT MODIFY BY HAND!
-+
-+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.
-+
-+export type ThreadGenerateNameResponse = {
-+/**
-+ * Whether a background naming request was launched.
-+ */
-+accepted: boolean, };
-diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/ThreadNameUpdateSource.ts b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadNameUpdateSource.ts
-new file mode 100644
-index 0000000..27ba753
---- /dev/null
-+++ b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadNameUpdateSource.ts
-@@ -0,0 +1,5 @@
-+// GENERATED CODE! DO NOT MODIFY BY HAND!
-+
-+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.
-+
-+export type ThreadNameUpdateSource = "generated";
+-export type ClientRequest ={ "method": "initialize", id: RequestId, params: InitializeParams, } | { "method": "thread/start", id: RequestId, params: ThreadStartParams, } | { "method": "thread/resume", id: RequestId, params: ThreadResumeParams, } | { "method": "thread/fork", id: RequestId, params: ThreadForkParams, } | { "method": "thread/archive", id: RequestId, params: ThreadArchiveParams, } | { "method": "thread/delete", id: RequestId, params: ThreadDeleteParams, } | { "method": "thread/unsubscribe", id: RequestId, params: ThreadUnsubscribeParams, } | { "method": "thread/name/set", id: RequestId, params: ThreadSetNameParams, } | { "method": "thread/goal/set", id: RequestId, params: ThreadGoalSetParams, } | { "method": "thread/goal/get", id: RequestId, params: ThreadGoalGetParams, } | { "method": "thread/goal/clear", id: RequestId, params: ThreadGoalClearParams, } | { "method": "thread/metadata/update", id: RequestId, params: ThreadMetadataUpdateParams, } | { "method": "thread/section/move", id: RequestId, params: ThreadSectionMoveParams, } | { "method": "thread/unarchive", id: RequestId, params: ThreadUnarchiveParams, } | { "method": "thread/compact/start", id: RequestId, params: ThreadCompactStartParams, } | { "method": "thread/shellCommand", id: RequestId, params: ThreadShellCommandParams, } | { "method": "thread/approveGuardianDeniedAction", id: RequestId, params: ThreadApproveGuardianDeniedActionParams, } | { "method": "thread/rollback", id: RequestId, params: ThreadRollbackParams, } | { "method": "thread/list", id: RequestId, params: ThreadListParams, } | { "method": "threadSection/list", id: RequestId, params: ThreadSectionListParams, } | { "method": "threadSection/create", id: RequestId, params: ThreadSectionCreateParams, } | { "method": "threadSection/update", id: RequestId, params: ThreadSectionUpdateParams, } | { "method": "threadSection/delete", id: RequestId, params: ThreadSectionDeleteParams, } | { "method": "thread/loaded/list", id: RequestId, params: ThreadLoadedListParams, } | { "method": "thread/read", id: RequestId, params: ThreadReadParams, } | { "method": "thread/inject_items", id: RequestId, params: ThreadInjectItemsParams, } | { "method": "skills/list", id: RequestId, params: SkillsListParams, } | { "method": "skills/extraRoots/set", id: RequestId, params: SkillsExtraRootsSetParams, } | { "method": "hooks/list", id: RequestId, params: HooksListParams, } | { "method": "marketplace/add", id: RequestId, params: MarketplaceAddParams, } | { "method": "marketplace/remove", id: RequestId, params: MarketplaceRemoveParams, } | { "method": "marketplace/upgrade", id: RequestId, params: MarketplaceUpgradeParams, } | { "method": "plugin/list", id: RequestId, params: PluginListParams, } | { "method": "plugin/installed", id: RequestId, params: PluginInstalledParams, } | { "method": "plugin/read", id: RequestId, params: PluginReadParams, } | { "method": "plugin/skill/read", id: RequestId, params: PluginSkillReadParams, } | { "method": "plugin/share/save", id: RequestId, params: PluginShareSaveParams, } | { "method": "plugin/share/updateTargets", id: RequestId, params: PluginShareUpdateTargetsParams, } | { "method": "plugin/share/list", id: RequestId, params: PluginShareListParams, } | { "method": "plugin/share/checkout", id: RequestId, params: PluginShareCheckoutParams, } | { "method": "plugin/share/delete", id: RequestId, params: PluginShareDeleteParams, } | { "method": "app/read", id: RequestId, params: AppsReadParams, } | { "method": "app/list", id: RequestId, params: AppsListParams, } | { "method": "app/installed", id: RequestId, params: AppsInstalledParams, } | { "method": "fs/readFile", id: RequestId, params: FsReadFileParams, } | { "method": "fs/writeFile", id: RequestId, params: FsWriteFileParams, } | { "method": "fs/createDirectory", id: RequestId, params: FsCreateDirectoryParams, } | { "method": "fs/getMetadata", id: RequestId, params: FsGetMetadataParams, } | { "method": "fs/readDirectory", id: RequestId, params: FsReadDirectoryParams, } | { "method": "fs/remove", id: RequestId, params: FsRemoveParams, } | { "method": "fs/copy", id: RequestId, params: FsCopyParams, } | { "method": "fs/watch", id: RequestId, params: FsWatchParams, } | { "method": "fs/unwatch", id: RequestId, params: FsUnwatchParams, } | { "method": "skills/config/write", id: RequestId, params: SkillsConfigWriteParams, } | { "method": "plugin/install", id: RequestId, params: PluginInstallParams, } | { "method": "plugin/uninstall", id: RequestId, params: PluginUninstallParams, } | { "method": "turn/start", id: RequestId, params: TurnStartParams, } | { "method": "turn/steer", id: RequestId, params: TurnSteerParams, } | { "method": "turn/interrupt", id: RequestId, params: TurnInterruptParams, } | { "method": "review/start", id: RequestId, params: ReviewStartParams, } | { "method": "model/list", id: RequestId, params: ModelListParams, } | { "method": "modelProvider/capabilities/read", id: RequestId, params: ModelProviderCapabilitiesReadParams, } | { "method": "experimentalFeature/list", id: RequestId, params: ExperimentalFeatureListParams, } | { "method": "permissionProfile/list", id: RequestId, params: PermissionProfileListParams, } | { "method": "experimentalFeature/enablement/set", id: RequestId, params: ExperimentalFeatureEnablementSetParams, } | { "method": "mcpServer/oauth/login", id: RequestId, params: McpServerOauthLoginParams, } | { "method": "config/mcpServer/reload", id: RequestId, params: undefined, } | { "method": "mcpServerStatus/list", id: RequestId, params: ListMcpServerStatusParams, } | { "method": "mcpServer/resource/read", id: RequestId, params: McpResourceReadParams, } | { "method": "mcpServer/tool/call", id: RequestId, params: McpServerToolCallParams, } | { "method": "windowsSandbox/setupStart", id: RequestId, params: WindowsSandboxSetupStartParams, } | { "method": "windowsSandbox/readiness", id: RequestId, params: undefined, } | { "method": "account/login/start", id: RequestId, params: LoginAccountParams, } | { "method": "account/login/cancel", id: RequestId, params: CancelLoginAccountParams, } | { "method": "account/logout", id: RequestId, params: undefined, } | { "method": "account/rateLimits/read", id: RequestId, params: undefined, } | { "method": "account/rateLimitResetCredit/consume", id: RequestId, params: ConsumeAccountRateLimitResetCreditParams, } | { "method": "account/usage/read", id: RequestId, params?: GetAccountTokenUsageParams | undefined, } | { "method": "account/workspaceMessages/read", id: RequestId, params: undefined, } | { "method": "account/sendAddCreditsNudgeEmail", id: RequestId, params: SendAddCreditsNudgeEmailParams, } | { "method": "feedback/upload", id: RequestId, params: FeedbackUploadParams, } | { "method": "command/exec", id: RequestId, params: CommandExecParams, } | { "method": "command/exec/write", id: RequestId, params: CommandExecWriteParams, } | { "method": "command/exec/terminate", id: RequestId, params: CommandExecTerminateParams, } | { "method": "command/exec/resize", id: RequestId, params: CommandExecResizeParams, } | { "method": "config/read", id: RequestId, params: ConfigReadParams, } | { "method": "externalAgentConfig/detect", id: RequestId, params: ExternalAgentConfigDetectParams, } | { "method": "externalAgentConfig/import", id: RequestId, params: ExternalAgentConfigImportParams, } | { "method": "externalAgentConfig/import/recordHistory", id: RequestId, params: ExternalAgentConfigImportHistoryRecordParams, } | { "method": "externalAgentConfig/import/readHistories", id: RequestId, params: undefined, } | { "method": "config/value/write", id: RequestId, params: ConfigValueWriteParams, } | { "method": "config/batchWrite", id: RequestId, params: ConfigBatchWriteParams, } | { "method": "configRequirements/read", id: RequestId, params: undefined, } | { "method": "account/read", id: RequestId, params: GetAccountParams, } | { "method": "getConversationSummary", id: RequestId, params: GetConversationSummaryParams, } | { "method": "gitDiffToRemote", id: RequestId, params: GitDiffToRemoteParams, } | { "method": "getAuthStatus", id: RequestId, params: GetAuthStatusParams, } | { "method": "fuzzyFileSearch", id: RequestId, params: FuzzyFileSearchParams, };
++export type ClientRequest ={ "method": "initialize", id: RequestId, params: InitializeParams, } | { "method": "thread/start", id: RequestId, params: ThreadStartParams, } | { "method": "thread/resume", id: RequestId, params: ThreadResumeParams, } | { "method": "thread/fork", id: RequestId, params: ThreadForkParams, } | { "method": "thread/archive", id: RequestId, params: ThreadArchiveParams, } | { "method": "thread/delete", id: RequestId, params: ThreadDeleteParams, } | { "method": "thread/unsubscribe", id: RequestId, params: ThreadUnsubscribeParams, } | { "method": "thread/name/set", id: RequestId, params: ThreadSetNameParams, } | { "method": "thread/name/generate", id: RequestId, params: ThreadGenerateNameParams, } | { "method": "thread/goal/set", id: RequestId, params: ThreadGoalSetParams, } | { "method": "thread/goal/get", id: RequestId, params: ThreadGoalGetParams, } | { "method": "thread/goal/clear", id: RequestId, params: ThreadGoalClearParams, } | { "method": "thread/metadata/update", id: RequestId, params: ThreadMetadataUpdateParams, } | { "method": "thread/section/move", id: RequestId, params: ThreadSectionMoveParams, } | { "method": "thread/unarchive", id: RequestId, params: ThreadUnarchiveParams, } | { "method": "thread/compact/start", id: RequestId, params: ThreadCompactStartParams, } | { "method": "thread/shellCommand", id: RequestId, params: ThreadShellCommandParams, } | { "method": "thread/approveGuardianDeniedAction", id: RequestId, params: ThreadApproveGuardianDeniedActionParams, } | { "method": "thread/rollback", id: RequestId, params: ThreadRollbackParams, } | { "method": "thread/list", id: RequestId, params: ThreadListParams, } | { "method": "threadSection/list", id: RequestId, params: ThreadSectionListParams, } | { "method": "threadSection/create", id: RequestId, params: ThreadSectionCreateParams, } | { "method": "threadSection/update", id: RequestId, params: ThreadSectionUpdateParams, } | { "method": "threadSection/delete", id: RequestId, params: ThreadSectionDeleteParams, } | { "method": "thread/loaded/list", id: RequestId, params: ThreadLoadedListParams, } | { "method": "thread/read", id: RequestId, params: ThreadReadParams, } | { "method": "thread/inject_items", id: RequestId, params: ThreadInjectItemsParams, } | { "method": "skills/list", id: RequestId, params: SkillsListParams, } | { "method": "skills/extraRoots/set", id: RequestId, params: SkillsExtraRootsSetParams, } | { "method": "hooks/list", id: RequestId, params: HooksListParams, } | { "method": "marketplace/add", id: RequestId, params: MarketplaceAddParams, } | { "method": "marketplace/remove", id: RequestId, params: MarketplaceRemoveParams, } | { "method": "marketplace/upgrade", id: RequestId, params: MarketplaceUpgradeParams, } | { "method": "plugin/list", id: RequestId, params: PluginListParams, } | { "method": "plugin/installed", id: RequestId, params: PluginInstalledParams, } | { "method": "plugin/read", id: RequestId, params: PluginReadParams, } | { "method": "plugin/skill/read", id: RequestId, params: PluginSkillReadParams, } | { "method": "plugin/share/save", id: RequestId, params: PluginShareSaveParams, } | { "method": "plugin/share/updateTargets", id: RequestId, params: PluginShareUpdateTargetsParams, } | { "method": "plugin/share/list", id: RequestId, params: PluginShareListParams, } | { "method": "plugin/share/checkout", id: RequestId, params: PluginShareCheckoutParams, } | { "method": "plugin/share/delete", id: RequestId, params: PluginShareDeleteParams, } | { "method": "app/read", id: RequestId, params: AppsReadParams, } | { "method": "app/list", id: RequestId, params: AppsListParams, } | { "method": "app/installed", id: RequestId, params: AppsInstalledParams, } | { "method": "fs/readFile", id: RequestId, params: FsReadFileParams, } | { "method": "fs/writeFile", id: RequestId, params: FsWriteFileParams, } | { "method": "fs/createDirectory", id: RequestId, params: FsCreateDirectoryParams, } | { "method": "fs/getMetadata", id: RequestId, params: FsGetMetadataParams, } | { "method": "fs/readDirectory", id: RequestId, params: FsReadDirectoryParams, } | { "method": "fs/remove", id: RequestId, params: FsRemoveParams, } | { "method": "fs/copy", id: RequestId, params: FsCopyParams, } | { "method": "fs/watch", id: RequestId, params: FsWatchParams, } | { "method": "fs/unwatch", id: RequestId, params: FsUnwatchParams, } | { "method": "skills/config/write", id: RequestId, params: SkillsConfigWriteParams, } | { "method": "plugin/install", id: RequestId, params: PluginInstallParams, } | { "method": "plugin/uninstall", id: RequestId, params: PluginUninstallParams, } | { "method": "turn/start", id: RequestId, params: TurnStartParams, } | { "method": "turn/steer", id: RequestId, params: TurnSteerParams, } | { "method": "turn/interrupt", id: RequestId, params: TurnInterruptParams, } | { "method": "review/start", id: RequestId, params: ReviewStartParams, } | { "method": "model/list", id: RequestId, params: ModelListParams, } | { "method": "modelProvider/capabilities/read", id: RequestId, params: ModelProviderCapabilitiesReadParams, } | { "method": "experimentalFeature/list", id: RequestId, params: ExperimentalFeatureListParams, } | { "method": "permissionProfile/list", id: RequestId, params: PermissionProfileListParams, } | { "method": "experimentalFeature/enablement/set", id: RequestId, params: ExperimentalFeatureEnablementSetParams, } | { "method": "mcpServer/oauth/login", id: RequestId, params: McpServerOauthLoginParams, } | { "method": "config/mcpServer/reload", id: RequestId, params: undefined, } | { "method": "mcpServerStatus/list", id: RequestId, params: ListMcpServerStatusParams, } | { "method": "mcpServer/resource/read", id: RequestId, params: McpResourceReadParams, } | { "method": "mcpServer/tool/call", id: RequestId, params: McpServerToolCallParams, } | { "method": "windowsSandbox/setupStart", id: RequestId, params: WindowsSandboxSetupStartParams, } | { "method": "windowsSandbox/readiness", id: RequestId, params: undefined, } | { "method": "account/login/start", id: RequestId, params: LoginAccountParams, } | { "method": "account/login/cancel", id: RequestId, params: CancelLoginAccountParams, } | { "method": "account/logout", id: RequestId, params: undefined, } | { "method": "account/rateLimits/read", id: RequestId, params: undefined, } | { "method": "account/rateLimitResetCredit/consume", id: RequestId, params: ConsumeAccountRateLimitResetCreditParams, } | { "method": "account/usage/read", id: RequestId, params?: GetAccountTokenUsageParams | undefined, } | { "method": "account/workspaceMessages/read", id: RequestId, params: undefined, } | { "method": "account/sendAddCreditsNudgeEmail", id: RequestId, params: SendAddCreditsNudgeEmailParams, } | { "method": "feedback/upload", id: RequestId, params: FeedbackUploadParams, } | { "method": "command/exec", id: RequestId, params: CommandExecParams, } | { "method": "command/exec/write", id: RequestId, params: CommandExecWriteParams, } | { "method": "command/exec/terminate", id: RequestId, params: CommandExecTerminateParams, } | { "method": "command/exec/resize", id: RequestId, params: CommandExecResizeParams, } | { "method": "config/read", id: RequestId, params: ConfigReadParams, } | { "method": "externalAgentConfig/detect", id: RequestId, params: ExternalAgentConfigDetectParams, } | { "method": "externalAgentConfig/import", id: RequestId, params: ExternalAgentConfigImportParams, } | { "method": "externalAgentConfig/import/recordHistory", id: RequestId, params: ExternalAgentConfigImportHistoryRecordParams, } | { "method": "externalAgentConfig/import/readHistories", id: RequestId, params: undefined, } | { "method": "config/value/write", id: RequestId, params: ConfigValueWriteParams, } | { "method": "config/batchWrite", id: RequestId, params: ConfigBatchWriteParams, } | { "method": "configRequirements/read", id: RequestId, params: undefined, } | { "method": "account/read", id: RequestId, params: GetAccountParams, } | { "method": "getConversationSummary", id: RequestId, params: GetConversationSummaryParams, } | { "method": "gitDiffToRemote", id: RequestId, params: GitDiffToRemoteParams, } | { "method": "getAuthStatus", id: RequestId, params: GetAuthStatusParams, } | { "method": "fuzzyFileSearch", id: RequestId, params: FuzzyFileSearchParams, };
 diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/ThreadNameUpdatedNotification.ts b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadNameUpdatedNotification.ts
-index c944b5a..c0c1fd6 100644
+index c944b5aae..c0c1fd643 100644
 --- a/codex-rs/app-server-protocol/schema/typescript/v2/ThreadNameUpdatedNotification.ts
 +++ b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadNameUpdatedNotification.ts
 @@ -1,5 +1,10 @@
  // GENERATED CODE! DO NOT MODIFY BY HAND!
- 
+
  // This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.
 +import type { ThreadNameUpdateSource } from "./ThreadNameUpdateSource";
- 
+
 -export type ThreadNameUpdatedNotification = { threadId: string, threadName?: string, };
 +export type ThreadNameUpdatedNotification = { threadId: string, threadName?: string,
 +/**
@@ -463,10 +371,10 @@ index c944b5a..c0c1fd6 100644
 + */
 +source?: ThreadNameUpdateSource, };
 diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/index.ts b/codex-rs/app-server-protocol/schema/typescript/v2/index.ts
-index 7f55368..234b39f 100644
+index b25c7efa8..e9d1a6aee 100644
 --- a/codex-rs/app-server-protocol/schema/typescript/v2/index.ts
 +++ b/codex-rs/app-server-protocol/schema/typescript/v2/index.ts
-@@ -433,6 +433,8 @@ export type { ThreadDeletedNotification } from "./ThreadDeletedNotification";
+@@ -440,6 +440,8 @@ export type { ThreadDeletedNotification } from "./ThreadDeletedNotification";
  export type { ThreadExtra } from "./ThreadExtra";
  export type { ThreadForkParams } from "./ThreadForkParams";
  export type { ThreadForkResponse } from "./ThreadForkResponse";
@@ -475,19 +383,19 @@ index 7f55368..234b39f 100644
  export type { ThreadGoal } from "./ThreadGoal";
  export type { ThreadGoalClearParams } from "./ThreadGoalClearParams";
  export type { ThreadGoalClearResponse } from "./ThreadGoalClearResponse";
-@@ -455,6 +457,7 @@ export type { ThreadLoadedListResponse } from "./ThreadLoadedListResponse";
+@@ -462,6 +464,7 @@ export type { ThreadLoadedListResponse } from "./ThreadLoadedListResponse";
  export type { ThreadMetadataGitInfoUpdateParams } from "./ThreadMetadataGitInfoUpdateParams";
  export type { ThreadMetadataUpdateParams } from "./ThreadMetadataUpdateParams";
  export type { ThreadMetadataUpdateResponse } from "./ThreadMetadataUpdateResponse";
 +export type { ThreadNameUpdateSource } from "./ThreadNameUpdateSource";
  export type { ThreadNameUpdatedNotification } from "./ThreadNameUpdatedNotification";
+ export type { ThreadQueueChangedNotification } from "./ThreadQueueChangedNotification";
  export type { ThreadReadParams } from "./ThreadReadParams";
- export type { ThreadReadResponse } from "./ThreadReadResponse";
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index c36df0a..51b541b 100644
+index 3893b7762..2b41bcb17 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -538,6 +538,11 @@ client_request_definitions! {
+@@ -559,6 +559,11 @@ client_request_definitions! {
          serialization: thread_id(params.thread_id),
          response: v2::ThreadSetNameResponse,
      },
@@ -500,13 +408,13 @@ index c36df0a..51b541b 100644
          params: v2::ThreadGoalSetParams,
          serialization: thread_id(params.thread_id),
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 0208742..701945f 100644
+index 6c409e78f..ed79afc6a 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -745,6 +745,16 @@ pub struct ThreadSetNameParams {
+@@ -747,6 +747,16 @@ pub struct ThreadSetNameParams {
      pub name: String,
  }
- 
+
 +/// Parameters for a hidden, best-effort automatic thread-name request.
 +#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 +#[serde(rename_all = "camelCase")]
@@ -520,10 +428,10 @@ index 0208742..701945f 100644
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
-@@ -757,6 +767,14 @@ pub struct ThreadUnarchiveParams {
+@@ -759,6 +769,14 @@ pub struct ThreadUnarchiveParams {
  #[ts(export_to = "v2/")]
  pub struct ThreadSetNameResponse {}
- 
+
 +#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 +#[serde(rename_all = "camelCase")]
 +#[ts(export_to = "v2/")]
@@ -535,7 +443,7 @@ index 0208742..701945f 100644
  v2_enum_from_core! {
      pub enum ThreadGoalStatus from CoreThreadGoalStatus {
          Active,
-@@ -1698,6 +1716,17 @@ pub struct ThreadNameUpdatedNotification {
+@@ -1858,6 +1876,17 @@ pub struct ThreadNameUpdatedNotification {
      #[serde(default, skip_serializing_if = "Option::is_none")]
      #[ts(optional)]
      pub thread_name: Option<String>,
@@ -551,10 +459,10 @@ index 0208742..701945f 100644
 +pub enum ThreadNameUpdateSource {
 +    Generated,
  }
- 
+
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 diff --git a/codex-rs/app-server/src/bespoke_event_handling.rs b/codex-rs/app-server/src/bespoke_event_handling.rs
-index a14522f..c14714a 100644
+index 32c222668..804b5eb8a 100644
 --- a/codex-rs/app-server/src/bespoke_event_handling.rs
 +++ b/codex-rs/app-server/src/bespoke_event_handling.rs
 @@ -2,6 +2,7 @@ use crate::error_code::internal_error;
@@ -574,10 +482,10 @@ index a14522f..c14714a 100644
  use codex_app_server_protocol::ThreadRealtimeClosedNotification;
  use codex_app_server_protocol::ThreadRealtimeErrorNotification;
  use codex_app_server_protocol::ThreadRealtimeItemAddedNotification;
-@@ -1186,6 +1189,41 @@ pub(crate) async fn apply_bespoke_event_handling(
-                 ))
+@@ -1187,6 +1190,41 @@ pub(crate) async fn apply_bespoke_event_handling(
                  .await;
          }
+         EventMsg::ThreadQueueChanged(_) => {}
 +        EventMsg::ThreadNameUpdateRequested(thread_name_event) => {
 +            // The in-process `set_thread_name` tool asked the owning app-server to
 +            // title this thread. Persist through the canonical thread-store path
@@ -617,10 +525,10 @@ index a14522f..c14714a 100644
              let thread_settings =
                  thread_settings_from_core_snapshot(thread_settings_event.thread_settings);
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index c11671b..1cb842e 100644
+index d02be3412..c31f86417 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1098,6 +1098,9 @@ impl MessageProcessor {
+@@ -1128,6 +1128,9 @@ impl MessageProcessor {
                      .thread_set_name(request_id.clone(), params)
                      .await
              }
@@ -631,10 +539,10 @@ index c11671b..1cb842e 100644
                  self.thread_goal_processor
                      .thread_goal_set(request_id.clone(), params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 57dbb04..685a8c8 100644
+index 0929e2629..312cd0be3 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
-@@ -209,6 +209,8 @@ use codex_app_server_protocol::ThreadDeleteResponse;
+@@ -212,6 +212,8 @@ use codex_app_server_protocol::ThreadDeleteResponse;
  use codex_app_server_protocol::ThreadDeletedNotification;
  use codex_app_server_protocol::ThreadForkParams;
  use codex_app_server_protocol::ThreadForkResponse;
@@ -643,7 +551,7 @@ index 57dbb04..685a8c8 100644
  use codex_app_server_protocol::ThreadGoal;
  use codex_app_server_protocol::ThreadGoalClearParams;
  use codex_app_server_protocol::ThreadGoalClearResponse;
-@@ -240,6 +242,7 @@ use codex_app_server_protocol::ThreadMemoryModeSetResponse;
+@@ -243,6 +245,7 @@ use codex_app_server_protocol::ThreadMemoryModeSetResponse;
  use codex_app_server_protocol::ThreadMetadataGitInfoUpdateParams;
  use codex_app_server_protocol::ThreadMetadataUpdateParams;
  use codex_app_server_protocol::ThreadMetadataUpdateResponse;
@@ -651,7 +559,7 @@ index 57dbb04..685a8c8 100644
  use codex_app_server_protocol::ThreadNameUpdatedNotification;
  use codex_app_server_protocol::ThreadReadParams;
  use codex_app_server_protocol::ThreadReadResponse;
-@@ -452,6 +455,7 @@ use codex_protocol::protocol::RolloutItem;
+@@ -456,6 +459,7 @@ use codex_protocol::protocol::ReviewTarget as CoreReviewTarget;
  use codex_protocol::protocol::SessionConfiguredEvent;
  #[cfg(test)]
  use codex_protocol::protocol::SessionMetaLine;
@@ -659,22 +567,22 @@ index 57dbb04..685a8c8 100644
  use codex_protocol::protocol::TurnEnvironmentSelection;
  use codex_protocol::protocol::TurnEnvironmentSelections;
  use codex_protocol::protocol::W3cTraceContext;
-@@ -564,6 +568,7 @@ pub(crate) use remote_control_processor::RemoteControlRequestProcessor;
+@@ -574,6 +578,7 @@ pub(crate) use process_exec_processor::ProcessExecRequestProcessor;
+ pub(crate) use remote_control_processor::RemoteControlRequestProcessor;
  pub(crate) use search::SearchRequestProcessor;
  pub(crate) use thread_goal_processor::ThreadGoalRequestProcessor;
- pub(crate) use thread_processor::ThreadRequestProcessor;
 +pub(crate) use thread_processor::persist_thread_name_if_unnamed;
+ pub(crate) use thread_processor::ThreadRequestProcessor;
+ pub(crate) use thread_queue_processor::ThreadQueueRequestProcessor;
  pub(crate) use turn_processor::TurnRequestProcessor;
- pub(crate) use windows_sandbox_processor::WindowsSandboxRequestProcessor;
- 
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 2164737..b3d0472 100644
+index 4bb5e435f..822ad5055 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -32,6 +32,33 @@ struct ThreadListFilters {
-     relation_filter: Option<StoreThreadRelationFilter>,
+@@ -42,6 +42,33 @@ struct ThreadRevertRuntimeSnapshot {
+     client_mcp_extensions: ClientMcpExtensions,
  }
- 
+
 +#[derive(Default)]
 +struct AutoThreadNameState {
 +    in_flight: HashSet<ThreadId>,
@@ -705,7 +613,7 @@ index 2164737..b3d0472 100644
  fn collect_resume_override_mismatches(
      request: &ThreadResumeParams,
      config_snapshot: &ThreadConfigSnapshot,
-@@ -392,6 +419,8 @@ pub(crate) struct ThreadRequestProcessor {
+@@ -438,6 +465,8 @@ pub(crate) struct ThreadRequestProcessor {
      pub(super) state_db: Option<StateDbHandle>,
      pub(super) log_db: Option<LogDbLayer>,
      pub(super) background_tasks: TaskTracker,
@@ -714,7 +622,7 @@ index 2164737..b3d0472 100644
      pub(super) skills_watcher: Arc<SkillsWatcher>,
      pub(super) initial_config_warnings: Arc<Vec<ConfigWarningNotification>>,
  }
-@@ -443,6 +472,8 @@ impl ThreadRequestProcessor {
+@@ -489,6 +518,8 @@ impl ThreadRequestProcessor {
              state_db,
              log_db,
              background_tasks: TaskTracker::new(),
@@ -723,10 +631,10 @@ index 2164737..b3d0472 100644
              skills_watcher,
              initial_config_warnings: Arc::new(initial_config_warnings),
          }
-@@ -581,6 +612,111 @@ impl ThreadRequestProcessor {
+@@ -651,6 +682,111 @@ impl ThreadRequestProcessor {
          }
      }
- 
+
 +    pub(crate) async fn thread_generate_name(
 +        &self,
 +        params: ThreadGenerateNameParams,
@@ -835,15 +743,15 @@ index 2164737..b3d0472 100644
      pub(crate) async fn thread_metadata_update(
          &self,
          params: ThreadMetadataUpdateParams,
-@@ -1096,6 +1232,7 @@ impl ThreadRequestProcessor {
+@@ -1166,6 +1302,7 @@ impl ThreadRequestProcessor {
      }
- 
+
      pub(crate) async fn drain_background_tasks(&self) {
 +        self.auto_thread_name_cancellation.cancel();
          self.background_tasks.close();
          if tokio::time::timeout(Duration::from_secs(10), self.background_tasks.wait())
              .await
-@@ -1625,6 +1762,7 @@ impl ThreadRequestProcessor {
+@@ -1696,6 +1833,7 @@ impl ThreadRequestProcessor {
              Some(ThreadNameUpdatedNotification {
                  thread_id: thread_id.to_string(),
                  thread_name: Some(name),
@@ -851,10 +759,10 @@ index 2164737..b3d0472 100644
              }),
          ))
      }
-@@ -5111,6 +5249,62 @@ fn conversation_summary_rollout_path_read_error(
+@@ -5452,6 +5590,62 @@ fn conversation_summary_rollout_path_read_error(
      }
  }
- 
+
 +/// Persists a title for `thread_id` through the canonical thread-store metadata
 +/// path, but only for a primary thread that is currently untitled.
 +///
@@ -915,13 +823,13 @@ index 2164737..b3d0472 100644
      match err.details() {
          CodexErrorDetails::ThreadNotFound(thread_id) => {
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-index cf491c8..54b5df4 100644
+index aa04f2263..8cbc3ef27 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-@@ -95,6 +95,46 @@ mod background_terminal_pagination_tests {
+@@ -225,6 +225,46 @@ mod background_terminal_pagination_tests {
      }
  }
- 
+
 +mod auto_thread_name_state_tests {
 +    use super::super::AutoThreadNameState;
 +    use codex_protocol::ThreadId;
@@ -966,7 +874,7 @@ index cf491c8..54b5df4 100644
      async fn forked_from_id_from_rollout(path: &Path) -> Option<String> {
          codex_core::read_session_meta_line(path)
 diff --git a/codex-rs/app-server/tests/common/test_app_server.rs b/codex-rs/app-server/tests/common/test_app_server.rs
-index f5650a4..3e5d852 100644
+index d5b969b44..33f3cf710 100644
 --- a/codex-rs/app-server/tests/common/test_app_server.rs
 +++ b/codex-rs/app-server/tests/common/test_app_server.rs
 @@ -87,6 +87,7 @@ use codex_app_server_protocol::ThreadArchiveParams;
@@ -977,10 +885,10 @@ index f5650a4..3e5d852 100644
  use codex_app_server_protocol::ThreadInjectItemsParams;
  use codex_app_server_protocol::ThreadItemsListParams;
  use codex_app_server_protocol::ThreadListParams;
-@@ -532,6 +533,15 @@ impl TestAppServer {
+@@ -542,6 +543,15 @@ impl TestAppServer {
          self.send_request("thread/name/set", params).await
      }
- 
+
 +    /// Send a `thread/name/generate` JSON-RPC request.
 +    pub async fn send_thread_generate_name_request(
 +        &mut self,
@@ -994,7 +902,7 @@ index f5650a4..3e5d852 100644
      pub async fn send_thread_metadata_update_request(
          &mut self,
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_name_websocket.rs b/codex-rs/app-server/tests/suite/v2/thread_name_websocket.rs
-index 951e4d7..00f530f 100644
+index 951e4d74e..00f530f01 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_name_websocket.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_name_websocket.rs
 @@ -3,6 +3,7 @@ use super::connection_handling_websocket::WsClient;
@@ -1032,7 +940,7 @@ index 951e4d7..00f530f 100644
 @@ -147,6 +155,107 @@ async fn thread_name_updated_broadcasts_for_not_loaded_threads() -> Result<()> {
      result
  }
- 
+
 +#[tokio::test]
 +async fn set_thread_name_tool_broadcasts_to_all_clients_once() -> Result<()> {
 +    let generated_name = "Fix Live Thread Renaming";
@@ -1140,7 +1048,7 @@ index 951e4d7..00f530f 100644
 @@ -156,6 +265,18 @@ async fn initialize_both_clients(ws1: &mut WsClient, ws2: &mut WsClient) -> Resu
      Ok(())
  }
- 
+
 +fn create_config_toml_with_auto_thread_name(
 +    codex_home: &Path,
 +    server_uri: &str,
@@ -1157,7 +1065,7 @@ index 951e4d7..00f530f 100644
      create_fake_rollout_with_text_elements(
          codex_home,
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_read.rs b/codex-rs/app-server/tests/suite/v2/thread_read.rs
-index 226643e..6d25581 100644
+index 05e46dd2b..f1991960c 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_read.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_read.rs
 @@ -20,12 +20,15 @@ use codex_app_server_protocol::SessionSource;
@@ -1176,18 +1084,18 @@ index 226643e..6d25581 100644
  use codex_app_server_protocol::ThreadNameUpdatedNotification;
  use codex_app_server_protocol::ThreadReadParams;
  use codex_app_server_protocol::ThreadReadResponse;
-@@ -1273,6 +1276,7 @@ async fn paginated_thread_name_set_is_reflected_in_read_list_and_metadata_resume
+@@ -1276,6 +1279,7 @@ async fn paginated_thread_name_set_is_reflected_in_read_list_and_metadata_resume
          serde_json::from_value(notification.params.expect("thread/name/updated params"))?;
      assert_eq!(notification.thread_id, conversation_id);
      assert_eq!(notification.thread_name.as_deref(), Some(new_name));
 +    assert_eq!(notification.source, None);
- 
+
      // Read should now surface `thread.name`, and the wire payload must include `name`.
      let read_id = mcp
-@@ -1389,6 +1393,485 @@ async fn paginated_thread_name_set_is_reflected_in_read_list_and_metadata_resume
+@@ -1392,6 +1396,485 @@ async fn paginated_thread_name_set_is_reflected_in_read_list_and_metadata_resume
          "thread/resume must serialize `thread.ephemeral` on the wire"
      );
- 
+
 +    let generate_id = mcp
 +        .send_thread_generate_name_request(ThreadGenerateNameParams {
 +            thread_id: conversation_id.clone(),
@@ -1669,8 +1577,8 @@ index 226643e..6d25581 100644
 +
      Ok(())
  }
- 
-@@ -2284,3 +2767,56 @@ fn store_history_items() -> Vec<RolloutItem> {
+
+@@ -2289,3 +2772,56 @@ fn store_history_items() -> Vec<RolloutItem> {
          },
      ))]
  }
@@ -1728,21 +1636,21 @@ index 226643e..6d25581 100644
 +    )
 +}
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index a4436bc..3622944 100644
+index a4436bc79..36229440f 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
 @@ -719,6 +719,7 @@ pub struct ModelAvailabilityNuxConfig {
- 
+
  /// Fallback resize-reflow row cap when Codex cannot identify a terminal-specific scrollback size.
  pub const DEFAULT_TERMINAL_RESIZE_REFLOW_FALLBACK_MAX_ROWS: usize = 1_000;
 +pub const DEFAULT_AUTO_THREAD_NAME_AFTER_TURNS: usize = 3;
- 
+
  /// Collection of settings that are specific to the TUI.
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
 @@ -760,6 +761,16 @@ pub struct Tui {
      #[serde(default)]
      pub default_collaboration_mode: Option<ModeKind>,
- 
+
 +    /// Generate a concise model-authored name for an unnamed primary thread.
 +    /// Defaults to `false`.
 +    #[serde(default)]
@@ -1757,10 +1665,10 @@ index a4436bc..3622944 100644
      ///
      /// - `auto` (default): Use alternate screen.
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index fd463f4..d73bae9 100644
+index d05a20609..c3af776b4 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1641,6 +1641,14 @@
+@@ -1791,6 +1791,14 @@
        },
        "type": "object"
      },
@@ -1775,7 +1683,7 @@ index fd463f4..d73bae9 100644
      "ModelAvailabilityNuxConfig": {
        "additionalProperties": {
          "format": "uint32",
-@@ -3294,6 +3302,27 @@
+@@ -3435,6 +3443,27 @@
            "description": "Enable animations (welcome screen, shimmer effects, spinners). Defaults to `true`.",
            "type": "boolean"
          },
@@ -1803,7 +1711,7 @@ index fd463f4..d73bae9 100644
          "keymap": {
            "allOf": [
              {
-@@ -3464,6 +3493,18 @@
+@@ -3605,6 +3634,18 @@
            "default": "auto",
            "description": "Notification method to use for terminal notifications. Defaults to `auto`."
          },
@@ -1822,7 +1730,7 @@ index fd463f4..d73bae9 100644
          "notifications": {
            "allOf": [
              {
-@@ -4248,6 +4289,25 @@
+@@ -4389,6 +4430,25 @@
        },
        "type": "object"
      },
@@ -1849,10 +1757,10 @@ index fd463f4..d73bae9 100644
        "additionalProperties": false,
        "description": "Pager context keybindings for transcript and static overlays.",
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index 0253d32..15de406 100644
+index da3b6dad3..bb598f13c 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
-@@ -273,6 +273,7 @@ pub struct ModelClient {
+@@ -274,6 +274,7 @@ pub struct ModelClient {
  pub struct ModelClientSession {
      client: ModelClient,
      websocket_session: WebsocketSession,
@@ -1860,7 +1768,7 @@ index 0253d32..15de406 100644
      /// Turn state for sticky routing.
      ///
      /// This is an `OnceLock` that stores the turn state value received from the server
-@@ -494,6 +495,17 @@ impl ModelClient {
+@@ -495,6 +496,17 @@ impl ModelClient {
          ModelClientSession {
              client: self.clone(),
              websocket_session: self.take_cached_websocket_session(),
@@ -1878,8 +1786,8 @@ index 0253d32..15de406 100644
              turn_state: Arc::new(OnceLock::new()),
          }
      }
-@@ -1125,6 +1137,9 @@ impl ModelClient {
- 
+@@ -1158,6 +1170,9 @@ impl ModelClient {
+
  impl Drop for ModelClientSession {
      fn drop(&mut self) {
 +        if !self.cache_websocket_on_drop {
@@ -1889,13 +1797,13 @@ index 0253d32..15de406 100644
          self.client
              .store_cached_websocket_session(websocket_session);
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 3e5c3ad..20f513a 100644
+index cdc8c0132..cbe2d1a0c 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -620,6 +620,20 @@ impl CodexThread {
-         self.session.thread_config_snapshot().await
+@@ -653,6 +653,20 @@ impl CodexThread {
+         self.session.services.client_mcp_extensions.clone()
      }
- 
+
 +    /// Runs a hidden metadata request against loaded conversation state.
 +    pub async fn generate_thread_name(
 +        &self,
@@ -1914,10 +1822,10 @@ index 3e5c3ad..20f513a 100644
      pub async fn instruction_sources(&self) -> Vec<PathUri> {
          self.session.instruction_sources().await
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index badb8af..2118538 100644
+index e9bbeb871..592f4fad2 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -1072,6 +1072,9 @@ fn config_toml_deserializes_model_availability_nux() {
+@@ -1101,6 +1101,9 @@ fn config_toml_deserializes_model_availability_nux() {
              show_tooltips: true,
              vim_mode_default: false,
              raw_output_mode: false,
@@ -1927,10 +1835,10 @@ index badb8af..2118538 100644
              alternate_screen: AltScreenMode::default(),
              status_line: None,
              status_line_use_colors: true,
-@@ -1108,6 +1111,41 @@ fn config_toml_status_line_use_colors_defaults_to_enabled() {
+@@ -1137,6 +1140,41 @@ fn config_toml_status_line_use_colors_defaults_to_enabled() {
      );
  }
- 
+
 +#[tokio::test]
 +async fn auto_thread_name_defaults_are_conservative() -> std::io::Result<()> {
 +    let codex_home = TempDir::new()?;
@@ -1969,7 +1877,7 @@ index badb8af..2118538 100644
  #[test]
  fn config_toml_deserializes_status_line_use_colors_disabled() {
      let toml = r#"
-@@ -3960,6 +3998,9 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+@@ -3989,6 +4027,9 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
              show_tooltips: true,
              vim_mode_default: false,
              raw_output_mode: false,
@@ -1980,13 +1888,13 @@ index badb8af..2118538 100644
              status_line: None,
              status_line_use_colors: true,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 6e2ed65..c747160 100644
+index 9f4419bae..70a93a801 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -768,6 +768,12 @@ pub struct Config {
+@@ -706,6 +706,12 @@ pub struct Config {
      /// When `Some(ModeKind::Plan)`, the TUI launches in Plan mode.
      pub tui_default_collaboration_mode: Option<ModeKind>,
- 
+
 +    /// Whether the TUI should automatically name unnamed primary threads.
 +    pub tui_auto_thread_name: bool,
 +
@@ -1996,7 +1904,7 @@ index 6e2ed65..c747160 100644
      /// Controls whether the TUI uses the terminal's alternate screen buffer.
      ///
      /// This is the same `tui.alternate_screen` value from `config.toml`.
-@@ -4294,6 +4300,17 @@ impl Config {
+@@ -4173,6 +4179,17 @@ impl Config {
                  .tui
                  .as_ref()
                  .and_then(|t| t.default_collaboration_mode),
@@ -2015,10 +1923,10 @@ index 6e2ed65..c747160 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/core/src/lib.rs b/codex-rs/core/src/lib.rs
-index 4cecf46..9c70613 100644
+index e8335a448..5f8a857a7 100644
 --- a/codex-rs/core/src/lib.rs
 +++ b/codex-rs/core/src/lib.rs
-@@ -141,6 +141,7 @@ pub mod spawn;
+@@ -136,6 +136,7 @@ pub mod spawn;
  pub(crate) mod state_db_bridge;
  pub use state_db_bridge::StateDbHandle;
  pub use state_db_bridge::init_state_db;
@@ -2027,25 +1935,25 @@ index 4cecf46..9c70613 100644
  pub use thread_rollout_truncation::truncate_rollout_after_turn_id;
  pub use thread_rollout_truncation::truncate_rollout_before_turn_id;
 diff --git a/codex-rs/core/src/responses_metadata.rs b/codex-rs/core/src/responses_metadata.rs
-index 5476c95..5cf9080 100644
+index 64264c259..ea77c2b6c 100644
 --- a/codex-rs/core/src/responses_metadata.rs
 +++ b/codex-rs/core/src/responses_metadata.rs
-@@ -122,6 +122,7 @@ pub(crate) enum CodexResponsesRequestKind {
+@@ -139,6 +139,7 @@ pub(crate) enum CodexResponsesRequestKind {
      Prewarm,
      Compaction(CompactionTurnMetadata),
      Memory,
 +    ThreadName,
  }
- 
+
  impl CodexResponsesRequestKind {
-@@ -131,11 +132,15 @@ impl CodexResponsesRequestKind {
+@@ -148,11 +149,15 @@ impl CodexResponsesRequestKind {
              CodexResponsesRequestKind::Prewarm => ("prewarm", None),
              CodexResponsesRequestKind::Compaction(metadata) => ("compaction", Some(metadata)),
              CodexResponsesRequestKind::Memory => ("memory", None),
 +            CodexResponsesRequestKind::ThreadName => ("thread_name", None),
          }
      }
- 
+
      fn has_turn_identity(self) -> bool {
 -        !matches!(self, CodexResponsesRequestKind::Memory)
 +        !matches!(
@@ -2054,15 +1962,15 @@ index 5476c95..5cf9080 100644
 +        )
      }
  }
- 
+
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index e5de254..ebd0a89 100644
+index dfd6ca1bb..0bb385148 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -506,6 +506,24 @@ impl Session {
+@@ -580,6 +580,24 @@ impl Session {
          state.session_configuration.originator.clone()
      }
- 
+
 +    pub(crate) async fn thread_name_model_context(
 +        &self,
 +    ) -> (
@@ -2085,23 +1993,614 @@ index e5de254..ebd0a89 100644
      #[allow(clippy::too_many_arguments)]
      pub(crate) async fn new(
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index f107bcb..997f177 100644
+index 2abd59d81..8089bb0d1 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -1750,6 +1750,7 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<(String, Option<
+@@ -1761,6 +1761,7 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<(String, Option<
          | EventMsg::EnvironmentConnected(_)
          | EventMsg::EnvironmentDisconnected(_)
          | EventMsg::ThreadGoalUpdated(_)
 +        | EventMsg::ThreadNameUpdateRequested(_)
+         | EventMsg::ThreadQueueChanged(_)
          | EventMsg::McpStartupUpdate(_)
          | EventMsg::McpStartupComplete(_)
-         | EventMsg::McpToolCallBegin(_)
+diff --git a/codex-rs/core/src/tools/handlers/mod.rs b/codex-rs/core/src/tools/handlers/mod.rs
+index 69af0c815..af332fee8 100644
+--- a/codex-rs/core/src/tools/handlers/mod.rs
++++ b/codex-rs/core/src/tools/handlers/mod.rs
+@@ -23,6 +23,8 @@ mod request_plugin_install;
+ pub(crate) mod request_plugin_install_spec;
+ mod request_user_input;
+ pub(crate) mod request_user_input_spec;
++mod set_thread_name;
++pub(crate) mod set_thread_name_spec;
+ mod shell;
+ pub(crate) mod shell_spec;
+ mod sleep;
+@@ -68,6 +70,7 @@ pub use plan::PlanHandler;
+ pub use request_permissions::RequestPermissionsHandler;
+ pub use request_plugin_install::RequestPluginInstallHandler;
+ pub use request_user_input::RequestUserInputHandler;
++pub use set_thread_name::SetThreadNameHandler;
+ pub use shell::ShellCommandHandler;
+ pub(crate) use shell::ShellCommandHandlerOptions;
+ pub use sleep::SleepHandler;
+diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
+index 3da01c002..0b45a93ac 100644
+--- a/codex-rs/core/src/tools/spec_plan.rs
++++ b/codex-rs/core/src/tools/spec_plan.rs
+@@ -24,6 +24,7 @@ use crate::tools::handlers::ReadMcpResourceHandler;
+ use crate::tools::handlers::RequestPermissionsHandler;
+ use crate::tools::handlers::RequestPluginInstallHandler;
+ use crate::tools::handlers::RequestUserInputHandler;
++use crate::tools::handlers::SetThreadNameHandler;
+ use crate::tools::handlers::ShellCommandHandler;
+ use crate::tools::handlers::ShellCommandHandlerOptions;
+ use crate::tools::handlers::SleepHandler;
+@@ -1040,6 +1041,13 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, registry: &mut Tool
+         registry.add(PlanHandler);
+     }
+
++    // In-process thread titling, gated by the same opt-in as automatic naming
++    // and scoped to primary threads so subagents can never rename a thread.
++    if turn_context.config.tui_auto_thread_name && !turn_context.session_source.is_non_root_agent()
++    {
++        registry.add(SetThreadNameHandler);
++    }
++
+     if features.enabled(Feature::DeferredExecutor) {
+         registry.add(
+             context
+diff --git a/codex-rs/core/src/tools/spec_plan_tests.rs b/codex-rs/core/src/tools/spec_plan_tests.rs
+index 87ab8df55..7e1d26ff9 100644
+--- a/codex-rs/core/src/tools/spec_plan_tests.rs
++++ b/codex-rs/core/src/tools/spec_plan_tests.rs
+@@ -1027,6 +1027,35 @@ async fn environment_tools_follow_the_step_context() {
+     plan.assert_visible_contains(&["exec_command", "apply_patch", "view_image"]);
+ }
+
++#[tokio::test]
++async fn set_thread_name_tool_follows_auto_thread_name_config_and_thread_source() {
++    // Disabled by default (no auto-naming opt-in).
++    let disabled = probe(|_| {}).await;
++    disabled.assert_visible_lacks(&["set_thread_name"]);
++    disabled.assert_registered_lacks(&["set_thread_name"]);
++
++    // Offered to a primary thread once auto naming is opted in.
++    let primary = probe(|turn| {
++        update_config(turn, |config| {
++            config.tui_auto_thread_name = true;
++        });
++    })
++    .await;
++    primary.assert_visible_contains(&["set_thread_name"]);
++    primary.assert_registered_contains(&["set_thread_name"]);
++
++    // Never offered to subagents / side threads, even with auto naming enabled.
++    let subagent = probe(|turn| {
++        update_config(turn, |config| {
++            config.tui_auto_thread_name = true;
++        });
++        turn.session_source = SessionSource::SubAgent(SubAgentSource::Review);
++    })
++    .await;
++    subagent.assert_visible_lacks(&["set_thread_name"]);
++    subagent.assert_registered_lacks(&["set_thread_name"]);
++}
++
+ #[tokio::test]
+ async fn sleep_tool_follows_current_time_config() {
+     let disabled = probe(|turn| {
+diff --git a/codex-rs/mcp-server/src/codex_tool_runner.rs b/codex-rs/mcp-server/src/codex_tool_runner.rs
+index 7caf042b6..0e7a7d6c0 100644
+--- a/codex-rs/mcp-server/src/codex_tool_runner.rs
++++ b/codex-rs/mcp-server/src/codex_tool_runner.rs
+@@ -303,6 +303,9 @@ async fn run_codex_tool_session_inner(
+                     EventMsg::ThreadGoalUpdated(_) | EventMsg::ThreadQueueChanged(_) => {
+                         // Ignore thread-scoped metadata updates in MCP tool runner.
+                     }
++                    EventMsg::ThreadNameUpdateRequested(_) => {
++                        // Ignore thread name requests in MCP tool runner.
++                    }
+                     EventMsg::McpStartupUpdate(_) | EventMsg::McpStartupComplete(_) => {
+                         // Ignored in MCP tool runner.
+                     }
+diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
+index 2ae44aea0..00c919347 100644
+--- a/codex-rs/protocol/src/protocol.rs
++++ b/codex-rs/protocol/src/protocol.rs
+@@ -1371,6 +1371,11 @@ pub enum EventMsg {
+     /// A durable thread-scoped user-message queue changed.
+     ThreadQueueChanged(ThreadQueueChangedEvent),
+
++    /// Request from an in-process tool to title the current thread. The owning
++    /// app-server applies it through the canonical thread-store metadata path
++    /// and broadcasts `thread/name/updated`.
++    ThreadNameUpdateRequested(ThreadNameUpdateRequestedEvent),
++
+     /// Incremental MCP startup progress updates.
+     McpStartupUpdate(McpStartupUpdateEvent),
+
+@@ -3849,6 +3854,19 @@ pub struct ThreadQueueChangedEvent {
+     pub thread_id: ThreadId,
+ }
+
++/// Requests that the owning app-server set a concise title for the current
++/// thread. Emitted by the in-process `set_thread_name` tool so the rename is
++/// applied through the canonical thread-store metadata path and broadcast as
++/// `thread/name/updated`, without introducing a second persistence writer.
++#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "protocol/")]
++pub struct ThreadNameUpdateRequestedEvent {
++    /// Requested title. Normalized by the app-server and applied only when the
++    /// thread is currently unnamed, so manual titles are never overwritten.
++    pub name: String,
++}
++
+ /// User's decision in response to an ExecApprovalRequest.
+ #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Display, JsonSchema, TS)]
+ #[serde(rename_all = "snake_case")]
+diff --git a/codex-rs/rollout-trace/src/protocol_event.rs b/codex-rs/rollout-trace/src/protocol_event.rs
+index e0a03a373..fac6f76f9 100644
+--- a/codex-rs/rollout-trace/src/protocol_event.rs
++++ b/codex-rs/rollout-trace/src/protocol_event.rs
+@@ -371,6 +371,7 @@ pub(crate) fn tool_runtime_trace_event(event: &EventMsg) -> Option<ToolRuntimeTr
+         | EventMsg::ContextCompacted(_)
+         | EventMsg::ThreadRolledBack(_)
+         | EventMsg::ThreadGoalUpdated(_)
++        | EventMsg::ThreadNameUpdateRequested(_)
+         | EventMsg::ThreadQueueChanged(_)
+         | EventMsg::TurnStarted(_)
+         | EventMsg::ThreadSettingsApplied(_)
+@@ -458,6 +459,7 @@ pub(crate) fn wrapped_protocol_event_type(event: &EventMsg) -> Option<&'static s
+         | EventMsg::AgentReasoningRawContent(_)
+         | EventMsg::AgentReasoningSectionBreak(_)
+         | EventMsg::ThreadGoalUpdated(_)
++        | EventMsg::ThreadNameUpdateRequested(_)
+         | EventMsg::ThreadQueueChanged(_)
+         | EventMsg::McpStartupUpdate(_)
+         | EventMsg::McpStartupComplete(_)
+diff --git a/codex-rs/rollout/src/policy.rs b/codex-rs/rollout/src/policy.rs
+index 372c0afaf..da699590f 100644
+--- a/codex-rs/rollout/src/policy.rs
++++ b/codex-rs/rollout/src/policy.rs
+@@ -121,6 +121,7 @@ pub fn should_persist_event_msg(ev: &EventMsg, history_mode: ThreadHistoryMode)
+
+         // Transient, non-durable events.
+         EventMsg::Error(_)
++        | EventMsg::ThreadNameUpdateRequested(_)
+         | EventMsg::ThreadQueueChanged(_)
+         | EventMsg::GuardianAssessment(_)
+         | EventMsg::ExecCommandEnd(_)
+diff --git a/codex-rs/tui/src/app/app_server_events.rs b/codex-rs/tui/src/app/app_server_events.rs
+index b3605b369..e6f890f85 100644
+--- a/codex-rs/tui/src/app/app_server_events.rs
++++ b/codex-rs/tui/src/app/app_server_events.rs
+@@ -14,6 +14,20 @@ use codex_app_server_protocol::AuthMode;
+ use codex_app_server_protocol::RateLimitReachedType;
+ use codex_app_server_protocol::ServerNotification;
+ use codex_app_server_protocol::ServerRequest;
++use codex_protocol::ThreadId;
++
++fn automatic_thread_name_target(
++    enabled: bool,
++    primary_thread_id: Option<ThreadId>,
++    completed_thread_id: &str,
++    status: codex_app_server_protocol::TurnStatus,
++) -> Option<ThreadId> {
++    if !enabled || !matches!(status, codex_app_server_protocol::TurnStatus::Completed) {
++        return None;
++    }
++    let completed_thread_id = ThreadId::from_string(completed_thread_id).ok()?;
++    (Some(completed_thread_id) == primary_thread_id).then_some(completed_thread_id)
++}
+
+ impl App {
+     pub(super) fn refresh_mcp_startup_expected_servers_from_config(&mut self) {
+@@ -79,6 +93,16 @@ impl App {
+         app_server_client: &AppServerSession,
+         notification: ServerNotification,
+     ) {
++        let auto_thread_name_trigger = match &notification {
++            ServerNotification::TurnCompleted(completed) => automatic_thread_name_target(
++                self.config.tui_auto_thread_name,
++                self.primary_thread_id,
++                &completed.thread_id,
++                completed.turn.status.clone(),
++            )
++            .map(|thread_id| (thread_id, completed.turn.id.clone())),
++            _ => None,
++        };
+         match &notification {
+             ServerNotification::ServerRequestResolved(notification) => {
+                 if let Some(request) = self
+@@ -190,6 +214,11 @@ impl App {
+
+                 if let Err(err) = result {
+                     tracing::warn!("failed to enqueue app-server notification: {err}");
++                } else if let Some((thread_id, completed_turn_id)) = auto_thread_name_trigger {
++                    self.app_event_tx.send(AppEvent::GenerateAutoThreadName {
++                        thread_id,
++                        completed_turn_id,
++                    });
+                 }
+                 return;
+             }
+@@ -273,3 +302,62 @@ impl App {
+         }
+     }
+ }
++
++#[cfg(test)]
++mod auto_thread_name_tests {
++    use super::automatic_thread_name_target;
++    use codex_app_server_protocol::TurnStatus;
++    use codex_protocol::ThreadId;
++
++    #[test]
++    fn completed_primary_thread_is_eligible() {
++        let primary = ThreadId::new();
++        assert_eq!(
++            automatic_thread_name_target(
++                true,
++                Some(primary),
++                &primary.to_string(),
++                TurnStatus::Completed,
++            ),
++            Some(primary)
++        );
++    }
++
++    #[test]
++    fn stale_or_subagent_completion_is_not_eligible() {
++        let selected = ThreadId::new();
++        let completed = ThreadId::new();
++        assert_eq!(
++            automatic_thread_name_target(
++                true,
++                Some(selected),
++                &completed.to_string(),
++                TurnStatus::Completed,
++            ),
++            None
++        );
++    }
++
++    #[test]
++    fn disabled_or_failed_completion_is_not_eligible() {
++        let primary = ThreadId::new();
++        assert_eq!(
++            automatic_thread_name_target(
++                false,
++                Some(primary),
++                &primary.to_string(),
++                TurnStatus::Completed,
++            ),
++            None
++        );
++        assert_eq!(
++            automatic_thread_name_target(
++                true,
++                Some(primary),
++                &primary.to_string(),
++                TurnStatus::Failed,
++            ),
++            None
++        );
++    }
++}
+diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
+index acdb4a714..bb4b193b0 100644
+--- a/codex-rs/tui/src/app/event_dispatch.rs
++++ b/codex-rs/tui/src/app/event_dispatch.rs
+@@ -634,6 +634,25 @@ impl App {
+                     tracing::error!(error = ?err, "failed to start turn through app server");
+                 }
+             }
++            AppEvent::GenerateAutoThreadName {
++                thread_id,
++                completed_turn_id,
++            } => {
++                if let Err(error) = app_server
++                    .thread_generate_name(
++                        thread_id,
++                        completed_turn_id,
++                        self.config.tui_auto_thread_name_after_turns,
++                    )
++                    .await
++                {
++                    tracing::warn!(
++                        thread_id = %thread_id,
++                        error = %error,
++                        "automatic thread naming request failed"
++                    );
++                }
++            }
+             AppEvent::RetrySafetyBufferedTurn {
+                 thread_id,
+                 turn_id,
+diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
+index afef04b61..1e8d3e0e5 100644
+--- a/codex-rs/tui/src/app_event.rs
++++ b/codex-rs/tui/src/app_event.rs
+@@ -359,6 +359,10 @@ pub(crate) enum AppEvent {
+     /// Forward a command to the Agent. Using an `AppEvent` for this avoids
+     /// bubbling channels through layers of widgets.
+     CodexOp(AppCommand),
++    GenerateAutoThreadName {
++        thread_id: ThreadId,
++        completed_turn_id: String,
++    },
+
+     /// Approve one retry of a recent auto-review denial selected in the TUI.
+     ApproveRecentAutoReviewDenial {
+diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
+index 2c10b3d8e..93c8ba661 100644
+--- a/codex-rs/tui/src/app_server_session.rs
++++ b/codex-rs/tui/src/app_server_session.rs
+@@ -70,6 +70,8 @@ use codex_app_server_protocol::ThreadDeleteParams;
+ use codex_app_server_protocol::ThreadDeleteResponse;
+ use codex_app_server_protocol::ThreadForkParams;
+ use codex_app_server_protocol::ThreadForkResponse;
++use codex_app_server_protocol::ThreadGenerateNameParams;
++use codex_app_server_protocol::ThreadGenerateNameResponse;
+ use codex_app_server_protocol::ThreadGoalClearParams;
+ use codex_app_server_protocol::ThreadGoalClearResponse;
+ use codex_app_server_protocol::ThreadGoalGetParams;
+@@ -1144,6 +1146,25 @@ impl AppServerSession {
+         Ok(())
+     }
+
++    pub(crate) async fn thread_generate_name(
++        &mut self,
++        thread_id: ThreadId,
++        completed_turn_id: String,
++        after_turns: usize,
++    ) -> std::result::Result<ThreadGenerateNameResponse, TypedRequestError> {
++        let request_id = self.next_request_id();
++        self.client
++            .request_typed(ClientRequest::ThreadGenerateName {
++                request_id,
++                params: ThreadGenerateNameParams {
++                    thread_id: thread_id.to_string(),
++                    completed_turn_id,
++                    after_turns,
++                },
++            })
++            .await
++    }
++
+     pub(crate) async fn thread_memory_mode_set(
+         &mut self,
+         thread_id: ThreadId,
+diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
+index f7ea30de5..71d46d1ea 100644
+--- a/codex-rs/tui/src/chatwidget/protocol.rs
++++ b/codex-rs/tui/src/chatwidget/protocol.rs
+@@ -37,9 +37,13 @@ impl ChatWidget {
+                 )));
+             }
+             ServerNotification::ThreadNameUpdated(notification) => {
++                let generated = matches!(
++                    notification.source,
++                    Some(codex_app_server_protocol::ThreadNameUpdateSource::Generated)
++                );
+                 match ThreadId::from_string(&notification.thread_id) {
+                     Ok(thread_id) => {
+-                        self.on_thread_name_updated(thread_id, notification.thread_name)
++                        self.on_thread_name_updated(thread_id, notification.thread_name, generated)
+                     }
+                     Err(err) => {
+                         tracing::warn!(
+diff --git a/codex-rs/tui/src/chatwidget/session_flow.rs b/codex-rs/tui/src/chatwidget/session_flow.rs
+index 5fda605cb..417e54483 100644
+--- a/codex-rs/tui/src/chatwidget/session_flow.rs
++++ b/codex-rs/tui/src/chatwidget/session_flow.rs
+@@ -247,9 +247,10 @@ impl ChatWidget {
+         &mut self,
+         thread_id: ThreadId,
+         thread_name: Option<String>,
++        generated: bool,
+     ) {
+         if self.thread_id == Some(thread_id) {
+-            if let Some(name) = thread_name.as_deref() {
++            if !generated && let Some(name) = thread_name.as_deref() {
+                 let cell = Self::rename_confirmation_cell(name, self.thread_id);
+                 self.add_boxed_history(Box::new(cell));
+             }
+diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
+index 13ddcbbff..ba1e4a8c5 100644
+--- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
++++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
+@@ -1459,6 +1459,7 @@ async fn live_app_server_invalid_thread_name_update_is_ignored() {
+             codex_app_server_protocol::ThreadNameUpdatedNotification {
+                 thread_id: "not-a-thread-id".to_string(),
+                 thread_name: Some("bad update".to_string()),
++                source: None,
+             },
+         ),
+         /*replay_kind*/ None,
+@@ -1480,6 +1481,7 @@ async fn live_app_server_thread_name_update_shows_resume_hint() {
+             codex_app_server_protocol::ThreadNameUpdatedNotification {
+                 thread_id: thread_id.to_string(),
+                 thread_name: Some("review-fix".to_string()),
++                source: None,
+             },
+         ),
+         /*replay_kind*/ None,
+@@ -1492,6 +1494,40 @@ async fn live_app_server_thread_name_update_shows_resume_hint() {
+     assert_chatwidget_snapshot!("thread_name_update_resume_hint", rendered);
+ }
+
++#[tokio::test]
++async fn generated_thread_name_update_is_silent_and_refreshes_status_surfaces() {
++    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
++    let thread_id = ThreadId::new();
++    chat.thread_id = Some(thread_id);
++    chat.config.tui_status_line = Some(vec!["thread-title".to_string()]);
++    chat.config.tui_terminal_title = Some(vec!["thread-title".to_string()]);
++
++    chat.handle_server_notification(
++        ServerNotification::ThreadNameUpdated(
++            codex_app_server_protocol::ThreadNameUpdatedNotification {
++                thread_id: thread_id.to_string(),
++                thread_name: Some("Automatic naming workflow".to_string()),
++                source: Some(codex_app_server_protocol::ThreadNameUpdateSource::Generated),
++            },
++        ),
++        /*replay_kind*/ None,
++    );
++
++    assert_eq!(
++        chat.thread_name.as_deref(),
++        Some("Automatic naming workflow")
++    );
++    assert_eq!(
++        chat.last_terminal_title.as_deref(),
++        Some("Automatic naming workflow")
++    );
++    assert_eq!(
++        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::ThreadTitle),
++        Some("Automatic naming workflow".to_string())
++    );
++    assert!(drain_insert_history(&mut rx).is_empty());
++}
++
+ #[tokio::test]
+ async fn live_app_server_thread_closed_requests_immediate_exit() {
+     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+diff --git a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
+index bb6250580..27b15f203 100644
+--- a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
++++ b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
+@@ -481,6 +481,7 @@ async fn queued_bare_rename_drains_next_input_after_name_update() {
+             codex_app_server_protocol::ThreadNameUpdatedNotification {
+                 thread_id: thread_id.to_string(),
+                 thread_name: Some("Queued rename".to_string()),
++                source: None,
+             },
+         ),
+         /*replay_kind*/ None,
+@@ -565,6 +566,7 @@ async fn queued_inline_rename_does_not_drain_again_before_turn_started() {
+             codex_app_server_protocol::ThreadNameUpdatedNotification {
+                 thread_id: thread_id.to_string(),
+                 thread_name: Some("Queued rename".to_string()),
++                source: None,
+             },
+         ),
+         /*replay_kind*/ None,
+diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
+index b28bc6a63..ca2f36eea 100644
+--- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
++++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
+@@ -3972,6 +3972,7 @@ async fn renamed_thread_footer_title_snapshot() {
+             codex_app_server_protocol::ThreadNameUpdatedNotification {
+                 thread_id: thread_id.to_string(),
+                 thread_name: Some("Roadmap cleanup".to_string()),
++                source: None,
+             },
+         ),
+         /*replay_kind*/ None,
+
+diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadGenerateNameParams.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadGenerateNameParams.json
+new file mode 100644
+index 0000000..a0540e5
+--- /dev/null
++++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadGenerateNameParams.json
+@@ -0,0 +1,24 @@
++{
++  "$schema": "http://json-schema.org/draft-07/schema#",
++  "description": "Parameters for a hidden, best-effort automatic thread-name request.",
++  "properties": {
++    "afterTurns": {
++      "format": "uint",
++      "minimum": 0.0,
++      "type": "integer"
++    },
++    "completedTurnId": {
++      "type": "string"
++    },
++    "threadId": {
++      "type": "string"
++    }
++  },
++  "required": [
++    "afterTurns",
++    "completedTurnId",
++    "threadId"
++  ],
++  "title": "ThreadGenerateNameParams",
++  "type": "object"
++}
+\ No newline at end of file
+diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadGenerateNameResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadGenerateNameResponse.json
+new file mode 100644
+index 0000000..ef3a69e
+--- /dev/null
++++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadGenerateNameResponse.json
+@@ -0,0 +1,14 @@
++{
++  "$schema": "http://json-schema.org/draft-07/schema#",
++  "properties": {
++    "accepted": {
++      "description": "Whether a background naming request was launched.",
++      "type": "boolean"
++    }
++  },
++  "required": [
++    "accepted"
++  ],
++  "title": "ThreadGenerateNameResponse",
++  "type": "object"
++}
+\ No newline at end of file
+diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameParams.ts b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameParams.ts
+new file mode 100644
+index 0000000..3177900
+--- /dev/null
++++ b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameParams.ts
+@@ -0,0 +1,8 @@
++// GENERATED CODE! DO NOT MODIFY BY HAND!
++
++// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.
++
++/**
++ * Parameters for a hidden, best-effort automatic thread-name request.
++ */
++export type ThreadGenerateNameParams = { threadId: string, completedTurnId: string, afterTurns: number, };
+diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameResponse.ts b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameResponse.ts
+new file mode 100644
+index 0000000..6dfab28
+--- /dev/null
++++ b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadGenerateNameResponse.ts
+@@ -0,0 +1,9 @@
++// GENERATED CODE! DO NOT MODIFY BY HAND!
++
++// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.
++
++export type ThreadGenerateNameResponse = {
++/**
++ * Whether a background naming request was launched.
++ */
++accepted: boolean, };
+diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/ThreadNameUpdateSource.ts b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadNameUpdateSource.ts
+new file mode 100644
+index 0000000..27ba753
+--- /dev/null
++++ b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadNameUpdateSource.ts
+@@ -0,0 +1,5 @@
++// GENERATED CODE! DO NOT MODIFY BY HAND!
++
++// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.
++
++export type ThreadNameUpdateSource = "generated";
 diff --git a/codex-rs/core/src/thread_name.rs b/codex-rs/core/src/thread_name.rs
 new file mode 100644
 index 0000000..9d9fb45
 --- /dev/null
 +++ b/codex-rs/core/src/thread_name.rs
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,217 @@
 +use std::collections::VecDeque;
 +
 +use codex_protocol::config_types::ReasoningSummary;
@@ -2131,7 +2630,8 @@ index 0000000..9d9fb45
 +    cancellation_token: &CancellationToken,
 +) -> CodexResult<Option<String>> {
 +    let history = session.clone_history().await;
-+    let (completed_turns, input) = completed_conversation_messages(history.raw_items());
++    let history_items = history.raw_items().cloned().collect::<Vec<_>>();
++    let (completed_turns, input) = completed_conversation_messages(&history_items);
 +    if completed_turns < after_turns.max(1) {
 +        return Ok(None);
 +    }
@@ -2145,10 +2645,11 @@ index 0000000..9d9fb45
 +        .await;
 +    let prompt = Prompt {
 +        input,
-+        tools: Vec::new(),
++        tools: Vec::new().into(),
 +        parallel_tool_calls: false,
 +        base_instructions: BaseInstructions {
 +            text: TITLE_INSTRUCTIONS.to_string(),
++            provenance: None,
 +        },
 +        output_schema: None,
 +        output_schema_strict: true,
@@ -2317,27 +2818,6 @@ index 0000000..9d9fb45
 +        );
 +    }
 +}
-diff --git a/codex-rs/core/src/tools/handlers/mod.rs b/codex-rs/core/src/tools/handlers/mod.rs
-index f64706e..784c45c 100644
---- a/codex-rs/core/src/tools/handlers/mod.rs
-+++ b/codex-rs/core/src/tools/handlers/mod.rs
-@@ -23,6 +23,8 @@ mod request_plugin_install;
- pub(crate) mod request_plugin_install_spec;
- mod request_user_input;
- pub(crate) mod request_user_input_spec;
-+mod set_thread_name;
-+pub(crate) mod set_thread_name_spec;
- mod shell;
- pub(crate) mod shell_spec;
- mod sleep;
-@@ -68,6 +70,7 @@ pub use plan::PlanHandler;
- pub use request_permissions::RequestPermissionsHandler;
- pub use request_plugin_install::RequestPluginInstallHandler;
- pub use request_user_input::RequestUserInputHandler;
-+pub use set_thread_name::SetThreadNameHandler;
- pub use shell::ShellCommandHandler;
- pub(crate) use shell::ShellCommandHandlerOptions;
- pub use sleep::SleepHandler;
 diff --git a/codex-rs/core/src/tools/handlers/set_thread_name.rs b/codex-rs/core/src/tools/handlers/set_thread_name.rs
 new file mode 100644
 index 0000000..ee7c92c
@@ -2510,480 +2990,3 @@ index 0000000..e0e4364
 +        output_schema: None,
 +    })
 +}
-diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
-index 4c13de5..cd2ee8a 100644
---- a/codex-rs/core/src/tools/spec_plan.rs
-+++ b/codex-rs/core/src/tools/spec_plan.rs
-@@ -25,6 +25,7 @@ use crate::tools::handlers::ReadMcpResourceHandler;
- use crate::tools::handlers::RequestPermissionsHandler;
- use crate::tools::handlers::RequestPluginInstallHandler;
- use crate::tools::handlers::RequestUserInputHandler;
-+use crate::tools::handlers::SetThreadNameHandler;
- use crate::tools::handlers::ShellCommandHandler;
- use crate::tools::handlers::ShellCommandHandlerOptions;
- use crate::tools::handlers::SleepHandler;
-@@ -955,6 +956,13 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, registry: &mut Tool
-         registry.add(PlanHandler);
-     }
- 
-+    // In-process thread titling, gated by the same opt-in as automatic naming
-+    // and scoped to primary threads so subagents can never rename a thread.
-+    if turn_context.config.tui_auto_thread_name && !turn_context.session_source.is_non_root_agent()
-+    {
-+        registry.add(SetThreadNameHandler);
-+    }
-+
-     if features.enabled(Feature::DeferredExecutor) {
-         registry.add(
-             context
-diff --git a/codex-rs/core/src/tools/spec_plan_tests.rs b/codex-rs/core/src/tools/spec_plan_tests.rs
-index bdb2cb8..df2295e 100644
---- a/codex-rs/core/src/tools/spec_plan_tests.rs
-+++ b/codex-rs/core/src/tools/spec_plan_tests.rs
-@@ -1015,6 +1015,35 @@ async fn environment_tools_follow_the_step_context() {
-     plan.assert_visible_contains(&["exec_command", "apply_patch", "view_image"]);
- }
- 
-+#[tokio::test]
-+async fn set_thread_name_tool_follows_auto_thread_name_config_and_thread_source() {
-+    // Disabled by default (no auto-naming opt-in).
-+    let disabled = probe(|_| {}).await;
-+    disabled.assert_visible_lacks(&["set_thread_name"]);
-+    disabled.assert_registered_lacks(&["set_thread_name"]);
-+
-+    // Offered to a primary thread once auto naming is opted in.
-+    let primary = probe(|turn| {
-+        update_config(turn, |config| {
-+            config.tui_auto_thread_name = true;
-+        });
-+    })
-+    .await;
-+    primary.assert_visible_contains(&["set_thread_name"]);
-+    primary.assert_registered_contains(&["set_thread_name"]);
-+
-+    // Never offered to subagents / side threads, even with auto naming enabled.
-+    let subagent = probe(|turn| {
-+        update_config(turn, |config| {
-+            config.tui_auto_thread_name = true;
-+        });
-+        turn.session_source = SessionSource::SubAgent(SubAgentSource::Review);
-+    })
-+    .await;
-+    subagent.assert_visible_lacks(&["set_thread_name"]);
-+    subagent.assert_registered_lacks(&["set_thread_name"]);
-+}
-+
- #[tokio::test]
- async fn sleep_tool_follows_current_time_config() {
-     let disabled = probe(|turn| {
-diff --git a/codex-rs/mcp-server/src/codex_tool_runner.rs b/codex-rs/mcp-server/src/codex_tool_runner.rs
-index dd551a5..d1089e9 100644
---- a/codex-rs/mcp-server/src/codex_tool_runner.rs
-+++ b/codex-rs/mcp-server/src/codex_tool_runner.rs
-@@ -309,6 +309,9 @@ async fn run_codex_tool_session_inner(
-                     EventMsg::ThreadGoalUpdated(_) => {
-                         // Ignore thread goal metadata updates in MCP tool runner.
-                     }
-+                    EventMsg::ThreadNameUpdateRequested(_) => {
-+                        // Ignore thread name requests in MCP tool runner.
-+                    }
-                     EventMsg::McpStartupUpdate(_) | EventMsg::McpStartupComplete(_) => {
-                         // Ignored in MCP tool runner.
-                     }
-diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 242a565..9d14b3f 100644
---- a/codex-rs/protocol/src/protocol.rs
-+++ b/codex-rs/protocol/src/protocol.rs
-@@ -1371,6 +1371,11 @@ pub enum EventMsg {
-     /// Updated long-running goal metadata for the thread.
-     ThreadGoalUpdated(ThreadGoalUpdatedEvent),
- 
-+    /// Request from an in-process tool to title the current thread. The owning
-+    /// app-server applies it through the canonical thread-store metadata path
-+    /// and broadcasts `thread/name/updated`.
-+    ThreadNameUpdateRequested(ThreadNameUpdateRequestedEvent),
-+
-     /// Incremental MCP startup progress updates.
-     McpStartupUpdate(McpStartupUpdateEvent),
- 
-@@ -4117,6 +4122,19 @@ pub struct ThreadGoalUpdatedEvent {
-     pub goal: ThreadGoal,
- }
- 
-+/// Requests that the owning app-server set a concise title for the current
-+/// thread. Emitted by the in-process `set_thread_name` tool so the rename is
-+/// applied through the canonical thread-store metadata path and broadcast as
-+/// `thread/name/updated`, without introducing a second persistence writer.
-+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
-+#[serde(rename_all = "camelCase")]
-+#[ts(export_to = "protocol/")]
-+pub struct ThreadNameUpdateRequestedEvent {
-+    /// Requested title. Normalized by the app-server and applied only when the
-+    /// thread is currently unnamed, so manual titles are never overwritten.
-+    pub name: String,
-+}
-+
- /// User's decision in response to an ExecApprovalRequest.
- #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Display, JsonSchema, TS)]
- #[serde(rename_all = "snake_case")]
-diff --git a/codex-rs/rollout-trace/src/protocol_event.rs b/codex-rs/rollout-trace/src/protocol_event.rs
-index 22d2974..4489b4b 100644
---- a/codex-rs/rollout-trace/src/protocol_event.rs
-+++ b/codex-rs/rollout-trace/src/protocol_event.rs
-@@ -371,6 +371,7 @@ pub(crate) fn tool_runtime_trace_event(event: &EventMsg) -> Option<ToolRuntimeTr
-         | EventMsg::ContextCompacted(_)
-         | EventMsg::ThreadRolledBack(_)
-         | EventMsg::ThreadGoalUpdated(_)
-+        | EventMsg::ThreadNameUpdateRequested(_)
-         | EventMsg::TurnStarted(_)
-         | EventMsg::ThreadSettingsApplied(_)
-         | EventMsg::TurnComplete(_)
-@@ -457,6 +458,7 @@ pub(crate) fn wrapped_protocol_event_type(event: &EventMsg) -> Option<&'static s
-         | EventMsg::AgentReasoningRawContent(_)
-         | EventMsg::AgentReasoningSectionBreak(_)
-         | EventMsg::ThreadGoalUpdated(_)
-+        | EventMsg::ThreadNameUpdateRequested(_)
-         | EventMsg::McpStartupUpdate(_)
-         | EventMsg::McpStartupComplete(_)
-         | EventMsg::McpToolCallBegin(_)
-diff --git a/codex-rs/rollout/src/policy.rs b/codex-rs/rollout/src/policy.rs
-index 65a8213..bac4261 100644
---- a/codex-rs/rollout/src/policy.rs
-+++ b/codex-rs/rollout/src/policy.rs
-@@ -120,6 +120,7 @@ pub fn should_persist_event_msg(ev: &EventMsg, history_mode: ThreadHistoryMode)
- 
-         // Transient, non-durable events.
-         EventMsg::Error(_)
-+        | EventMsg::ThreadNameUpdateRequested(_)
-         | EventMsg::GuardianAssessment(_)
-         | EventMsg::ExecCommandEnd(_)
-         | EventMsg::ViewImageToolCall(_)
-diff --git a/codex-rs/tui/src/app/app_server_events.rs b/codex-rs/tui/src/app/app_server_events.rs
-index 2a8c26b..b9831af 100644
---- a/codex-rs/tui/src/app/app_server_events.rs
-+++ b/codex-rs/tui/src/app/app_server_events.rs
-@@ -15,6 +15,20 @@ use codex_app_server_protocol::AuthMode;
- use codex_app_server_protocol::RateLimitReachedType;
- use codex_app_server_protocol::ServerNotification;
- use codex_app_server_protocol::ServerRequest;
-+use codex_protocol::ThreadId;
-+
-+fn automatic_thread_name_target(
-+    enabled: bool,
-+    primary_thread_id: Option<ThreadId>,
-+    completed_thread_id: &str,
-+    status: codex_app_server_protocol::TurnStatus,
-+) -> Option<ThreadId> {
-+    if !enabled || !matches!(status, codex_app_server_protocol::TurnStatus::Completed) {
-+        return None;
-+    }
-+    let completed_thread_id = ThreadId::from_string(completed_thread_id).ok()?;
-+    (Some(completed_thread_id) == primary_thread_id).then_some(completed_thread_id)
-+}
- 
- impl App {
-     pub(super) fn refresh_mcp_startup_expected_servers_from_config(&mut self) {
-@@ -64,6 +78,16 @@ impl App {
-         app_server_client: &AppServerSession,
-         notification: ServerNotification,
-     ) {
-+        let auto_thread_name_trigger = match &notification {
-+            ServerNotification::TurnCompleted(completed) => automatic_thread_name_target(
-+                self.config.tui_auto_thread_name,
-+                self.primary_thread_id,
-+                &completed.thread_id,
-+                completed.turn.status.clone(),
-+            )
-+            .map(|thread_id| (thread_id, completed.turn.id.clone())),
-+            _ => None,
-+        };
-         match &notification {
-             ServerNotification::ServerRequestResolved(notification) => {
-                 if let Some(request) = self
-@@ -167,6 +191,11 @@ impl App {
- 
-                 if let Err(err) = result {
-                     tracing::warn!("failed to enqueue app-server notification: {err}");
-+                } else if let Some((thread_id, completed_turn_id)) = auto_thread_name_trigger {
-+                    self.app_event_tx.send(AppEvent::GenerateAutoThreadName {
-+                        thread_id,
-+                        completed_turn_id,
-+                    });
-                 }
-                 return;
-             }
-@@ -250,3 +279,62 @@ impl App {
-         }
-     }
- }
-+
-+#[cfg(test)]
-+mod auto_thread_name_tests {
-+    use super::automatic_thread_name_target;
-+    use codex_app_server_protocol::TurnStatus;
-+    use codex_protocol::ThreadId;
-+
-+    #[test]
-+    fn completed_primary_thread_is_eligible() {
-+        let primary = ThreadId::new();
-+        assert_eq!(
-+            automatic_thread_name_target(
-+                true,
-+                Some(primary),
-+                &primary.to_string(),
-+                TurnStatus::Completed,
-+            ),
-+            Some(primary)
-+        );
-+    }
-+
-+    #[test]
-+    fn stale_or_subagent_completion_is_not_eligible() {
-+        let selected = ThreadId::new();
-+        let completed = ThreadId::new();
-+        assert_eq!(
-+            automatic_thread_name_target(
-+                true,
-+                Some(selected),
-+                &completed.to_string(),
-+                TurnStatus::Completed,
-+            ),
-+            None
-+        );
-+    }
-+
-+    #[test]
-+    fn disabled_or_failed_completion_is_not_eligible() {
-+        let primary = ThreadId::new();
-+        assert_eq!(
-+            automatic_thread_name_target(
-+                false,
-+                Some(primary),
-+                &primary.to_string(),
-+                TurnStatus::Completed,
-+            ),
-+            None
-+        );
-+        assert_eq!(
-+            automatic_thread_name_target(
-+                true,
-+                Some(primary),
-+                &primary.to_string(),
-+                TurnStatus::Failed,
-+            ),
-+            None
-+        );
-+    }
-+}
-diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 8224b00..4ccf4d3 100644
---- a/codex-rs/tui/src/app/event_dispatch.rs
-+++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -509,6 +509,25 @@ impl App {
-                     tracing::error!(error = ?err, "failed to start turn through app server");
-                 }
-             }
-+            AppEvent::GenerateAutoThreadName {
-+                thread_id,
-+                completed_turn_id,
-+            } => {
-+                if let Err(error) = app_server
-+                    .thread_generate_name(
-+                        thread_id,
-+                        completed_turn_id,
-+                        self.config.tui_auto_thread_name_after_turns,
-+                    )
-+                    .await
-+                {
-+                    tracing::warn!(
-+                        thread_id = %thread_id,
-+                        error = %error,
-+                        "automatic thread naming request failed"
-+                    );
-+                }
-+            }
-             AppEvent::RetrySafetyBufferedTurn {
-                 thread_id,
-                 turn_id,
-diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index b0d9e1f..a6be02c 100644
---- a/codex-rs/tui/src/app_event.rs
-+++ b/codex-rs/tui/src/app_event.rs
-@@ -337,6 +337,10 @@ pub(crate) enum AppEvent {
-     /// Forward a command to the Agent. Using an `AppEvent` for this avoids
-     /// bubbling channels through layers of widgets.
-     CodexOp(AppCommand),
-+    GenerateAutoThreadName {
-+        thread_id: ThreadId,
-+        completed_turn_id: String,
-+    },
- 
-     /// Approve one retry of a recent auto-review denial selected in the TUI.
-     ApproveRecentAutoReviewDenial {
-diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index 06166e5..2d49615 100644
---- a/codex-rs/tui/src/app_server_session.rs
-+++ b/codex-rs/tui/src/app_server_session.rs
-@@ -69,6 +69,8 @@ use codex_app_server_protocol::ThreadDeleteParams;
- use codex_app_server_protocol::ThreadDeleteResponse;
- use codex_app_server_protocol::ThreadForkParams;
- use codex_app_server_protocol::ThreadForkResponse;
-+use codex_app_server_protocol::ThreadGenerateNameParams;
-+use codex_app_server_protocol::ThreadGenerateNameResponse;
- use codex_app_server_protocol::ThreadGoalClearParams;
- use codex_app_server_protocol::ThreadGoalClearResponse;
- use codex_app_server_protocol::ThreadGoalGetParams;
-@@ -1197,6 +1199,25 @@ impl AppServerSession {
-         Ok(())
-     }
- 
-+    pub(crate) async fn thread_generate_name(
-+        &mut self,
-+        thread_id: ThreadId,
-+        completed_turn_id: String,
-+        after_turns: usize,
-+    ) -> std::result::Result<ThreadGenerateNameResponse, TypedRequestError> {
-+        let request_id = self.next_request_id();
-+        self.client
-+            .request_typed(ClientRequest::ThreadGenerateName {
-+                request_id,
-+                params: ThreadGenerateNameParams {
-+                    thread_id: thread_id.to_string(),
-+                    completed_turn_id,
-+                    after_turns,
-+                },
-+            })
-+            .await
-+    }
-+
-     pub(crate) async fn thread_memory_mode_set(
-         &mut self,
-         thread_id: ThreadId,
-diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
-index a03ffbd..a0b9b47 100644
---- a/codex-rs/tui/src/chatwidget/protocol.rs
-+++ b/codex-rs/tui/src/chatwidget/protocol.rs
-@@ -35,9 +35,13 @@ impl ChatWidget {
-                 )));
-             }
-             ServerNotification::ThreadNameUpdated(notification) => {
-+                let generated = matches!(
-+                    notification.source,
-+                    Some(codex_app_server_protocol::ThreadNameUpdateSource::Generated)
-+                );
-                 match ThreadId::from_string(&notification.thread_id) {
-                     Ok(thread_id) => {
--                        self.on_thread_name_updated(thread_id, notification.thread_name)
-+                        self.on_thread_name_updated(thread_id, notification.thread_name, generated)
-                     }
-                     Err(err) => {
-                         tracing::warn!(
-diff --git a/codex-rs/tui/src/chatwidget/session_flow.rs b/codex-rs/tui/src/chatwidget/session_flow.rs
-index 52218e0..f072296 100644
---- a/codex-rs/tui/src/chatwidget/session_flow.rs
-+++ b/codex-rs/tui/src/chatwidget/session_flow.rs
-@@ -241,9 +241,10 @@ impl ChatWidget {
-         &mut self,
-         thread_id: ThreadId,
-         thread_name: Option<String>,
-+        generated: bool,
-     ) {
-         if self.thread_id == Some(thread_id) {
--            if let Some(name) = thread_name.as_deref() {
-+            if !generated && let Some(name) = thread_name.as_deref() {
-                 let cell = Self::rename_confirmation_cell(name, self.thread_id);
-                 self.add_boxed_history(Box::new(cell));
-             }
-diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index 3edeacf..b28d4b7 100644
---- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
-+++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-@@ -1442,6 +1442,7 @@ async fn live_app_server_invalid_thread_name_update_is_ignored() {
-             codex_app_server_protocol::ThreadNameUpdatedNotification {
-                 thread_id: "not-a-thread-id".to_string(),
-                 thread_name: Some("bad update".to_string()),
-+                source: None,
-             },
-         ),
-         /*replay_kind*/ None,
-@@ -1463,6 +1464,7 @@ async fn live_app_server_thread_name_update_shows_resume_hint() {
-             codex_app_server_protocol::ThreadNameUpdatedNotification {
-                 thread_id: thread_id.to_string(),
-                 thread_name: Some("review-fix".to_string()),
-+                source: None,
-             },
-         ),
-         /*replay_kind*/ None,
-@@ -1475,6 +1477,40 @@ async fn live_app_server_thread_name_update_shows_resume_hint() {
-     assert_chatwidget_snapshot!("thread_name_update_resume_hint", rendered);
- }
- 
-+#[tokio::test]
-+async fn generated_thread_name_update_is_silent_and_refreshes_status_surfaces() {
-+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-+    let thread_id = ThreadId::new();
-+    chat.thread_id = Some(thread_id);
-+    chat.config.tui_status_line = Some(vec!["thread-title".to_string()]);
-+    chat.config.tui_terminal_title = Some(vec!["thread-title".to_string()]);
-+
-+    chat.handle_server_notification(
-+        ServerNotification::ThreadNameUpdated(
-+            codex_app_server_protocol::ThreadNameUpdatedNotification {
-+                thread_id: thread_id.to_string(),
-+                thread_name: Some("Automatic naming workflow".to_string()),
-+                source: Some(codex_app_server_protocol::ThreadNameUpdateSource::Generated),
-+            },
-+        ),
-+        /*replay_kind*/ None,
-+    );
-+
-+    assert_eq!(
-+        chat.thread_name.as_deref(),
-+        Some("Automatic naming workflow")
-+    );
-+    assert_eq!(
-+        chat.last_terminal_title.as_deref(),
-+        Some("Automatic naming workflow")
-+    );
-+    assert_eq!(
-+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::ThreadTitle),
-+        Some("Automatic naming workflow".to_string())
-+    );
-+    assert!(drain_insert_history(&mut rx).is_empty());
-+}
-+
- #[tokio::test]
- async fn live_app_server_thread_closed_requests_immediate_exit() {
-     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-diff --git a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
-index ff3b3fb..938c258 100644
---- a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
-+++ b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
-@@ -481,6 +481,7 @@ async fn queued_bare_rename_drains_next_input_after_name_update() {
-             codex_app_server_protocol::ThreadNameUpdatedNotification {
-                 thread_id: thread_id.to_string(),
-                 thread_name: Some("Queued rename".to_string()),
-+                source: None,
-             },
-         ),
-         /*replay_kind*/ None,
-@@ -565,6 +566,7 @@ async fn queued_inline_rename_does_not_drain_again_before_turn_started() {
-             codex_app_server_protocol::ThreadNameUpdatedNotification {
-                 thread_id: thread_id.to_string(),
-                 thread_name: Some("Queued rename".to_string()),
-+                source: None,
-             },
-         ),
-         /*replay_kind*/ None,
-diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-index 7532551..e14c01a 100644
---- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-+++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-@@ -3289,6 +3289,7 @@ async fn renamed_thread_footer_title_snapshot() {
-             codex_app_server_protocol::ThreadNameUpdatedNotification {
-                 thread_id: thread_id.to_string(),
-                 thread_name: Some("Roadmap cleanup".to_string()),
-+                source: None,
-             },
-         ),
-         /*replay_kind*/ None,
