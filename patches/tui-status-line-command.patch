@@ -894,25 +894,46 @@ index 85d845b21..b77ac6804 100644
              }),
              credits: None,
 diff --git a/codex-rs/tui/src/tui/frame_requester.rs b/codex-rs/tui/src/tui/frame_requester.rs
-index 7b14131a5..c2216f6ab 100644
+index 7b14131a5..db326afbb 100644
 --- a/codex-rs/tui/src/tui/frame_requester.rs
 +++ b/codex-rs/tui/src/tui/frame_requester.rs
-@@ -29,7 +29,13 @@ use super::frame_rate_limiter::FrameRateLimiter;
+@@ -29,7 +29,34 @@ use super::frame_rate_limiter::FrameRateLimiter;
  /// from anywhere in the TUI code.
  #[derive(Clone, Debug)]
  pub struct FrameRequester {
 -    frame_schedule_tx: mpsc::UnboundedSender<Instant>,
 +    frame_schedule_tx: mpsc::UnboundedSender<FrameSchedule>,
-+}
-+
+ }
+
 +#[derive(Clone, Copy, Debug)]
 +pub(crate) struct FrameSchedule {
 +    draw_at: Instant,
 +    preserve_after_earlier_draw: bool,
- }
-
++}
++
++#[cfg(test)]
++impl FrameSchedule {
++    pub(crate) fn duration_since(self, earlier: Instant) -> Duration {
++        self.draw_at.duration_since(earlier)
++    }
++}
++
++#[cfg(test)]
++impl PartialEq<Instant> for FrameSchedule {
++    fn eq(&self, other: &Instant) -> bool {
++        self.draw_at.eq(other)
++    }
++}
++
++#[cfg(test)]
++impl PartialOrd<Instant> for FrameSchedule {
++    fn partial_cmp(&self, other: &Instant) -> Option<std::cmp::Ordering> {
++        self.draw_at.partial_cmp(other)
++    }
++}
++
  impl FrameRequester {
-@@ -47,12 +53,29 @@ impl FrameRequester {
+@@ -47,12 +74,29 @@ impl FrameRequester {
 
      /// Schedule a frame draw as soon as possible.
      pub fn schedule_frame(&self) {
@@ -944,7 +965,7 @@ index 7b14131a5..c2216f6ab 100644
      }
  }
 
-@@ -74,14 +97,17 @@ impl FrameRequester {
+@@ -74,14 +118,17 @@ impl FrameRequester {
  /// To avoid wasted redraw work, draw notifications are clamped to a maximum of 120 FPS (see
  /// [`FrameRateLimiter`]).
  struct FrameScheduler {
@@ -964,7 +985,7 @@ index 7b14131a5..c2216f6ab 100644
          Self {
              receiver,
              draw_tx,
-@@ -96,19 +122,30 @@ impl FrameScheduler {
+@@ -96,19 +143,30 @@ impl FrameScheduler {
      async fn run(mut self) {
          const ONE_YEAR: Duration = Duration::from_secs(60 * 60 * 24 * 365);
          let mut next_deadline: Option<Instant> = None;
@@ -1000,7 +1021,7 @@ index 7b14131a5..c2216f6ab 100644
 
                      // Do not send a draw immediately here. By continuing the loop,
                      // we recompute the sleep target so the draw fires once via the
-@@ -116,8 +153,13 @@ impl FrameScheduler {
+@@ -116,8 +174,13 @@ impl FrameScheduler {
                      continue;
                  }
                  _ = &mut deadline => {
@@ -1015,7 +1036,7 @@ index 7b14131a5..c2216f6ab 100644
                          self.rate_limiter.mark_emitted(target);
                          let _ = self.draw_tx.send(());
                      }
-@@ -135,7 +177,7 @@ mod tests {
+@@ -135,7 +198,7 @@ mod tests {
 
      impl FrameRequester {
          /// Create a frame requester and expose its request channel for deterministic tests.
@@ -1024,7 +1045,7 @@ index 7b14131a5..c2216f6ab 100644
              let (tx, rx) = mpsc::unbounded_channel();
              (
                  FrameRequester {
-@@ -244,6 +286,31 @@ mod tests {
+@@ -244,6 +307,31 @@ mod tests {
          assert!(second.is_err(), "unexpected extra draw received");
      }
 
@@ -1281,7 +1302,7 @@ new file mode 100644
 index 0000000..609f852
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/status_line_command_tests.rs
-@@ -0,0 +1,262 @@
+@@ -0,0 +1,263 @@
 +use chrono::Local;
 +use std::fs;
 +
@@ -1521,9 +1542,10 @@ index 0000000..609f852
 +
 +    let completion = tokio::time::timeout(std::time::Duration::from_secs(2), async {
 +        loop {
-+            match rx.recv().await.expect("status-line event channel closed") {
-+                AppEvent::StatusLineCommandCompleted(completion) => break completion,
-+                _ => {}
++            if let AppEvent::StatusLineCommandCompleted(completion) =
++                rx.recv().await.expect("status-line event channel closed")
++            {
++                break completion;
 +            }
 +        }
 +    })
@@ -1546,10 +1568,10 @@ index 0000000..609f852
 +}
 diff --git a/codex-rs/tui/src/status_line_command/ansi.rs b/codex-rs/tui/src/status_line_command/ansi.rs
 new file mode 100644
-index 0000000..fcc0ca4
+index 0000000..036d1a7
 --- /dev/null
 +++ b/codex-rs/tui/src/status_line_command/ansi.rs
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,189 @@
 +use ratatui::style::Color;
 +use ratatui::style::Modifier;
 +use ratatui::style::Style;
@@ -1616,11 +1638,11 @@ index 0000000..fcc0ca4
 +}
 +
 +fn flush(lines: &mut [Line<'static>], plain: &mut String, style: Style) {
-+    if !plain.is_empty() {
-+        if let Some(line) = lines.last_mut() {
-+            line.spans
-+                .push(Span::from(std::mem::take(plain)).set_style(style));
-+        }
++    if !plain.is_empty()
++        && let Some(line) = lines.last_mut()
++    {
++        line.spans
++            .push(Span::from(std::mem::take(plain)).set_style(style));
 +    }
 +}
 +
@@ -1673,6 +1695,10 @@ index 0000000..fcc0ca4
 +    Ok(style)
 +}
 +
++#[allow(
++    clippy::disallowed_methods,
++    reason = "ANSI 256-color and true-color SGR sequences require these ratatui variants"
++)]
 +fn extended_color(params: &[u16]) -> Result<(Color, usize), String> {
 +    match params {
 +        [5, index, ..] if *index <= 255 => Ok((Color::Indexed(*index as u8), 2)),
@@ -1737,10 +1763,10 @@ index 0000000..fcc0ca4
 +mod tests;
 diff --git a/codex-rs/tui/src/status_line_command/ansi_tests.rs b/codex-rs/tui/src/status_line_command/ansi_tests.rs
 new file mode 100644
-index 0000000..2547089
+index 0000000..ce3714f
 --- /dev/null
 +++ b/codex-rs/tui/src/status_line_command/ansi_tests.rs
-@@ -0,0 +1,94 @@
+@@ -0,0 +1,98 @@
 +use ratatui::style::Color;
 +use ratatui::style::Modifier;
 +use ratatui::text::Line;
@@ -1771,6 +1797,10 @@ index 0000000..2547089
 +    );
 +}
 +
++#[allow(
++    clippy::disallowed_methods,
++    reason = "the parser must be asserted against ANSI 256-color and true-color values"
++)]
 +#[test]
 +fn parses_sgr_styles_and_resets_each_row() {
 +    let lines = parse_status_line_output(

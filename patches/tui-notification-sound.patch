@@ -249,7 +249,7 @@ index 639f88fa9..f4e006718 100644
 
 diff --git a/codex-rs/tui/src/notifications/sound.rs b/codex-rs/tui/src/notifications/sound.rs
 new file mode 100644
-index 0000000..eb9fe52
+index 0000000..cec4ee7
 --- /dev/null
 +++ b/codex-rs/tui/src/notifications/sound.rs
 @@ -0,0 +1,197 @@
@@ -366,7 +366,7 @@ index 0000000..eb9fe52
 +    fn command(program: &str, args: &[&str]) -> SoundCommand {
 +        SoundCommand {
 +            program: program.to_string(),
-+            args: args.iter().map(|arg| arg.to_string()).collect(),
++            args: args.iter().map(ToString::to_string).collect(),
 +        }
 +    }
 +
