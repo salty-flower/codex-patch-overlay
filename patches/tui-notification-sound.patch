@@ -85,6 +85,18 @@ index 22e5724704..eb5b1bbd7e 100644
 +    assert_eq!(sound.enabled, false);
 +    assert_eq!(sound.command, None);
 +}
+diff --git a/codex-rs/tui/src/app/agents_overview.rs b/codex-rs/tui/src/app/agents_overview.rs
+index bba54d26fa..013c5d31d4 100644
+--- a/codex-rs/tui/src/app/agents_overview.rs
++++ b/codex-rs/tui/src/app/agents_overview.rs
+@@ -450,6 +450,7 @@ impl App {
+             tui.set_notification_settings(
+                 self.config.tui_notifications.method,
+                 self.config.tui_notifications.condition,
++                self.config.tui_notifications.sound.clone(),
+             );
+             self.file_search
+                 .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
 index 60e6c54004..9af5463b7f 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
