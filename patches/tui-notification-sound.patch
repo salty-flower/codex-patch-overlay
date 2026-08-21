@@ -109,6 +109,19 @@ index ee9b713a76..64f6d3e506 100644
          );
  
          let harness_overrides =
+diff --git a/codex-rs/tui/src/app/working_directory.rs b/codex-rs/tui/src/app/working_directory.rs
+index 3212f9085a..4504aa829b 100644
+--- a/codex-rs/tui/src/app/working_directory.rs
++++ b/codex-rs/tui/src/app/working_directory.rs
+@@ -170,7 +170,7 @@ impl App {
+         self.file_search
+             .update_search_dir(self.config.cwd.to_path_buf());
+         let notify = &self.config.tui_notifications;
+-        tui.set_notification_settings(notify.method, notify.condition);
++        tui.set_notification_settings(notify.method, notify.condition, notify.sound.clone());
+         if let Err(error) = tui.clear_ambient_pet_image() {
+             tracing::warn!(%error, "failed to clear ambient pet image");
+         }
 diff --git a/codex-rs/tui/src/notifications/mod.rs b/codex-rs/tui/src/notifications/mod.rs
 index ee6694b357..fdafce9857 100644
 --- a/codex-rs/tui/src/notifications/mod.rs
