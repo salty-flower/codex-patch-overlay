@@ -1,5 +1,5 @@
 diff --git a/codex-rs/tui/src/status/card.rs b/codex-rs/tui/src/status/card.rs
-index 93f959c8d..c02d79f7c 100644
+index 93f959c8db..c02d79f7c6 100644
 --- a/codex-rs/tui/src/status/card.rs
 +++ b/codex-rs/tui/src/status/card.rs
 @@ -69,6 +69,8 @@ pub(crate) struct StatusTokenUsageData {
@@ -85,7 +85,7 @@ index 93f959c8d..c02d79f7c 100644
          let thread_usage_lines = self.thread_usage.lines(&formatter, value_width);
          if !thread_usage_lines.is_empty() {
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cached_limits_hide_credits_without_flag.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cached_limits_hide_credits_without_flag.snap
-index c7d89b17a..abdbd3755 100644
+index c7d89b17aa..abdbd37553 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cached_limits_hide_credits_without_flag.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cached_limits_hide_credits_without_flag.snap
 @@ -17,6 +17,7 @@ expression: sanitized
@@ -97,7 +97,7 @@ index c7d89b17a..abdbd3755 100644
  │  Weekly limit:     [█████████████░░░░░░░] 65% left (resets 11:52)           │
  │  Warning:          limits may be stale - start new turn to refresh.         │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap
-index c1636b6c1..4f220fec7 100644
+index c1636b6c15..4f220fec72 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap
 @@ -17,6 +17,7 @@ expression: sanitized
@@ -109,7 +109,7 @@ index c1636b6c1..4f220fec7 100644
  │  Weekly limit:     [██████████████░░░░░░] 70% left (resets 09:55)           │
  │  Credits:          Available                                                │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_enterprise_monthly_credit_limit.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_enterprise_monthly_credit_limit.snap
-index 765ad8d3a..9e6a02f0f 100644
+index 765ad8d3a7..9e6a02f0fd 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_enterprise_monthly_credit_limit.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_enterprise_monthly_credit_limit.snap
 @@ -17,6 +17,7 @@ expression: sanitized
@@ -121,7 +121,7 @@ index 765ad8d3a..9e6a02f0f 100644
  │                          8,000 of 25,000 credits used                             │
  ╰───────────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_forked_from.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_forked_from.snap
-index 152575179..5bf2b6899 100644
+index 152575179e..5bf2b68992 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_forked_from.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_forked_from.snap
 @@ -19,5 +19,6 @@ expression: sanitized
@@ -132,7 +132,7 @@ index 152575179..5bf2b6899 100644
  │  Limits:           data not available yet                                   │
  ╰─────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_monthly_limit.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_monthly_limit.snap
-index 7a4f58a82..866b75893 100644
+index 7a4f58a823..866b75893b 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_monthly_limit.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_monthly_limit.snap
 @@ -17,5 +17,6 @@ expression: sanitized
@@ -143,7 +143,7 @@ index 7a4f58a82..866b75893 100644
  │  Monthly limit:    [██████████████████░░] 88% left (resets 07:08 on 7 May)  │
  ╰─────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_reasoning_details.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_reasoning_details.snap
-index 96b2ed164..ca459d406 100644
+index 96b2ed1648..ca459d406b 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_reasoning_details.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_reasoning_details.snap
 @@ -17,6 +17,7 @@ expression: sanitized
@@ -155,7 +155,7 @@ index 96b2ed164..ca459d406 100644
  │  Weekly limit:     [███████████░░░░░░░░░] 55% left (resets 03:24)         │
  ╰───────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_missing_limits_message.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_missing_limits_message.snap
-index 533be2797..642b4a5ea 100644
+index 533be27976..642b4a5ea2 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_missing_limits_message.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_missing_limits_message.snap
 @@ -17,5 +17,6 @@ expression: sanitized
@@ -166,7 +166,7 @@ index 533be2797..642b4a5ea 100644
  │  Limits:           data not available yet                                   │
  ╰─────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_refreshing_limits_notice.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_refreshing_limits_notice.snap
-index 631982bcf..4e4d97598 100644
+index 631982bcf9..4e4d975984 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_refreshing_limits_notice.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_refreshing_limits_notice.snap
 @@ -17,6 +17,7 @@ expression: sanitized
@@ -178,7 +178,7 @@ index 631982bcf..4e4d97598 100644
  │  Weekly limit:     [██████████████░░░░░░] 70% left (resets 08:54)           │
  ╰─────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_stale_limits_message.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_stale_limits_message.snap
-index 8facd5627..e02aad580 100644
+index 8facd56275..e02aad5800 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_stale_limits_message.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_stale_limits_message.snap
 @@ -17,6 +17,7 @@ expression: sanitized
@@ -190,7 +190,7 @@ index 8facd5627..e02aad580 100644
  │  Weekly limit:     [████████████░░░░░░░░] 60% left (resets 03:34)           │
  │  Warning:          limits may be stale - start new turn to refresh.         │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_unavailable_limits_message.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_unavailable_limits_message.snap
-index d46a483e4..756def1df 100644
+index d46a483e4b..756def1df1 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_unavailable_limits_message.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_unavailable_limits_message.snap
 @@ -17,5 +17,6 @@ expression: sanitized
@@ -201,7 +201,7 @@ index d46a483e4..756def1df 100644
  │  Limits:           not available for this account                           │
  ╰─────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_treats_refreshing_empty_limits_as_unavailable.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_treats_refreshing_empty_limits_as_unavailable.snap
-index d46a483e4..756def1df 100644
+index d46a483e4b..756def1df1 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_treats_refreshing_empty_limits_as_unavailable.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_treats_refreshing_empty_limits_as_unavailable.snap
 @@ -17,5 +17,6 @@ expression: sanitized
@@ -212,7 +212,7 @@ index d46a483e4..756def1df 100644
  │  Limits:           not available for this account                           │
  ╰─────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_in_narrow_terminal.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_in_narrow_terminal.snap
-index 6b28b53b6..432a69ca0 100644
+index 6b28b53b62..432a69ca0f 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_in_narrow_terminal.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_in_narrow_terminal.snap
 @@ -17,5 +17,6 @@ expression: sanitized
@@ -223,7 +223,7 @@ index 6b28b53b6..432a69ca0 100644
  │  5h limit:         [██████░░░░░░░░░░░░░░] 28% left (resets 03:14)  │
  ╰────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap
-index 9683beed9..80956d9ab 100644
+index 9683beed97..80956d9ab3 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap
 @@ -20,5 +20,6 @@ expression: sanitized
@@ -234,7 +234,7 @@ index 9683beed9..80956d9ab 100644
  │  Limits:           data not available yet                                   │
  ╰─────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_generic_limit_labels_for_unsupported_windows.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_generic_limit_labels_for_unsupported_windows.snap
-index 6b6fad683..4c602037e 100644
+index 6b6fad683b..4c602037ef 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_generic_limit_labels_for_unsupported_windows.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_generic_limit_labels_for_unsupported_windows.snap
 @@ -17,6 +17,7 @@ expression: sanitized
@@ -246,7 +246,7 @@ index 6b6fad683..4c602037e 100644
  │                           (resets 07:08 on 7 May)                            │
  │  Secondary usage limit:   [██████████░░░░░░░░░░] 50% left                    │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_wraps_enterprise_monthly_credit_details_in_narrow_terminal.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_wraps_enterprise_monthly_credit_details_in_narrow_terminal.snap
-index cf6fa2c2e..f4064d04d 100644
+index cf6fa2c2ec..f4064d04d0 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_wraps_enterprise_monthly_credit_details_in_narrow_terminal.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_wraps_enterprise_monthly_credit_details_in_narrow_terminal.snap
 @@ -19,6 +19,7 @@ expression: sanitized
@@ -258,10 +258,10 @@ index cf6fa2c2e..f4064d04d 100644
  │                          (resets 07:08 on  │
  │                          7 May)            │
 diff --git a/codex-rs/tui/src/status/tests.rs b/codex-rs/tui/src/status/tests.rs
-index ca2831142..85d845b21 100644
+index 161bbf4c74..438c53c71c 100644
 --- a/codex-rs/tui/src/status/tests.rs
 +++ b/codex-rs/tui/src/status/tests.rs
-@@ -1451,9 +1451,21 @@ async fn status_card_token_usage_excludes_cached_tokens() {
+@@ -1452,9 +1452,21 @@ async fn status_card_token_usage_excludes_cached_tokens() {
      );
      let rendered = render_lines(&composite.display_lines(/*width*/ 120));
  

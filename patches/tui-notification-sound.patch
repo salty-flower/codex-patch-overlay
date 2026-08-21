@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index c78ed6986..479cb151c 100644
+index 148fef00f7..a341aa9a4e 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -673,6 +673,40 @@ pub struct TuiNotificationSettings {
+@@ -674,6 +674,40 @@ pub struct TuiNotificationSettings {
      /// regardless of focus. Defaults to `unfocused`.
      #[serde(default, rename = "notification_condition")]
      pub condition: NotificationCondition,
@@ -41,14 +41,14 @@ index c78ed6986..479cb151c 100644
 +        }
 +    }
  }
-
+ 
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index b32181c98..e9bbeb871 100644
+index 22e5724704..eb5b1bbd7e 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -12290,3 +12290,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
-
+@@ -12694,3 +12694,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
+ 
      Ok(())
  }
 +
@@ -86,10 +86,10 @@ index b32181c98..e9bbeb871 100644
 +    assert_eq!(sound.command, None);
 +}
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 4edbb5abc..712beca4a 100644
+index 60e6c54004..9af5463b7f 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -1030,6 +1030,7 @@ impl App {
+@@ -1084,6 +1084,7 @@ impl App {
                  tui.set_notification_settings(
                      self.config.tui_notifications.method,
                      self.config.tui_notifications.condition,
@@ -98,28 +98,28 @@ index 4edbb5abc..712beca4a 100644
                  self.file_search
                      .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index 97d5bb697..1bb574f1c 100644
+index ee9b713a76..64f6d3e506 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -105,6 +105,7 @@ impl App {
+@@ -109,6 +109,7 @@ impl App {
          tui.set_notification_settings(
              config.tui_notifications.method,
              config.tui_notifications.condition,
 +            config.tui_notifications.sound.clone(),
          );
-
+ 
          let harness_overrides =
 diff --git a/codex-rs/tui/src/notifications/mod.rs b/codex-rs/tui/src/notifications/mod.rs
-index ee6694b35..fdafce985 100644
+index ee6694b357..fdafce9857 100644
 --- a/codex-rs/tui/src/notifications/mod.rs
 +++ b/codex-rs/tui/src/notifications/mod.rs
 @@ -1,14 +1,17 @@
  mod bel;
  mod osc9;
 +mod sound;
-
+ 
  use std::io;
-
+ 
  use bel::BelBackend;
  use codex_config::types::NotificationMethod;
 +use codex_config::types::TuiNotificationSoundConfig;
@@ -128,13 +128,13 @@ index ee6694b35..fdafce985 100644
  use codex_terminal_detection::terminal_info;
  use osc9::Osc9Backend;
 +use sound::play_notification_sound;
-
+ 
  #[derive(Debug)]
  pub enum DesktopNotificationBackend {
 @@ -46,10 +49,29 @@ impl DesktopNotificationBackend {
      }
  }
-
+ 
 +pub fn notify_with_sound(
 +    backend: &mut DesktopNotificationBackend,
 +    message: &str,
@@ -153,7 +153,7 @@ index ee6694b35..fdafce985 100644
  pub fn detect_backend(method: NotificationMethod) -> DesktopNotificationBackend {
      DesktopNotificationBackend::for_method(method)
  }
-
+ 
 +fn should_play_notification_sound(method: NotificationMethod) -> bool {
 +    method != NotificationMethod::Bel
 +}
@@ -172,7 +172,7 @@ index ee6694b35..fdafce985 100644
 @@ -96,6 +119,19 @@ mod tests {
          ));
      }
-
+ 
 +    #[test]
 +    fn skips_extra_sound_for_bel_notifications() {
 +        assert_eq!(
@@ -189,67 +189,9 @@ index ee6694b35..fdafce985 100644
      #[test]
      fn supports_osc9_for_supported_terminals() {
          for name in [
-diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
-index 639f88fa9..f4e006718 100644
---- a/codex-rs/tui/src/tui.rs
-+++ b/codex-rs/tui/src/tui.rs
-@@ -51,6 +51,7 @@ use crate::insert_history::HistoryLineWrapPolicy;
- use crate::insert_history::InsertHistoryMode;
- use crate::notifications::DesktopNotificationBackend;
- use crate::notifications::detect_backend;
-+use crate::notifications::notify_with_sound;
- use crate::terminal_hyperlinks::HyperlinkLine;
- use crate::terminal_hyperlinks::plain_hyperlink_lines;
- use crate::tui::event_stream::EventBroker;
-@@ -60,6 +61,7 @@ use crate::tui::job_control::SuspendContext;
- use crate::tui::screen_size::ScreenSizePolicy;
- use codex_config::types::NotificationCondition;
- use codex_config::types::NotificationMethod;
-+use codex_config::types::TuiNotificationSoundConfig;
-
- mod event_stream;
- mod frame_rate_limiter;
-@@ -594,6 +596,7 @@ pub struct Tui {
-     enhanced_keys_supported: bool,
-     notification_backend: Option<DesktopNotificationBackend>,
-     notification_condition: NotificationCondition,
-+    notification_sound: TuiNotificationSoundConfig,
-     // Raw terminal-wrapped history needs a non-scroll-region insertion path in Zellij.
-     is_zellij: bool,
-     // When false, enter_alt_screen() becomes a no-op.
-@@ -650,6 +653,7 @@ impl Tui {
-             enhanced_keys_supported,
-             notification_backend: Some(detect_backend(NotificationMethod::default())),
-             notification_condition: NotificationCondition::default(),
-+            notification_sound: TuiNotificationSoundConfig::default(),
-             is_zellij,
-             alt_screen_enabled: true,
-             _stderr_guard: stderr_guard,
-@@ -665,9 +669,11 @@ impl Tui {
-         &mut self,
-         method: NotificationMethod,
-         condition: NotificationCondition,
-+        sound: TuiNotificationSoundConfig,
-     ) {
-         self.notification_backend = Some(detect_backend(method));
-         self.notification_condition = condition;
-+        self.notification_sound = sound;
-     }
-
-     pub fn frame_requester(&self) -> FrameRequester {
-@@ -774,7 +780,7 @@ impl Tui {
-         };
-
-         let message = message.as_ref().to_string();
--        match backend.notify(&message) {
-+        match notify_with_sound(backend, &message, &self.notification_sound) {
-             Ok(()) => true,
-             Err(err) => {
-                 let method = backend.method();
-
 diff --git a/codex-rs/tui/src/notifications/sound.rs b/codex-rs/tui/src/notifications/sound.rs
 new file mode 100644
-index 0000000..cec4ee7
+index 0000000000..cec4ee7444
 --- /dev/null
 +++ b/codex-rs/tui/src/notifications/sound.rs
 @@ -0,0 +1,197 @@
@@ -450,3 +392,60 @@ index 0000000..cec4ee7
 +        );
 +    }
 +}
+diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
+index 623a9944a0..c4628bf79d 100644
+--- a/codex-rs/tui/src/tui.rs
++++ b/codex-rs/tui/src/tui.rs
+@@ -50,6 +50,7 @@ use crate::custom_terminal::Terminal as CustomTerminal;
+ use crate::insert_history::HistoryLineWrapPolicy;
+ use crate::notifications::DesktopNotificationBackend;
+ use crate::notifications::detect_backend;
++use crate::notifications::notify_with_sound;
+ use crate::terminal_hyperlinks::HyperlinkLine;
+ use crate::terminal_hyperlinks::plain_hyperlink_lines;
+ use crate::tui::event_stream::EventBroker;
+@@ -60,6 +61,7 @@ use crate::tui::screen_size::ScreenSizePolicy;
+ use crate::tui::scrollback::ScrollbackStrategy;
+ use codex_config::types::NotificationCondition;
+ use codex_config::types::NotificationMethod;
++use codex_config::types::TuiNotificationSoundConfig;
+ 
+ mod event_stream;
+ mod frame_rate_limiter;
+@@ -595,6 +597,7 @@ pub struct Tui {
+     enhanced_keys_supported: bool,
+     notification_backend: Option<DesktopNotificationBackend>,
+     notification_condition: NotificationCondition,
++    notification_sound: TuiNotificationSoundConfig,
+     scrollback: ScrollbackStrategy,
+     // When false, enter_alt_screen() becomes a no-op.
+     alt_screen_enabled: bool,
+@@ -650,6 +653,7 @@ impl Tui {
+             enhanced_keys_supported,
+             notification_backend: Some(detect_backend(NotificationMethod::default())),
+             notification_condition: NotificationCondition::default(),
++            notification_sound: TuiNotificationSoundConfig::default(),
+             scrollback,
+             alt_screen_enabled: true,
+             _stderr_guard: stderr_guard,
+@@ -665,9 +669,11 @@ impl Tui {
+         &mut self,
+         method: NotificationMethod,
+         condition: NotificationCondition,
++        sound: TuiNotificationSoundConfig,
+     ) {
+         self.notification_backend = Some(detect_backend(method));
+         self.notification_condition = condition;
++        self.notification_sound = sound;
+     }
+ 
+     pub fn frame_requester(&self) -> FrameRequester {
+@@ -774,7 +780,7 @@ impl Tui {
+         };
+ 
+         let message = message.as_ref().to_string();
+-        match backend.notify(&message) {
++        match notify_with_sound(backend, &message, &self.notification_sound) {
+             Ok(()) => true,
+             Err(err) => {
+                 let method = backend.method();

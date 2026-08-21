@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 1a23f6f06..acdb4a714 100644
+index e967543b8e..999ca10334 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -2382,6 +2382,18 @@ impl App {
+@@ -2550,6 +2550,18 @@ impl App {
                  self.chat_widget
                      .submit_user_message_with_mode(text, collaboration_mode);
              }
@@ -22,13 +22,13 @@ index 1a23f6f06..acdb4a714 100644
                  self.chat_widget.handle_manage_skills_closed();
              }
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 6fde0759d..afef04b61 100644
+index 85938623a4..5970cbe688 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -1086,6 +1086,16 @@ pub(crate) enum AppEvent {
+@@ -1142,6 +1142,16 @@ pub(crate) enum AppEvent {
          collaboration_mode: CollaborationModeMask,
      },
-
+ 
 +    /// A scheduled follow-up prompt reached its due time.
 +    ScheduledQueueDue {
 +        thread_id: ThreadId,
@@ -41,9 +41,9 @@ index 6fde0759d..afef04b61 100644
 +
      /// Open the approval popup.
      FullScreenApprovalRequest(ApprovalRequest),
-
+ 
 diff --git a/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__command_popup__tests__command_popup_default_items.snap b/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__command_popup__tests__command_popup_default_items.snap
-index f7c45aec6..cc657c263 100644
+index fa06c625ab..8f54668315 100644
 --- a/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__command_popup__tests__command_popup_default_items.snap
 +++ b/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__command_popup__tests__command_popup_default_items.snap
 @@ -14,6 +14,7 @@ expression: commands
@@ -55,10 +55,10 @@ index f7c45aec6..cc657c263 100644
  /new - start a new chat during a conversation
  /archive - archive this session and exit
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 2e3127891..690dffcb9 100644
+index 331b347bf3..456f3d5740 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -370,6 +370,7 @@ use self::session_header::SessionHeader;
+@@ -372,6 +372,7 @@ use self::session_header::SessionHeader;
  mod hook_lifecycle;
  mod hooks;
  mod interaction;
@@ -67,10 +67,10 @@ index 2e3127891..690dffcb9 100644
  mod slash_dispatch;
  use self::skills::collect_tool_mentions;
 diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
-index 0631cf8d6..dae94c5c7 100644
+index 74ce8d2aec..e97b40393e 100644
 --- a/codex-rs/tui/src/chatwidget/input_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/input_flow.rs
-@@ -120,6 +120,9 @@ impl ChatWidget {
+@@ -123,6 +123,9 @@ impl ChatWidget {
                      user_message,
                      action,
                      pending_pastes,
@@ -80,7 +80,7 @@ index 0631cf8d6..dae94c5c7 100644
                  });
              self.input_queue
                  .queued_user_message_history_records
-@@ -146,7 +149,9 @@ impl ChatWidget {
+@@ -152,7 +155,9 @@ impl ChatWidget {
          }
          let mut submitted_follow_up = false;
          while !self.is_user_turn_pending_or_running() {
@@ -91,10 +91,10 @@ index 0631cf8d6..dae94c5c7 100644
                  break;
              };
              match queued_message.action {
-@@ -178,6 +183,49 @@ impl ChatWidget {
+@@ -226,6 +231,49 @@ impl ChatWidget {
          submitted_follow_up
      }
-
+ 
 +    pub(super) fn schedule_user_message(
 +        &mut self,
 +        user_message: UserMessage,
@@ -138,12 +138,12 @@ index 0631cf8d6..dae94c5c7 100644
 +        });
 +    }
 +
-     pub(super) fn is_user_turn_pending_or_running(&self) -> bool {
+     pub(crate) fn is_user_turn_pending_or_running(&self) -> bool {
          self.input_queue.user_turn_pending_start
              || self.turn_lifecycle.agent_turn_running
-@@ -195,7 +243,7 @@ impl ChatWidget {
+@@ -243,7 +291,7 @@ impl ChatWidget {
      }
-
+ 
      /// Rebuild and update the bottom-pane pending-input preview.
 -    pub(super) fn refresh_pending_input_preview(&mut self) {
 +    pub(crate) fn refresh_pending_input_preview(&mut self) {
@@ -151,24 +151,24 @@ index 0631cf8d6..dae94c5c7 100644
          self.bottom_pane.set_pending_input_preview(
              preview.queued_messages,
 diff --git a/codex-rs/tui/src/chatwidget/input_queue.rs b/codex-rs/tui/src/chatwidget/input_queue.rs
-index 67a306af2..cca2a4f3c 100644
+index 67a306af22..cca2a4f3c8 100644
 --- a/codex-rs/tui/src/chatwidget/input_queue.rs
 +++ b/codex-rs/tui/src/chatwidget/input_queue.rs
 @@ -4,6 +4,10 @@
  //! apply UI/protocol effects around a focused reducer-style state bag.
-
+ 
  use std::collections::VecDeque;
 +use std::time::Instant;
 +
 +use chrono::DateTime;
 +use chrono::Local;
-
+ 
  use super::PendingSteer;
  use super::QueuedUserMessage;
 @@ -59,16 +63,49 @@ impl InputQueueState {
          self.submit_pending_steers_after_interrupt = false;
      }
-
+ 
 +    pub(super) fn pop_next_ready_queued_user_message(
 +        &mut self,
 +        now: Instant,
@@ -220,7 +220,7 @@ index 67a306af2..cca2a4f3c 100644
 @@ -95,6 +132,24 @@ impl InputQueueState {
      }
  }
-
+ 
 +fn format_countdown(target: DateTime<Local>, now: DateTime<Local>) -> String {
 +    let remaining = target.signed_duration_since(now);
 +    let total_secs = remaining.num_seconds();
@@ -245,7 +245,7 @@ index 67a306af2..cca2a4f3c 100644
 @@ -129,6 +184,92 @@ mod tests {
          );
      }
-
+ 
 +    #[test]
 +    fn next_ready_queued_message_waits_for_scheduled_time() {
 +        let mut state = InputQueueState::default();
@@ -336,13 +336,13 @@ index 67a306af2..cca2a4f3c 100644
      fn clear_resets_all_input_queues() {
          let mut state = InputQueueState::default();
 diff --git a/codex-rs/tui/src/chatwidget/input_restore.rs b/codex-rs/tui/src/chatwidget/input_restore.rs
-index 28b88f89d..46504cadb 100644
+index 28b88f89d1..46504cadb0 100644
 --- a/codex-rs/tui/src/chatwidget/input_restore.rs
 +++ b/codex-rs/tui/src/chatwidget/input_restore.rs
 @@ -136,21 +136,12 @@ impl ChatWidget {
          }
      }
-
+ 
 -    pub(super) fn pop_next_queued_user_message(
 +    pub(super) fn pop_next_ready_queued_user_message(
          &mut self,
@@ -364,190 +364,9 @@ index 28b88f89d..46504cadb 100644
          } else {
              let rejected_messages = self
                  .input_queue
-diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index fafe2e079..745fbe364 100644
---- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-+++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-@@ -14,6 +14,7 @@ use crate::bottom_pane::slash_commands::SlashCommandItem;
- use crate::bottom_pane::slash_commands::find_slash_command;
- use crate::goal_display::GOAL_USAGE;
- use crate::goal_files::GoalDraft;
-+use chrono::Local;
-
- #[derive(Clone, Copy, Debug, PartialEq, Eq)]
- enum SlashCommandDispatchSource {
-@@ -36,6 +37,8 @@ const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str =
-     "Press Ctrl+C to return to the main thread first.";
- const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
- const RAW_USAGE: &str = "Usage: /raw [on|off]";
-+const SCHEDULE_USAGE: &str = "Usage:\n  /later <delay> <prompt>\n  /later HH:MM[:SS] <prompt>\n  /later YYYY-MM-DD HH:MM[:SS] <prompt>\n\
-+     Delay: 10m, 1h30m, 90s, 1h2m3s (bare number = minutes)";
- const USAGE_CHATGPT_LOGIN_REQUIRED: &str = "Sign in with ChatGPT to use /usage.";
-
- impl ChatWidget {
-@@ -278,6 +281,9 @@ impl ChatWidget {
-                     self.defer_input_until_settings_applied();
-                 }
-             }
-+            SlashCommand::Later => {
-+                self.add_info_message(SCHEDULE_USAGE.to_string(), None);
-+            }
-             SlashCommand::Rename => {
-                 self.session_telemetry
-                     .counter("codex.thread.rename", /*inc*/ 1, &[]);
-@@ -763,6 +769,28 @@ impl ChatWidget {
-                     name: Some(trimmed.to_string()),
-                 });
-             }
-+            SlashCommand::Later if !trimmed.is_empty() => {
-+                let parsed =
-+                    match scheduled_input::parse_schedule_args(trimmed, Local::now().naive_local())
-+                    {
-+                        Ok(parsed) => parsed,
-+                        Err(message) => {
-+                            self.add_error_message(message);
-+                            return;
-+                        }
-+                    };
-+                self.schedule_user_message(
-+                    UserMessage {
-+                        text: parsed.prompt,
-+                        local_images: Vec::new(),
-+                        remote_image_urls: Vec::new(),
-+                        text_elements: Vec::new(),
-+                        mention_bindings: Vec::new(),
-+                    },
-+                    parsed.delay,
-+                    parsed.label,
-+                );
-+            }
-             SlashCommand::Plan if !trimmed.is_empty() => {
-                 if !self.apply_plan_slash_command() {
-                     return;
-@@ -1101,6 +1129,7 @@ impl ChatWidget {
-             | SlashCommand::Diff
-             | SlashCommand::App
-             | SlashCommand::Rename
-+            | SlashCommand::Later
-             | SlashCommand::TestApproval => QueueDrain::Continue,
-             SlashCommand::Feedback
-             | SlashCommand::Export
-diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index 8728b224b..29b659741 100644
---- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-+++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-@@ -150,6 +150,9 @@ async fn parent_owned_thread_preserves_queued_input_before_draining() {
-         user_message: UserMessage::from("keep this queued prompt"),
-         action: QueuedInputAction::Plain,
-         pending_pastes: vec![("[Image 1]".to_string(), "pasted contents".to_string())],
-+        not_before: None,
-+        schedule_label: None,
-+        schedule_target_time: None,
-     };
-     let history_record = UserMessageHistoryRecord::UserMessageText;
-     chat.input_queue
-diff --git a/codex-rs/tui/src/chatwidget/user_messages.rs b/codex-rs/tui/src/chatwidget/user_messages.rs
-index ca92adbee..eb932800e 100644
---- a/codex-rs/tui/src/chatwidget/user_messages.rs
-+++ b/codex-rs/tui/src/chatwidget/user_messages.rs
-@@ -10,6 +10,10 @@ use std::collections::HashSet;
- use std::collections::VecDeque;
- use std::ops::Deref;
- use std::path::PathBuf;
-+use std::time::Instant;
-+
-+use chrono::DateTime;
-+use chrono::Local;
-
- use crate::bottom_pane::LocalImageAttachment;
- use crate::bottom_pane::MentionBinding;
-@@ -63,6 +67,9 @@ pub(super) struct QueuedUserMessage {
-     pub(super) user_message: UserMessage,
-     pub(super) action: QueuedInputAction,
-     pub(super) pending_pastes: Vec<(String, String)>,
-+    pub(super) not_before: Option<Instant>,
-+    pub(super) schedule_label: Option<String>,
-+    pub(super) schedule_target_time: Option<DateTime<Local>>,
- }
-
- impl QueuedUserMessage {
-@@ -71,12 +78,34 @@ impl QueuedUserMessage {
-             user_message,
-             action,
-             pending_pastes: Vec::new(),
-+            not_before: None,
-+            schedule_label: None,
-+            schedule_target_time: None,
-         }
-     }
-
-+    pub(super) fn scheduled_for(mut self, not_before: Instant) -> Self {
-+        self.not_before = Some(not_before);
-+        self
-+    }
-+
-+    pub(super) fn with_schedule_label(mut self, label: String) -> Self {
-+        self.schedule_label = Some(label);
-+        self
-+    }
-+
-+    pub(super) fn with_schedule_target_time(mut self, target: DateTime<Local>) -> Self {
-+        self.schedule_target_time = Some(target);
-+        self
-+    }
-+
-     pub(super) fn into_user_message(self) -> UserMessage {
-         self.user_message
-     }
-+
-+    pub(super) fn is_ready_at(&self, now: Instant) -> bool {
-+        self.not_before.is_none_or(|not_before| now >= not_before)
-+    }
- }
-
- impl From<UserMessage> for QueuedUserMessage {
-diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index b36987034..ef8af5a1f 100644
---- a/codex-rs/tui/src/slash_command.rs
-+++ b/codex-rs/tui/src/slash_command.rs
-@@ -29,6 +29,7 @@ pub enum SlashCommand {
-     Import,
-     Hooks,
-     Review,
-+    Later,
-     Rename,
-     New,
-     Archive,
-@@ -88,6 +89,9 @@ impl SlashCommand {
-             SlashCommand::Init => "create an AGENTS.md file with instructions for Codex",
-             SlashCommand::Compact => "summarize conversation to prevent hitting the context limit",
-             SlashCommand::Review => "review my current changes and find issues",
-+            SlashCommand::Later => {
-+                "schedule a prompt: /later 5m, /later 14:30, or /later 2026-07-15 09:00"
-+            }
-             SlashCommand::Rename => "rename the current thread",
-             SlashCommand::Resume => "resume a saved chat",
-             SlashCommand::Archive => "archive this session and exit",
-@@ -156,6 +160,7 @@ impl SlashCommand {
-         matches!(
-             self,
-             SlashCommand::Review
-+                | SlashCommand::Later
-                 | SlashCommand::Rename
-                 | SlashCommand::New
-                 | SlashCommand::Clear
-@@ -222,6 +227,7 @@ impl SlashCommand {
-             | SlashCommand::Copy
-             | SlashCommand::Raw
-             | SlashCommand::Rename
-+            | SlashCommand::Later
-             | SlashCommand::Mention
-             | SlashCommand::Skills
-             | SlashCommand::Hooks
-
 diff --git a/codex-rs/tui/src/chatwidget/scheduled_input.rs b/codex-rs/tui/src/chatwidget/scheduled_input.rs
 new file mode 100644
-index 0000000..27d1020
+index 0000000000..27d1020338
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/scheduled_input.rs
 @@ -0,0 +1,245 @@
@@ -796,3 +615,183 @@ index 0000000..27d1020
 +        assert!(parse_schedule_args("09:30", now_at(9, 0)).is_err());
 +    }
 +}
+diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
+index 1b434ec247..e25e1569d6 100644
+--- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
++++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
+@@ -14,6 +14,7 @@ use crate::bottom_pane::slash_commands::SlashCommandItem;
+ use crate::bottom_pane::slash_commands::find_slash_command;
+ use crate::goal_display::GOAL_USAGE;
+ use crate::goal_files::GoalDraft;
++use chrono::Local;
+ 
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ enum SlashCommandDispatchSource {
+@@ -36,6 +37,8 @@ const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str =
+     "Press Ctrl+C to return to the main thread first.";
+ const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
+ const RAW_USAGE: &str = "Usage: /raw [on|off]";
++const SCHEDULE_USAGE: &str = "Usage:\n  /later <delay> <prompt>\n  /later HH:MM[:SS] <prompt>\n  /later YYYY-MM-DD HH:MM[:SS] <prompt>\n\
++     Delay: 10m, 1h30m, 90s, 1h2m3s (bare number = minutes)";
+ const USAGE_CHATGPT_LOGIN_REQUIRED: &str = "Sign in with ChatGPT to use /usage.";
+ 
+ impl ChatWidget {
+@@ -279,6 +282,9 @@ impl ChatWidget {
+                     self.defer_input_until_settings_applied();
+                 }
+             }
++            SlashCommand::Later => {
++                self.add_info_message(SCHEDULE_USAGE.to_string(), None);
++            }
+             SlashCommand::Rename => {
+                 self.session_telemetry
+                     .counter("codex.thread.rename", /*inc*/ 1, &[]);
+@@ -780,6 +786,28 @@ impl ChatWidget {
+                     name: Some(trimmed.to_string()),
+                 });
+             }
++            SlashCommand::Later if !trimmed.is_empty() => {
++                let parsed =
++                    match scheduled_input::parse_schedule_args(trimmed, Local::now().naive_local())
++                    {
++                        Ok(parsed) => parsed,
++                        Err(message) => {
++                            self.add_error_message(message);
++                            return;
++                        }
++                    };
++                self.schedule_user_message(
++                    UserMessage {
++                        text: parsed.prompt,
++                        local_images: Vec::new(),
++                        remote_image_urls: Vec::new(),
++                        text_elements: Vec::new(),
++                        mention_bindings: Vec::new(),
++                    },
++                    parsed.delay,
++                    parsed.label,
++                );
++            }
+             SlashCommand::Plan if !trimmed.is_empty() => {
+                 if !self.apply_plan_slash_command() {
+                     return;
+@@ -1139,6 +1167,7 @@ impl ChatWidget {
+             | SlashCommand::Diff
+             | SlashCommand::App
+             | SlashCommand::Rename
++            | SlashCommand::Later
+             | SlashCommand::TestApproval => QueueDrain::Continue,
+             SlashCommand::Cd => match self.thread_id {
+                 Some(thread_id) if self.can_change_working_directory(thread_id) => QueueDrain::Stop,
+diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
+index 2d62dc2824..1182eadf71 100644
+--- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
++++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
+@@ -321,6 +321,9 @@ async fn parent_owned_thread_preserves_queued_input_before_draining() {
+         user_message: UserMessage::from("keep this queued prompt"),
+         action: QueuedInputAction::Plain,
+         pending_pastes: vec![("[Image 1]".to_string(), "pasted contents".to_string())],
++        not_before: None,
++        schedule_label: None,
++        schedule_target_time: None,
+     };
+     let history_record = UserMessageHistoryRecord::UserMessageText;
+     chat.input_queue
+diff --git a/codex-rs/tui/src/chatwidget/user_messages.rs b/codex-rs/tui/src/chatwidget/user_messages.rs
+index ca92adbee6..eb932800e2 100644
+--- a/codex-rs/tui/src/chatwidget/user_messages.rs
++++ b/codex-rs/tui/src/chatwidget/user_messages.rs
+@@ -10,6 +10,10 @@ use std::collections::HashSet;
+ use std::collections::VecDeque;
+ use std::ops::Deref;
+ use std::path::PathBuf;
++use std::time::Instant;
++
++use chrono::DateTime;
++use chrono::Local;
+ 
+ use crate::bottom_pane::LocalImageAttachment;
+ use crate::bottom_pane::MentionBinding;
+@@ -63,6 +67,9 @@ pub(super) struct QueuedUserMessage {
+     pub(super) user_message: UserMessage,
+     pub(super) action: QueuedInputAction,
+     pub(super) pending_pastes: Vec<(String, String)>,
++    pub(super) not_before: Option<Instant>,
++    pub(super) schedule_label: Option<String>,
++    pub(super) schedule_target_time: Option<DateTime<Local>>,
+ }
+ 
+ impl QueuedUserMessage {
+@@ -71,12 +78,34 @@ impl QueuedUserMessage {
+             user_message,
+             action,
+             pending_pastes: Vec::new(),
++            not_before: None,
++            schedule_label: None,
++            schedule_target_time: None,
+         }
+     }
+ 
++    pub(super) fn scheduled_for(mut self, not_before: Instant) -> Self {
++        self.not_before = Some(not_before);
++        self
++    }
++
++    pub(super) fn with_schedule_label(mut self, label: String) -> Self {
++        self.schedule_label = Some(label);
++        self
++    }
++
++    pub(super) fn with_schedule_target_time(mut self, target: DateTime<Local>) -> Self {
++        self.schedule_target_time = Some(target);
++        self
++    }
++
+     pub(super) fn into_user_message(self) -> UserMessage {
+         self.user_message
+     }
++
++    pub(super) fn is_ready_at(&self, now: Instant) -> bool {
++        self.not_before.is_none_or(|not_before| now >= not_before)
++    }
+ }
+ 
+ impl From<UserMessage> for QueuedUserMessage {
+diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
+index cbfd820859..da45539ab9 100644
+--- a/codex-rs/tui/src/slash_command.rs
++++ b/codex-rs/tui/src/slash_command.rs
+@@ -29,6 +29,7 @@ pub enum SlashCommand {
+     Import,
+     Hooks,
+     Review,
++    Later,
+     Rename,
+     New,
+     Archive,
+@@ -91,6 +92,9 @@ impl SlashCommand {
+             SlashCommand::Init => "create an AGENTS.md file with instructions for Codex",
+             SlashCommand::Compact => "summarize conversation to prevent hitting the context limit",
+             SlashCommand::Review => "review my current changes and find issues",
++            SlashCommand::Later => {
++                "schedule a prompt: /later 5m, /later 14:30, or /later 2026-07-15 09:00"
++            }
+             SlashCommand::Rename => "rename the current thread",
+             SlashCommand::Resume => "resume a saved chat",
+             SlashCommand::Archive => "archive this session and exit",
+@@ -162,6 +166,7 @@ impl SlashCommand {
+         matches!(
+             self,
+             SlashCommand::Review
++                | SlashCommand::Later
+                 | SlashCommand::Rename
+                 | SlashCommand::New
+                 | SlashCommand::Clear
+@@ -233,6 +238,7 @@ impl SlashCommand {
+             | SlashCommand::Copy
+             | SlashCommand::Raw
+             | SlashCommand::Rename
++            | SlashCommand::Later
+             | SlashCommand::Mention
+             | SlashCommand::Skills
+             | SlashCommand::Hooks
