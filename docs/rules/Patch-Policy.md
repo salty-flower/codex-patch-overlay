@@ -20,8 +20,8 @@
   - `risk`
   - `status`
 - Patch file names must be stable:
-  - `stream-reasoning-live.patch`
-  - `symlinked-skills.patch`
+  - `tui-notification-sound.patch`
+  - `tui-status-line-command.patch`
 - Patch application failure blocks release.
 - Upstream merge retires the local patch in the next local release.
 - Do not use GitHub Issues or GitHub Projects as patch state.

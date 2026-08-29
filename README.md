@@ -3,11 +3,11 @@
 Local Nix overlay for carrying small OpenAI Codex patches without maintaining a long-lived fork.
 
 Each release carries community-requested features that upstream `openai/codex` hasn't
-merged yet — currently live TUI reasoning-summary streaming, a task-completion
-notification sound, WebP image input, automatic thread naming, strict timed
-CLI queueing, and recallable same-turn Enter steering — and ships them as
-ready-to-run binaries plus a Nix overlay,
-refreshed on every upstream Codex release. See `patches/manifest.toml` for the
+merged yet — currently a task-completion notification sound, configurable default
+collaboration mode, strict timed CLI queueing, and an opt-in dynamic TUI status-line
+command — and ships them as ready-to-run binaries plus a Nix overlay,
+refreshed on every upstream Codex release.
+See `patches/manifest.toml` for the
 exact patch stack.
 
 ## Install a patched build
@@ -63,28 +63,17 @@ cd staging/openai-codex/codex-rs
 cargo run -p codex-cli --bin codex -- --no-alt-screen -c model_reasoning_summary=detailed
 ```
 
-`stream-reasoning-live` renders reasoning summaries that the API returns. If the
-model returns only encrypted reasoning content, Codex can preserve it for the
-next request but cannot render it as text.
-
-To opt into automatic model-generated names for otherwise unnamed primary
-threads:
+Use `/later <delay> <prompt>` to queue a prompt for a future time.
+The default collaboration mode and status-line command are opt-in TUI settings:
 
 ```toml
 [tui]
-auto_thread_name = true
-auto_thread_name_after_turns = 3
+default_collaboration_mode = "plan"
+
+[tui.status_line_command]
+command = ["/path/to/status-line-helper"]
+interval_ms = 1000
 ```
-
-Naming runs as hidden metadata work in the active session, so the status line and
-terminal title update immediately without adding a transcript turn.
-
-The same opt-in also exposes a current-thread-scoped `set_thread_name` tool to the
-model on primary threads. A Stop-hook continuation can generate a concise title and
-call it to rename the live thread in-process: the owning app-server persists through
-the canonical thread-store path and emits one `thread/name/updated`, so the terminal
-TUI and any attached app-server client (e.g. codex-acp) update immediately without a
-second `codex app-server` process. Existing manual `/rename` behavior is unchanged.
 
 ## Layout
 

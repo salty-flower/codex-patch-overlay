@@ -119,6 +119,9 @@
               pkgs.jq
               pkgs.nushell
               pkgs.ripgrep
+              # For `cargo check` of the staged upstream tree.
+              pkgs.pkg-config
+              pkgs.openssl
             ];
           };
         });

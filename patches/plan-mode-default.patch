@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index a341aa9a4e..b80e67e882 100644
+index e30ef0d83..8d8fac482 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -748,6 +748,19 @@ pub struct Tui {
+@@ -753,6 +753,19 @@ pub struct Tui {
      #[serde(default)]
      pub raw_output_mode: bool,
  
@@ -23,10 +23,10 @@ index a341aa9a4e..b80e67e882 100644
      ///
      /// - `auto` (default): Use alternate screen.
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 0a3ebf4587..a5d855b2b4 100644
+index 96da2f76f..e79a02631 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -94,6 +94,7 @@ use codex_models_manager::ModelsManagerConfig;
+@@ -97,6 +97,7 @@ use codex_models_manager::ModelsManagerConfig;
  use codex_protocol::config_types::AltScreenMode;
  use codex_protocol::config_types::AutoCompactTokenLimitScope;
  use codex_protocol::config_types::ForcedLoginMethod;
@@ -34,7 +34,7 @@ index 0a3ebf4587..a5d855b2b4 100644
  use codex_protocol::config_types::Personality;
  use codex_protocol::config_types::ReasoningSummary;
  use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
-@@ -713,6 +714,8 @@ pub struct Config {
+@@ -751,6 +752,8 @@ pub struct Config {
      pub tui_raw_output_mode: bool,
  
      /// Start the TUI in the specified collaboration mode (plan/default).
@@ -43,7 +43,7 @@ index 0a3ebf4587..a5d855b2b4 100644
  
      /// Controls whether the TUI uses the terminal's alternate screen buffer.
      ///
-@@ -4208,6 +4211,10 @@ impl Config {
+@@ -4319,6 +4322,10 @@ impl Config {
                  .as_ref()
                  .map(|t| t.raw_output_mode)
                  .unwrap_or(false),
@@ -55,10 +55,10 @@ index 0a3ebf4587..a5d855b2b4 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/tui/src/chatwidget/settings.rs b/codex-rs/tui/src/chatwidget/settings.rs
-index 8ef38ec0e0..792c7d73f7 100644
+index d11445895..1894d0ed1 100644
 --- a/codex-rs/tui/src/chatwidget/settings.rs
 +++ b/codex-rs/tui/src/chatwidget/settings.rs
-@@ -427,11 +427,14 @@ impl ChatWidget {
+@@ -385,11 +385,14 @@ impl ChatWidget {
      }
  
      pub(super) fn initial_collaboration_mask(

@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 148fef00f7..a341aa9a4e 100644
+index 4e01557be..e30ef0d83 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -674,6 +674,40 @@ pub struct TuiNotificationSettings {
+@@ -679,6 +679,40 @@ pub struct TuiNotificationSettings {
      /// regardless of focus. Defaults to `unfocused`.
      #[serde(default, rename = "notification_condition")]
      pub condition: NotificationCondition,
@@ -44,10 +44,10 @@ index 148fef00f7..a341aa9a4e 100644
  
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 22e5724704..eb5b1bbd7e 100644
+index 3a4554456..e56c619c8 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -12694,3 +12694,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
+@@ -12862,3 +12862,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
  
      Ok(())
  }
@@ -86,10 +86,10 @@ index 22e5724704..eb5b1bbd7e 100644
 +    assert_eq!(sound.command, None);
 +}
 diff --git a/codex-rs/tui/src/app/agents_overview.rs b/codex-rs/tui/src/app/agents_overview.rs
-index bba54d26fa..013c5d31d4 100644
+index e30e8574c..fc3b3f7a3 100644
 --- a/codex-rs/tui/src/app/agents_overview.rs
 +++ b/codex-rs/tui/src/app/agents_overview.rs
-@@ -450,6 +450,7 @@ impl App {
+@@ -451,6 +451,7 @@ impl App {
              tui.set_notification_settings(
                  self.config.tui_notifications.method,
                  self.config.tui_notifications.condition,
@@ -98,10 +98,10 @@ index bba54d26fa..013c5d31d4 100644
              self.file_search
                  .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 60e6c54004..9af5463b7f 100644
+index 4f5622f8f..1921c608b 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -1084,6 +1084,7 @@ impl App {
+@@ -1111,6 +1111,7 @@ impl App {
                  tui.set_notification_settings(
                      self.config.tui_notifications.method,
                      self.config.tui_notifications.condition,
@@ -110,10 +110,10 @@ index 60e6c54004..9af5463b7f 100644
                  self.file_search
                      .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index ee9b713a76..64f6d3e506 100644
+index 3f9e665a6..68062ac0a 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -109,6 +109,7 @@ impl App {
+@@ -132,6 +132,7 @@ impl App {
          tui.set_notification_settings(
              config.tui_notifications.method,
              config.tui_notifications.condition,
@@ -122,10 +122,10 @@ index ee9b713a76..64f6d3e506 100644
  
          let harness_overrides =
 diff --git a/codex-rs/tui/src/app/working_directory.rs b/codex-rs/tui/src/app/working_directory.rs
-index 3212f9085a..4504aa829b 100644
+index c5d96291d..fb4ffe511 100644
 --- a/codex-rs/tui/src/app/working_directory.rs
 +++ b/codex-rs/tui/src/app/working_directory.rs
-@@ -170,7 +170,7 @@ impl App {
+@@ -193,7 +193,7 @@ impl App {
          self.file_search
              .update_search_dir(self.config.cwd.to_path_buf());
          let notify = &self.config.tui_notifications;
@@ -135,7 +135,7 @@ index 3212f9085a..4504aa829b 100644
              tracing::warn!(%error, "failed to clear ambient pet image");
          }
 diff --git a/codex-rs/tui/src/notifications/mod.rs b/codex-rs/tui/src/notifications/mod.rs
-index ee6694b357..fdafce9857 100644
+index ee6694b35..fdafce985 100644
 --- a/codex-rs/tui/src/notifications/mod.rs
 +++ b/codex-rs/tui/src/notifications/mod.rs
 @@ -1,14 +1,17 @@
@@ -216,7 +216,7 @@ index ee6694b357..fdafce9857 100644
          for name in [
 diff --git a/codex-rs/tui/src/notifications/sound.rs b/codex-rs/tui/src/notifications/sound.rs
 new file mode 100644
-index 0000000000..cec4ee7444
+index 000000000..cec4ee744
 --- /dev/null
 +++ b/codex-rs/tui/src/notifications/sound.rs
 @@ -0,0 +1,197 @@
@@ -418,7 +418,7 @@ index 0000000000..cec4ee7444
 +    }
 +}
 diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
-index 623a9944a0..c4628bf79d 100644
+index 814e01d84..907156d7b 100644
 --- a/codex-rs/tui/src/tui.rs
 +++ b/codex-rs/tui/src/tui.rs
 @@ -50,6 +50,7 @@ use crate::custom_terminal::Terminal as CustomTerminal;
@@ -437,7 +437,7 @@ index 623a9944a0..c4628bf79d 100644
  
  mod event_stream;
  mod frame_rate_limiter;
-@@ -595,6 +597,7 @@ pub struct Tui {
+@@ -601,6 +603,7 @@ pub struct Tui {
      enhanced_keys_supported: bool,
      notification_backend: Option<DesktopNotificationBackend>,
      notification_condition: NotificationCondition,
@@ -445,7 +445,7 @@ index 623a9944a0..c4628bf79d 100644
      scrollback: ScrollbackStrategy,
      // When false, enter_alt_screen() becomes a no-op.
      alt_screen_enabled: bool,
-@@ -650,6 +653,7 @@ impl Tui {
+@@ -656,6 +659,7 @@ impl Tui {
              enhanced_keys_supported,
              notification_backend: Some(detect_backend(NotificationMethod::default())),
              notification_condition: NotificationCondition::default(),
@@ -453,7 +453,7 @@ index 623a9944a0..c4628bf79d 100644
              scrollback,
              alt_screen_enabled: true,
              _stderr_guard: stderr_guard,
-@@ -665,9 +669,11 @@ impl Tui {
+@@ -671,9 +675,11 @@ impl Tui {
          &mut self,
          method: NotificationMethod,
          condition: NotificationCondition,
@@ -464,8 +464,8 @@ index 623a9944a0..c4628bf79d 100644
 +        self.notification_sound = sound;
      }
  
-     pub fn frame_requester(&self) -> FrameRequester {
-@@ -774,7 +780,7 @@ impl Tui {
+     pub(crate) fn is_terminal_focused(&self) -> bool {
+@@ -793,7 +799,7 @@ impl Tui {
          };
  
          let message = message.as_ref().to_string();
