@@ -69,8 +69,9 @@ When a newer upstream release exists, `scripts/auto-release.nu`:
    hash, and Cargo vendor hash.
 4. Runs `nix flake check`.
 5. Commits the manifest and release record, tags
-   `codex-<upstream-version>-patch.1`, pushes it, and dispatches the release
-   build workflow.
+   `codex-<upstream-version>-patch.1`, and pushes it. The tag push triggers the
+   release build workflow; an explicit dispatch is reserved for retrying an
+   existing tag whose GitHub Release is missing.
 6. Lets the release workflow move `latest-release` after artifacts are
    published. The move script refuses to move the ref backward if an older
    release job finishes after a newer one.

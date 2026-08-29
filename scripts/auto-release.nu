@@ -92,12 +92,13 @@ def remote-tag-exists [tag: string] {
   $result.exit_code == 0
 }
 
-def write-output [release_tag: string, upstream_tag: string] {
+def write-output [release_tag: string, upstream_tag: string, dispatch_release: bool] {
   let output = (env-var "GITHUB_OUTPUT")
   if not ($output | is-empty) {
     let lines = ([
       $"release_tag=($release_tag)"
       $"upstream_tag=($upstream_tag)"
+      $"dispatch_release=($dispatch_release)"
     ] | str join (char nl))
     ($lines + (char nl)) | save --append $output
   }
@@ -279,7 +280,7 @@ def main [
   if (remote-tag-exists $release_tag) {
     if $apply {
       print $"release missing for existing tag: retrying ($release_tag)"
-      write-output $release_tag $target_tag
+      write-output $release_tag $target_tag true
     } else {
       print $"dry run: would retry release for existing tag ($release_tag)"
     }
@@ -323,5 +324,7 @@ def main [
   ^git tag -a $release_tag -m $release_tag
   ^git push origin HEAD:main
   ^git push origin $release_tag
-  write-output $release_tag $target_tag
+  # Pushing the new tag triggers release.yml through its push event. Only an
+  # existing tag with a missing release needs an explicit workflow dispatch.
+  write-output $release_tag $target_tag false
 }

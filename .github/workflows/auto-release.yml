@@ -44,7 +44,7 @@ jobs:
           nix develop --command nu scripts/auto-release.nu --apply --upstream-tag "${UPSTREAM_TAG}"
 
       - name: Dispatch release build
-        if: steps.auto.outputs.release_tag != ''
+        if: steps.auto.outputs.dispatch_release == 'true'
         shell: bash
         run: |
           set -euo pipefail
