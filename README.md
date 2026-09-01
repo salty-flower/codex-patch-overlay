@@ -72,7 +72,7 @@ default_collaboration_mode = "plan"
 
 [tui.status_line_command]
 command = ["/path/to/status-line-helper"]
-interval_ms = 1000
+refresh_interval_ms = 1000
 ```
 
 ## Layout
