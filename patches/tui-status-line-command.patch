@@ -494,10 +494,9 @@ index e14a52a3a0..4440553457 100644
                                      if let Some(line) = truncated_status_line.clone() {
                                          render_footer_line(hint_rect, buf, line);
                                      } else {
-@@ -4837,6 +4867,19 @@ impl ChatComposer {
-                         if let Some(line) = truncated_status_line {
-                             render_footer_line(hint_rect, buf, line);
-                         }
+@@ -4834,9 +4864,22 @@ impl ChatComposer {
+                     } else if let Some(items) = active_footer_hint_override {
+                         render_footer_hint_items(hint_rect, buf, items);
 +                    } else if shows_passive_footer_line(&footer_props)
 +                        && let Some(lines) = self.footer.status_line_command_lines.as_ref()
 +                    {
@@ -511,6 +510,10 @@ index e14a52a3a0..4440553457 100644
 +                                .map(|line| clip_status_line(line, available_width))
 +                                .collect(),
 +                        );
+                     } else if status_line_active {
+                         if let Some(line) = truncated_status_line {
+                             render_footer_line(hint_rect, buf, line);
+                         }
                      } else {
                          render_footer_from_props(
                              hint_rect,
