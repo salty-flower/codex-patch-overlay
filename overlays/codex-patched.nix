@@ -4,6 +4,9 @@ let
   lib = prev.lib;
   enabledPatches = lib.filter (patch: patch.enabled or false) patchManifest.patches;
   patchPaths = map (patch: patchRoot + "/${patch.file}") enabledPatches;
+  hasEditableEnterQueue = lib.any (
+    patch: (patch.name or null) == "editable-enter-queue" && (patch.enabled or false)
+  ) patchManifest.patches;
   upstream = lib.findFirst (patch: patch.enabled or false) (lib.head patchManifest.patches) patchManifest.patches;
   upstreamVersion = lib.removePrefix "rust-v" upstream.upstream_base;
   upstreamSrc = final.fetchFromGitHub {
@@ -104,6 +107,14 @@ in
         substituteInPlace Cargo.toml \
           --replace-fail 'lto = "thin"' "" \
           --replace-fail 'codegen-units = 4' ""
+        ${lib.optionalString hasEditableEnterQueue ''
+          # Nix's patch hook cannot consume git binary diffs. Install the
+          # generated app-server export payloads alongside the text patch.
+          install -Dm644 ${patchRoot}/patches/editable-enter-queue-app-server-exports-stable.json.zst \
+            app-server-protocol/schema/precomputed/app-server-exports-stable.json.zst
+          install -Dm644 ${patchRoot}/patches/editable-enter-queue-app-server-exports-experimental.json.zst \
+            app-server-protocol/schema/precomputed/app-server-exports-experimental.json.zst
+        ''}
       '';
 
       passthru = (old.passthru or { }) // {

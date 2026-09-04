@@ -253,6 +253,8 @@ def main [
   --upstream-tag: string = ""
   --apply
 ] {
+  ^nu scripts/check-editable-enter-queue.nu
+
   let manifest_path = "patches/manifest.toml"
   let manifest = (open $manifest_path)
   let manifest_patch_suffix = $manifest.release.patch_suffix

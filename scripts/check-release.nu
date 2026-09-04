@@ -1,6 +1,8 @@
 #!/usr/bin/env nu
 
 def main [] {
+  ^nu scripts/check-editable-enter-queue.nu
+
   let manifest = (open patches/manifest.toml)
   let enabled = ($manifest.patches | where enabled == true)
 

@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.1"
+patch_suffix = "patch.2"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
@@ -61,3 +61,17 @@ status = "carried"
 risk = "high"
 owner = "local"
 notes = "Add opt-in `[tui.status_line_command]` direct-argv rendering with a versioned JSON stdin contract, COLUMNS/LINES, single-flight coalescing, bounded timeout/output, built-in fallback before first success, retained same-thread last success after later failures, SGR-only ANSI parsing, and a maximum of two safely clipped passive footer rows. Successful command output takes priority over the configured built-in status line in every passive footer layout. Periodic refresh deadlines survive unrelated immediate redraws, and current input usage is split into non-cached and cache-read tokens. Snapshot `approval_mode` mirrors the built-in approval-mode item so the on-request reviewer toggle is distinguishable (approve-for-me / ask-for-approval). A first valid terminal resize retries once after the constructor's zero-sized startup refresh, while identical resize notifications remain single-flight."
+
+[[patches]]
+name = "editable-enter-queue"
+enabled = true
+file = "patches/editable-enter-queue.patch"
+upstream_base = "rust-v0.153.2"
+upstream_sha = "657a993cbee87acf52d14b758ce49dbd46d1b8eb"
+source_hash = "sha256-R97lEHS2XfMQNbAc9k8v7EbcQCnwxND7zhnK3EBsI3Y="
+cargo_hash = "sha256-GG6kOXmCdq+bZLU2ul0DIVL8lDuweayvZvXn6+bcUZw="
+upstream_issue = "local-request"
+status = "carried"
+risk = "high"
+owner = "local"
+notes = "Preserve vanilla same-turn Enter steering while adding an experimental, core-arbitrated recall window before atomic input consumption. TUI-generated UUIDv7 client message IDs flow through turn/start or turn/steer and committed user-item notifications; Alt+Up recalls the globally latest editable Enter/Tab input, restores it only on recalled/alreadyRecalled, and keeps claimed inputs hidden until their exact committed item arrives. Shell escapes, Plan streaming, and Tab next-turn semantics remain unchanged. This patch must not be retired merely because upstream exposes a queued-message editor: retirement requires equivalent core arbitration and an exact pending-steer recall protocol. Generated compressed app-server schema exports are carried as binary payloads and installed by the overlay because Nix's patch hook does not apply Git binary diffs."

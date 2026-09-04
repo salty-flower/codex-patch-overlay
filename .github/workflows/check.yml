@@ -12,4 +12,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
+      - run: nix develop --command nu scripts/check-editable-enter-queue.nu
       - run: nix flake check
