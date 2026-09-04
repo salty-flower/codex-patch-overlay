@@ -28,7 +28,7 @@ jobs:
       UPSTREAM_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.upstream_tag || '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0
