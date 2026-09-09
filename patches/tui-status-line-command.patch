@@ -682,6 +682,19 @@ index 09ceb5fc68..62d81d52c2 100644
      pub(super) status_line_hyperlink_url: Option<String>,
      pub(super) status_line_enabled: bool,
      pub(super) side_conversation_context_label: Option<String>,
+diff --git a/codex-rs/tui/src/bottom_pane/chat_composer/history_search.rs b/codex-rs/tui/src/bottom_pane/chat_composer/history_search.rs
+index 3f767d3ca9..0b9a660250 100644
+--- a/codex-rs/tui/src/bottom_pane/chat_composer/history_search.rs
++++ b/codex-rs/tui/src/bottom_pane/chat_composer/history_search.rs
+@@ -471,7 +471,7 @@ impl ChatComposer {
+ 
+         let footer_props = self.footer_props();
+         let footer_hint_height = self
+-            .custom_footer_height()
++            .custom_footer_height(&footer_props)
+             .unwrap_or_else(|| footer_height(&footer_props));
+         let footer_spacing = Self::footer_spacing(footer_hint_height);
+         let hint_rect = if footer_spacing > 0 && footer_hint_height > 0 {
 diff --git a/codex-rs/tui/src/bottom_pane/footer.rs b/codex-rs/tui/src/bottom_pane/footer.rs
 index ab4366e74a..63ac8580ad 100644
 --- a/codex-rs/tui/src/bottom_pane/footer.rs
