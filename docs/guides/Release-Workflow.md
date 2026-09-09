@@ -9,6 +9,17 @@
 | Patch check | `nu scripts/check-release.nu` |
 | Tracking check | Carried patches are recorded in `patches/manifest.toml` |
 
+`nix flake check` builds `codex-patched` with
+`cargoBuildFlags = --package codex-cli --package codex-code-mode-host` and `doCheck`
+empty — it runs **no tests**, for any crate, including `codex-tui`. A patch's own
+bundled test (e.g. one added alongside a struct/behavior change) can be permanently
+broken and this gate will never catch it; treat such tests as unverified until run
+separately. `git apply --check` passing does not mean the workspace compiles either —
+a patch that adds a field to an existing struct must be re-checked against every
+construction site on the new upstream, and `auto-release`'s `verify-patches-apply`
+stops at the first failing patch, so a reported failure understates the real scope.
+Always verify ALL enabled patches applied cumulatively, not just the one you touched.
+
 ## Packaged Binaries
 
 A release must ship every executable the `codex` entrypoint resolves at runtime,
