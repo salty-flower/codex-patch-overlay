@@ -1,4 +1,8 @@
-{ patchManifest, patchRoot, patchSuffix }:
+{
+  patchManifest,
+  patchRoot,
+  patchSuffix,
+}:
 final: prev:
 let
   lib = prev.lib;
@@ -7,7 +11,9 @@ let
   hasEditableEnterQueue = lib.any (
     patch: (patch.name or null) == "editable-enter-queue" && (patch.enabled or false)
   ) patchManifest.patches;
-  upstream = lib.findFirst (patch: patch.enabled or false) (lib.head patchManifest.patches) patchManifest.patches;
+  upstream = lib.findFirst (
+    patch: patch.enabled or false
+  ) (lib.head patchManifest.patches) patchManifest.patches;
   upstreamVersion = lib.removePrefix "rust-v" upstream.upstream_base;
   upstreamSrc = final.fetchFromGitHub {
     owner = "openai";
@@ -17,7 +23,8 @@ let
   };
 in
 {
-  codex-patched = prev.codex.overrideAttrs (old:
+  codex-patched = prev.codex.overrideAttrs (
+    old:
     let
       # Codex 0.147.0 moved to rusty_v8 150.4.0 and enabled the sandbox
       # pointer-compression feature for code mode.  nixpkgs still provides the
@@ -86,10 +93,12 @@ in
       '';
 
       __structuredAttrs = false;
-      env = (old.env or { }) // lib.optionalAttrs (lib.versionAtLeast upstreamVersion "0.147.0") {
-        RUSTY_V8_ARCHIVE = rustyV8Archive;
-        RUSTY_V8_SRC_BINDING_PATH = rustyV8Binding;
-      };
+      env =
+        (old.env or { })
+        // lib.optionalAttrs (lib.versionAtLeast upstreamVersion "0.147.0") {
+          RUSTY_V8_ARCHIVE = rustyV8Archive;
+          RUSTY_V8_SRC_BINDING_PATH = rustyV8Binding;
+        };
       postPatch = ''
         # webrtc-sys asks rustc to link libwebrtc statically by default,
         # but nixpkgs provides libwebrtc as a shared library.
@@ -121,5 +130,6 @@ in
         patchManifest = patchManifest;
         patchNames = map (patch: patch.name) enabledPatches;
       };
-    });
+    }
+  );
 }
