@@ -2,9 +2,15 @@ name: check
 
 on:
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   push:
     branches:
       - main
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
 
 jobs:
   nix:
