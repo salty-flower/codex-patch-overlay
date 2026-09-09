@@ -6,7 +6,12 @@
     systems.url = "github:nix-systems/default";
   };
 
-  outputs = { self, nixpkgs, systems }:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      systems,
+    }:
     let
       eachSystem = nixpkgs.lib.genAttrs (import systems);
       manifest = builtins.fromTOML (builtins.readFile ./patches/manifest.toml);
@@ -20,7 +25,8 @@
     {
       overlays.default = overlay;
 
-      packages = eachSystem (system:
+      packages = eachSystem (
+        system:
         let
           pkgs = import nixpkgs {
             inherit system;
@@ -30,9 +36,11 @@
         {
           default = pkgs.codex-patched;
           codex-patched = pkgs.codex-patched;
-        });
+        }
+      );
 
-      checks = eachSystem (system:
+      checks = eachSystem (
+        system:
         let
           pkgs = import nixpkgs {
             inherit system;
@@ -105,9 +113,11 @@
             '
             touch $out
           '';
-        });
+        }
+      );
 
-      devShells = eachSystem (system:
+      devShells = eachSystem (
+        system:
         let
           pkgs = import nixpkgs { inherit system; };
         in
@@ -124,6 +134,7 @@
               pkgs.openssl
             ];
           };
-        });
+        }
+      );
     };
 }
