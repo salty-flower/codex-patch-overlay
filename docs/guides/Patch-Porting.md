@@ -17,3 +17,7 @@
 - Refresh one patch at a time.
 - Update `upstream_sha` after successful port.
 - Move abandoned candidates to `docs/records/`.
+- `refresh-patch.nu` only yields a correct single patch when exactly that one patch is
+  applied to staging — with the full enabled set applied it silently absorbs every other
+  patch's changes too. To edit or regenerate one patch mid-stack, build a PRE/TARGET
+  commit chain in a throwaway worktree and diff against PRE instead; see `AGENTS.md`.
