@@ -1,0 +1,43 @@
+repos:
+  - repo: "https://github.com/pre-commit/pre-commit-hooks"
+    rev: "v6.0.0"
+    hooks:
+      - id: "end-of-file-fixer"
+        # patches/*.patch is diff content: a fixer rewriting trailing whitespace or
+        # the final newline can shift hunk context and break `git apply`/`patch -p2`.
+        exclude: "^patches/.*\\.patch$"
+      - id: "trailing-whitespace"
+        exclude: "^patches/.*\\.patch$"
+      - id: "check-merge-conflict"
+      - id: "check-yaml"
+      - id: "check-added-large-files"
+
+  - repo: "local"
+    hooks:
+      - id: "nixfmt"
+        name: "nixfmt"
+        entry: "nixfmt"
+        language: "system"
+        files: "\\.nix$"
+      - id: "nu-check"
+        name: "nu-check"
+        entry: "scripts/nushell/nu-check-files"
+        language: "system"
+        # The wrapper also detects extensionless Nushell executables by shebang.
+      - id: "manifest-fields"
+        name: "manifest-fields"
+        entry: "nu scripts/check-manifest-fields.nu"
+        language: "system"
+        pass_filenames: false
+        files: "^patches/(manifest\\.toml|.*\\.patch)$"
+      - id: "editable-enter-queue-contract"
+        name: "editable-enter-queue-contract"
+        entry: "nu scripts/check-editable-enter-queue.nu"
+        language: "system"
+        pass_filenames: false
+        files: "^patches/(manifest\\.toml|editable-enter-queue.*)$"
+
+  - repo: "https://github.com/ComPWA/taplo-pre-commit"
+    rev: "v0.9.3"
+    hooks:
+      - id: "taplo-format"
