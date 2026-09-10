@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
-index 47e75d11d..fa3714ccc 100644
+index 7de4646ea2..b63fa76547 100644
 --- a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
 +++ b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
-@@ -24800,6 +24800,15 @@
+@@ -24967,6 +24967,15 @@
          "title": "TurnSteerParams",
          "type": "object"
        },
@@ -19,10 +19,10 @@ index 47e75d11d..fa3714ccc 100644
          "$schema": "http://json-schema.org/draft-07/schema#",
          "properties": {
 diff --git a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
-index fce5c1d1b..2c72b8b01 100644
+index 1c2e7d2edf..586d1d9c10 100644
 --- a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
 +++ b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
-@@ -22514,6 +22514,15 @@
+@@ -22681,6 +22681,15 @@
        "title": "TurnSteerParams",
        "type": "object"
      },
@@ -40,7 +40,7 @@ index fce5c1d1b..2c72b8b01 100644
        "properties": {
 diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/TurnSteerRecallStatus.ts b/codex-rs/app-server-protocol/schema/typescript/v2/TurnSteerRecallStatus.ts
 new file mode 100644
-index 000000000..245b084ec
+index 0000000000..245b084ec9
 --- /dev/null
 +++ b/codex-rs/app-server-protocol/schema/typescript/v2/TurnSteerRecallStatus.ts
 @@ -0,0 +1,5 @@
@@ -50,10 +50,10 @@ index 000000000..245b084ec
 +
 +export type TurnSteerRecallStatus = "recalled" | "alreadyRecalled" | "alreadyConsumed" | "notFound";
 diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/index.ts b/codex-rs/app-server-protocol/schema/typescript/v2/index.ts
-index fefe72338..8b0aa9279 100644
+index a3595e7769..8ac40b5522 100644
 --- a/codex-rs/app-server-protocol/schema/typescript/v2/index.ts
 +++ b/codex-rs/app-server-protocol/schema/typescript/v2/index.ts
-@@ -596,6 +596,7 @@ export type { TurnStartResponse } from "./TurnStartResponse";
+@@ -600,6 +600,7 @@ export type { TurnStartResponse } from "./TurnStartResponse";
  export type { TurnStartedNotification } from "./TurnStartedNotification";
  export type { TurnStatus } from "./TurnStatus";
  export type { TurnSteerParams } from "./TurnSteerParams";
@@ -62,10 +62,10 @@ index fefe72338..8b0aa9279 100644
  export type { TurnToolOutput } from "./TurnToolOutput";
  export type { TurnsPage } from "./TurnsPage";
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 6c00f889f..bd939db40 100644
+index a718641f7a..00345f2529 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -987,6 +987,12 @@ client_request_definitions! {
+@@ -1025,6 +1025,12 @@ client_request_definitions! {
          serialization: thread_id(params.thread_id),
          response: v2::TurnSteerResponse,
      },
@@ -79,10 +79,10 @@ index 6c00f889f..bd939db40 100644
          params: v2::TurnInterruptParams,
          serialization: thread_id(params.thread_id),
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-index 971ef366e..a7e8f1e9e 100644
+index 8aacd48a8f..9f416539dc 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-@@ -2252,6 +2252,42 @@ fn client_request_turn_start_granular_approval_policy_is_marked_experimental() {
+@@ -2276,6 +2276,42 @@ fn client_request_turn_start_granular_approval_policy_is_marked_experimental() {
      assert_eq!(reason, Some("askForApproval.granular"));
  }
  
@@ -126,7 +126,7 @@ index 971ef366e..a7e8f1e9e 100644
  fn mcp_server_elicitation_response_round_trips_rmcp_result() {
      let rmcp_result = rmcp::model::ElicitResult::new(rmcp::model::ElicitationAction::Accept)
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/turn.rs b/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
-index 9629a7841..8b8dae321 100644
+index 9629a78410..8b8dae3212 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
 @@ -305,6 +305,35 @@ pub struct TurnSteerResponse {
@@ -166,10 +166,10 @@ index 9629a7841..8b8dae321 100644
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 8e78c929e..c16bd1a7e 100644
+index da84311484..21ac6c850d 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1481,6 +1481,11 @@ impl MessageProcessor {
+@@ -1500,6 +1500,11 @@ impl MessageProcessor {
                      .turn_settings_update(&request_id, params)
                      .await
              }
@@ -182,7 +182,7 @@ index 8e78c929e..c16bd1a7e 100644
                  self.turn_processor
                      .turn_interrupt(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 60875fada..81d975b8c 100644
+index 4b22acac21..6f7859b44b 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
 @@ -307,6 +307,9 @@ use codex_app_server_protocol::TurnStartParams;
@@ -206,10 +206,10 @@ index 60875fada..81d975b8c 100644
  use codex_core::ThreadConfigSnapshot;
  use codex_core::ThreadManager;
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 833475ff2..7e0ed2975 100644
+index aec4870d84..e7e2499521 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -254,6 +254,16 @@ impl TurnRequestProcessor {
+@@ -255,6 +255,16 @@ impl TurnRequestProcessor {
              .map(|response| Some(response.into()))
      }
  
@@ -226,7 +226,7 @@ index 833475ff2..7e0ed2975 100644
      pub(crate) async fn turn_interrupt(
          &self,
          request_id: &ConnectionRequestId,
-@@ -1113,6 +1123,11 @@ impl TurnRequestProcessor {
+@@ -1125,6 +1135,11 @@ impl TurnRequestProcessor {
                              TurnSteerRequestError::NoActiveTurn,
                          )),
                      ),
@@ -238,7 +238,7 @@ index 833475ff2..7e0ed2975 100644
                  };
                  let mut error = invalid_request(message);
                  error.data = data;
-@@ -1123,6 +1138,71 @@ impl TurnRequestProcessor {
+@@ -1135,6 +1150,71 @@ impl TurnRequestProcessor {
          Ok(TurnSteerResponse { turn_id })
      }
  
@@ -311,7 +311,7 @@ index 833475ff2..7e0ed2975 100644
          &self,
          request_id: &ConnectionRequestId,
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 172726f98..937c8947a 100644
+index ae02620448..c511be1a10 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
 @@ -51,6 +51,8 @@ use codex_protocol::protocol::TurnEnvironmentSelections;
@@ -323,7 +323,7 @@ index 172726f98..937c8947a 100644
  use codex_protocol::turn_input::SteerSubmission;
  use codex_protocol::turn_input::SuspendTurnOutcome;
  use codex_protocol::turn_input::TurnInputMode;
-@@ -458,6 +460,14 @@ impl CodexThread {
+@@ -450,6 +452,14 @@ impl CodexThread {
          }
      }
  
@@ -339,7 +339,7 @@ index 172726f98..937c8947a 100644
          &self,
          request: TurnInputRequest,
 diff --git a/codex-rs/core/src/lib.rs b/codex-rs/core/src/lib.rs
-index b4e979289..c55a09d10 100644
+index 581392fb57..9671243a65 100644
 --- a/codex-rs/core/src/lib.rs
 +++ b/codex-rs/core/src/lib.rs
 @@ -19,6 +19,9 @@ pub(crate) mod session;
@@ -353,10 +353,10 @@ index b4e979289..c55a09d10 100644
  pub use codex_protocol::turn_input::SuspendTurnOutcome;
  pub use codex_protocol::turn_input::TurnInput;
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index e4594f78b..574b4b86d 100644
+index aa7c99700c..e8f6bba15e 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
-@@ -591,6 +591,11 @@ pub(super) async fn submission_loop(
+@@ -595,6 +595,11 @@ pub(super) async fn submission_loop(
                      let _ = reply.send(result);
                      false
                  }
@@ -369,7 +369,7 @@ index e4594f78b..574b4b86d 100644
                      thread_settings,
                      start_options,
 diff --git a/codex-rs/core/src/session/input_queue.rs b/codex-rs/core/src/session/input_queue.rs
-index e6bd3ba38..67ffaea3d 100644
+index 3efdb90b0c..d5adf3c71c 100644
 --- a/codex-rs/core/src/session/input_queue.rs
 +++ b/codex-rs/core/src/session/input_queue.rs
 @@ -6,10 +6,12 @@ use codex_diagnostics::GaugeGuard;
@@ -385,7 +385,7 @@ index e6bd3ba38..67ffaea3d 100644
  use std::collections::VecDeque;
  use std::sync::Arc;
  use tokio::sync::Mutex;
-@@ -73,6 +75,13 @@ pub(crate) enum InputQueueActivity {
+@@ -75,6 +77,13 @@ pub(crate) enum InputQueueActivity {
  #[derive(Default)]
  pub(crate) struct TurnInputQueue {
      items: Vec<TurnInput>,
@@ -399,7 +399,7 @@ index e6bd3ba38..67ffaea3d 100644
  }
  
  /// Session-scoped pending input storage and active-turn mailbox delivery coordination.
-@@ -205,7 +214,7 @@ impl InputQueue {
+@@ -207,7 +216,7 @@ impl InputQueue {
      pub(crate) async fn clear_pending(&self, active_turn: &ActiveTurn) {
          let mut turn_state = active_turn.turn_state.lock().await;
          turn_state.clear_pending_waiters();
@@ -408,7 +408,7 @@ index e6bd3ba38..67ffaea3d 100644
      }
  
      pub(crate) async fn defer_mailbox_delivery_to_next_turn(
-@@ -259,12 +268,26 @@ impl InputQueue {
+@@ -261,12 +270,26 @@ impl InputQueue {
          turn_state: &Mutex<TurnState>,
          input: Vec<TurnInput>,
      ) {
@@ -436,7 +436,7 @@ index e6bd3ba38..67ffaea3d 100644
      }
  
      pub(crate) async fn extend_pending_input_for_turn_state(
-@@ -272,14 +295,16 @@ impl InputQueue {
+@@ -274,14 +297,16 @@ impl InputQueue {
          turn_state: &Mutex<TurnState>,
          input: Vec<TurnInput>,
      ) {
@@ -455,7 +455,7 @@ index e6bd3ba38..67ffaea3d 100644
      }
  
      #[expect(
-@@ -302,7 +327,7 @@ impl InputQueue {
+@@ -300,7 +325,7 @@ impl InputQueue {
                      let accepts_mailbox_delivery =
                          turn_state.accepts_mailbox_delivery_for_current_turn();
                      let pending_input = if accepts_mailbox_delivery {
@@ -464,7 +464,7 @@ index e6bd3ba38..67ffaea3d 100644
                      } else {
                          Vec::new()
                      };
-@@ -371,6 +396,82 @@ impl TurnInputQueue {
+@@ -359,6 +384,82 @@ impl TurnInputQueue {
              )
          })
      }
@@ -547,7 +547,7 @@ index e6bd3ba38..67ffaea3d 100644
  }
  
  #[cfg(test)]
-@@ -652,4 +753,99 @@ mod tests {
+@@ -656,4 +757,99 @@ mod tests {
              .await;
          assert!(input_queue.has_trigger_turn_mailbox_items().await);
      }
@@ -648,10 +648,10 @@ index e6bd3ba38..67ffaea3d 100644
 +    }
  }
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 91300365b..0e90bb7e2 100644
+index 8ffc144d02..1d2f71747f 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -368,6 +368,8 @@ use codex_protocol::protocol::TokenUsageInfo;
+@@ -373,6 +373,8 @@ use codex_protocol::protocol::TokenUsageInfo;
  use codex_protocol::protocol::TokenUsageRecord;
  use codex_protocol::protocol::TurnModerationMetadataEvent;
  use codex_protocol::protocol::WarningEvent;
@@ -660,7 +660,7 @@ index 91300365b..0e90bb7e2 100644
  use codex_protocol::turn_input::TurnInputMode;
  use codex_protocol::turn_input::TurnInputRequest;
  use codex_protocol::turn_input::TurnInputSubmission;
-@@ -908,6 +910,25 @@ impl SessionIo {
+@@ -924,6 +926,25 @@ impl SessionIo {
          reply_rx.await.unwrap_or(Err(CodexErr::InternalAgentDied))
      }
  
@@ -687,7 +687,7 @@ index 91300365b..0e90bb7e2 100644
          &self,
          thread_settings: ThreadSettingsOverrides,
 diff --git a/codex-rs/core/src/session/turn_input.rs b/codex-rs/core/src/session/turn_input.rs
-index 2882931bc..7d570a00c 100644
+index b064e24566..55a8a5811a 100644
 --- a/codex-rs/core/src/session/turn_input.rs
 +++ b/codex-rs/core/src/session/turn_input.rs
 @@ -30,6 +30,9 @@ use codex_protocol::protocol::EventMsg;
@@ -720,9 +720,9 @@ index 2882931bc..7d570a00c 100644
  pub(super) async fn handle_recovery(
      session: &Arc<Session>,
      thread_settings: ThreadSettingsOverrides,
-@@ -637,13 +653,54 @@ impl Session {
-                 .set_root_turn_id(incoming_root_turn_id);
-         }
+@@ -593,13 +609,54 @@ impl Session {
+         };
+         pending_input.push(input);
          self.input_queue
 -            .extend_pending_input_and_accept_mailbox_delivery_for_turn_state(
 +            .try_extend_pending_input_and_accept_mailbox_delivery_for_turn_state(
@@ -778,7 +778,7 @@ index 2882931bc..7d570a00c 100644
  
  async fn merge_additional_context_input(
 diff --git a/codex-rs/core/src/session/turn_input_tests.rs b/codex-rs/core/src/session/turn_input_tests.rs
-index c9810df1f..b1ebe22be 100644
+index 8c2d7c5b6a..7a76f34176 100644
 --- a/codex-rs/core/src/session/turn_input_tests.rs
 +++ b/codex-rs/core/src/session/turn_input_tests.rs
 @@ -21,6 +21,9 @@ use codex_protocol::protocol::AskForApproval;
@@ -979,7 +979,7 @@ index c9810df1f..b1ebe22be 100644
  #[expect(
      clippy::await_holding_invalid_type,
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index ae2107b80..934f27c96 100644
+index 66e431551d..9aa42e473a 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
 @@ -59,6 +59,8 @@ use crate::request_permissions::RequestPermissionsEvent;
@@ -1013,7 +1013,7 @@ index ae2107b80..934f27c96 100644
              Self::SuspendTurnAndShutdown { .. } => "suspend_turn_and_shutdown",
              Self::ThreadSettings { .. } => "thread_settings",
 diff --git a/codex-rs/protocol/src/turn_input.rs b/codex-rs/protocol/src/turn_input.rs
-index 4819d0fb9..1d0b56d01 100644
+index 4819d0fb9b..1d0b56d01b 100644
 --- a/codex-rs/protocol/src/turn_input.rs
 +++ b/codex-rs/protocol/src/turn_input.rs
 @@ -212,6 +212,33 @@ pub enum SteerSubmission {
@@ -1059,10 +1059,10 @@ index 4819d0fb9..1d0b56d01 100644
 +    DuplicateClientUserMessageId { client_id: String },
  }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 1d2990ea5..f5502384f 100644
+index 7685beddb1..695fabfe18 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -721,6 +721,34 @@ impl App {
+@@ -755,6 +755,34 @@ impl App {
              AppEvent::FatalExitRequest(message) => {
                  return Ok(AppRunControl::Exit(ExitReason::Fatal(message)));
              }
@@ -1094,73 +1094,11 @@ index 1d2990ea5..f5502384f 100644
 +                        .on_steer_recall_resolved(client_user_message_id, result);
 +                }
 +            }
-             AppEvent::CodexOp(op) => {
-                 let is_user_turn = matches!(&op, AppCommand::UserTurn { .. });
-                 if is_user_turn {
-diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
-index c0b15fe88..68102e20f 100644
---- a/codex-rs/tui/src/app/thread_routing.rs
-+++ b/codex-rs/tui/src/app/thread_routing.rs
-@@ -660,6 +660,7 @@ impl App {
-             }
-             AppCommand::UserTurn {
-                 items,
-+                client_user_message_id,
-                 cwd,
-                 approval_policy,
-                 approvals_reviewer,
-@@ -678,7 +679,12 @@ impl App {
-                     let mut retried_after_turn_mismatch = false;
-                     loop {
-                         match app_server
--                            .turn_steer(thread_id, steer_turn_id.clone(), items.to_vec())
-+                            .turn_steer(
-+                                thread_id,
-+                                steer_turn_id.clone(),
-+                                items.to_vec(),
-+                                client_user_message_id.clone(),
-+                            )
-                             .await
-                         {
-                             Ok(_) => return Ok(true),
-@@ -752,6 +758,7 @@ impl App {
-                         .turn_start(
-                             thread_id,
-                             items.to_vec(),
-+                            client_user_message_id.clone(),
-                             cwd.clone(),
-                             *approval_policy,
-                             approvals_reviewer,
-diff --git a/codex-rs/tui/src/app_command.rs b/codex-rs/tui/src/app_command.rs
-index fef3fbb5d..f6c911cea 100644
---- a/codex-rs/tui/src/app_command.rs
-+++ b/codex-rs/tui/src/app_command.rs
-@@ -31,6 +31,7 @@ pub(crate) enum AppCommand {
-     },
-     UserTurn {
-         items: Vec<UserInput>,
-+        client_user_message_id: Option<String>,
-         cwd: PathBuf,
-         approval_policy: AskForApproval,
-         approvals_reviewer: Option<ApprovalsReviewer>,
-@@ -114,6 +115,7 @@ impl AppCommand {
-     #[allow(clippy::too_many_arguments)]
-     pub(crate) fn user_turn(
-         items: Vec<UserInput>,
-+        client_user_message_id: Option<String>,
-         cwd: PathBuf,
-         approval_policy: AskForApproval,
-         active_permission_profile: Option<ActivePermissionProfile>,
-@@ -127,6 +129,7 @@ impl AppCommand {
-     ) -> Self {
-         Self::UserTurn {
-             items,
-+            client_user_message_id,
-             cwd,
-             approval_policy,
-             approvals_reviewer: None,
+             AppEvent::CodexOp(mut op) => {
+                 if let AppCommand::OverrideTurnContext {
+                     cwd,
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index f71cc9694..44d18729d 100644
+index edca3298f4..d9c5d6472a 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
 @@ -35,6 +35,7 @@ use codex_app_server_protocol::SkillsListResponse;
@@ -1171,8 +1109,8 @@ index f71cc9694..44d18729d 100644
  use codex_connectors::AppInfo;
  use codex_file_search::FileMatch;
  use codex_message_history::HistoryBatchCursor;
-@@ -299,6 +300,20 @@ pub(crate) enum AppEvent {
-         op: AppCommand,
+@@ -350,6 +351,20 @@ pub(crate) enum AppEvent {
+         prompt: UserMessage,
      },
  
 +    /// Recall a pending same-turn Enter steer through the owning app-server.
@@ -1193,10 +1131,10 @@ index f71cc9694..44d18729d 100644
      RetrySafetyBufferedTurn {
          thread_id: ThreadId,
 diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index a29cc9a64..957a98764 100644
+index 9583524099..14f3aa331f 100644
 --- a/codex-rs/tui/src/app_server_session.rs
 +++ b/codex-rs/tui/src/app_server_session.rs
-@@ -118,6 +118,8 @@ use codex_app_server_protocol::TurnInterruptResponse;
+@@ -125,6 +125,8 @@ use codex_app_server_protocol::TurnInterruptResponse;
  use codex_app_server_protocol::TurnStartParams;
  use codex_app_server_protocol::TurnStartResponse;
  use codex_app_server_protocol::TurnSteerParams;
@@ -1205,41 +1143,7 @@ index a29cc9a64..957a98764 100644
  use codex_app_server_protocol::TurnSteerResponse;
  use codex_app_server_protocol::UserInput;
  use codex_config::ConfigLayerSource;
-@@ -1198,6 +1200,7 @@ impl AppServerSession {
-         &mut self,
-         thread_id: ThreadId,
-         items: Vec<UserInput>,
-+        client_user_message_id: Option<String>,
-         cwd: PathBuf,
-         approval_policy: AskForApproval,
-         approvals_reviewer: codex_protocol::config_types::ApprovalsReviewer,
-@@ -1220,7 +1223,7 @@ impl AppServerSession {
-                 params: TurnStartParams {
-                     thread_id: thread_id.to_string(),
-                     turn_trigger: None,
--                    client_user_message_id: None,
-+                    client_user_message_id,
-                     input: items,
-                     tool_output: None,
-                     responsesapi_client_metadata: None,
-@@ -1279,6 +1282,7 @@ impl AppServerSession {
-         thread_id: ThreadId,
-         turn_id: String,
-         items: Vec<UserInput>,
-+        client_user_message_id: Option<String>,
-     ) -> std::result::Result<TurnSteerResponse, TypedRequestError> {
-         let request_id = self.next_request_id();
-         self.client
-@@ -1286,7 +1290,7 @@ impl AppServerSession {
-                 request_id,
-                 params: TurnSteerParams {
-                     thread_id: thread_id.to_string(),
--                    client_user_message_id: None,
-+                    client_user_message_id,
-                     input: items,
-                     responsesapi_client_metadata: None,
-                     additional_context: None,
-@@ -1296,6 +1300,25 @@ impl AppServerSession {
+@@ -1407,6 +1409,25 @@ impl AppServerSession {
              .await
      }
  
@@ -1266,48 +1170,40 @@ index a29cc9a64..957a98764 100644
          &mut self,
          thread_id: ThreadId,
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index cbb2084df..187bc7837 100644
+index f78841be4c..555c5e2b03 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -449,6 +449,7 @@ mod user_messages;
- mod working_directory;
+@@ -449,6 +449,7 @@ mod working_directory;
  use self::user_messages::PendingSteer;
+ #[cfg(test)]
  use self::user_messages::PendingSteerCompareKey;
 +use self::user_messages::PendingSteerState;
  use self::user_messages::QueueDrain;
  use self::user_messages::QueuedUserMessage;
  use self::user_messages::ShellEscapePolicy;
-@@ -1313,7 +1314,12 @@ impl ChatWidget {
-         self.request_redraw();
-     }
- 
--    fn on_committed_user_message(&mut self, items: &[UserInput], from_replay: bool) {
-+    fn on_committed_user_message(
-+        &mut self,
-+        items: &[UserInput],
-+        client_id: Option<&str>,
-+        from_replay: bool,
-+    ) {
-         let display = Self::user_message_display_from_inputs(items);
-         if from_replay {
-             if self.review.is_review_mode {
-@@ -1333,22 +1339,22 @@ impl ChatWidget {
+@@ -1313,17 +1314,20 @@ impl ChatWidget {
+             return;
          }
  
-         let compare_key = Self::pending_steer_compare_key_from_items(items);
 -        if self
 -            .input_queue
 -            .pending_steers
 -            .front()
--            .is_some_and(|pending| pending.compare_key == compare_key)
+-            .is_some_and(|pending| match client_id {
+-                Some(client_id) => pending.client_id == client_id,
+-                // Older app servers do not echo submission IDs.
+-                None => pending.compare_key == Self::pending_steer_compare_key_from_items(items),
+-            })
 -        {
 -            if let Some(pending) = self.input_queue.pending_steers.pop_front() {
++        let compare_key = Self::pending_steer_compare_key_from_items(items);
 +        let pending_index = match client_id {
 +            Some(client_id) => self
 +                .input_queue
 +                .pending_steers
 +                .iter()
-+                .position(|pending| pending.client_user_message_id == client_id),
++                .position(|pending| pending.client_id == client_id),
++            // Older app servers do not echo submission IDs.
 +            None => self.input_queue.pending_steers.iter().position(|pending| {
 +                pending.state != PendingSteerState::Recalling && pending.compare_key == compare_key
 +            }),
@@ -1317,17 +1213,8 @@ index cbb2084df..187bc7837 100644
                  self.refresh_pending_input_preview();
                  let pending_display =
                      user_message_display_for_history(pending.user_message, &pending.history_record);
-                 self.on_user_message_display(pending_display);
--            } else if self.last_rendered_user_message_display.as_ref() != Some(&display) {
--                tracing::warn!(
--                    "pending steer matched compare key but queue was empty when rendering committed user message"
--                );
--                self.on_user_message_display(display);
-             }
-         } else if !self.review.is_review_mode
-             && self.last_rendered_user_message_display.as_ref() != Some(&display)
 diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
-index 9d4958ebe..d5ef329d8 100644
+index 8a7caeab9b..31e17db421 100644
 --- a/codex-rs/tui/src/chatwidget/input_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/input_flow.rs
 @@ -118,12 +118,14 @@ impl ChatWidget {
@@ -1357,7 +1244,7 @@ index 9d4958ebe..d5ef329d8 100644
                  .with_schedule_label(label.clone())
                  .with_schedule_target_time(target_time),
 diff --git a/codex-rs/tui/src/chatwidget/input_queue.rs b/codex-rs/tui/src/chatwidget/input_queue.rs
-index 6c387e20d..49eebe8be 100644
+index 1d608f7229..ded688c7aa 100644
 --- a/codex-rs/tui/src/chatwidget/input_queue.rs
 +++ b/codex-rs/tui/src/chatwidget/input_queue.rs
 @@ -10,6 +10,7 @@ use chrono::DateTime;
@@ -1469,11 +1356,10 @@ index 6c387e20d..49eebe8be 100644
              })
              .collect();
          let rejected_steers = self
-@@ -169,6 +236,10 @@ mod tests {
-             .rejected_steers_queue
+@@ -170,6 +237,9 @@ mod tests {
              .push_back(UserMessage::from("rejected"));
          state.pending_steers.push_back(PendingSteer {
-+            client_user_message_id: "pending-id".to_string(),
+             client_id: "test-submission".to_string(),
 +            active_turn_id: "turn-id".to_string(),
 +            edit_order: 0,
 +            state: PendingSteerState::Submitted,
@@ -1481,10 +1367,18 @@ index 6c387e20d..49eebe8be 100644
              history_record: UserMessageHistoryRecord::UserMessageText,
              compare_key: crate::chatwidget::user_messages::PendingSteerCompareKey {
 diff --git a/codex-rs/tui/src/chatwidget/input_restore.rs b/codex-rs/tui/src/chatwidget/input_restore.rs
-index b6212c915..5902f7fd2 100644
+index e1faa1dff0..9953a3bfe8 100644
 --- a/codex-rs/tui/src/chatwidget/input_restore.rs
 +++ b/codex-rs/tui/src/chatwidget/input_restore.rs
-@@ -9,6 +9,78 @@ use super::user_messages::remap_colliding_paste_placeholders;
+@@ -1,6 +1,7 @@
+ //! Input queue restore and thread-input snapshot behavior for `ChatWidget`.
+ 
+ use std::collections::HashSet;
++use std::collections::VecDeque;
+ 
+ use crate::bottom_pane::ComposerDraftSnapshot;
+ 
+@@ -8,6 +9,78 @@ use super::user_messages::remap_colliding_paste_placeholders;
  use super::*;
  
  impl ChatWidget {
@@ -1500,7 +1394,7 @@ index b6212c915..5902f7fd2 100644
 +        }
 +        pending.state = PendingSteerState::Recalling;
 +        let expected_turn_id = pending.active_turn_id.clone();
-+        let client_user_message_id = pending.client_user_message_id.clone();
++        let client_user_message_id = pending.client_id.clone();
 +        self.refresh_pending_input_preview();
 +        self.app_event_tx.send(AppEvent::RecallPendingSteer {
 +            thread_id,
@@ -1519,7 +1413,7 @@ index b6212c915..5902f7fd2 100644
 +            .input_queue
 +            .pending_steers
 +            .iter()
-+            .position(|pending| pending.client_user_message_id == client_user_message_id)
++            .position(|pending| pending.client_id == client_user_message_id)
 +        else {
 +            return;
 +        };
@@ -1563,7 +1457,7 @@ index b6212c915..5902f7fd2 100644
      /// Restore the exact draft entered before the fully initialized composer became available.
      pub(crate) fn restore_startup_draft(&mut self, draft: ComposerDraftSnapshot) {
          let existing_draft = self.bottom_pane.composer_draft_snapshot();
-@@ -169,37 +241,93 @@ impl ChatWidget {
+@@ -173,37 +246,93 @@ impl ChatWidget {
      }
  
      pub(super) fn pop_latest_queued_composer_state(&mut self) -> Option<ThreadComposerState> {
@@ -1688,7 +1582,7 @@ index b6212c915..5902f7fd2 100644
      }
  
      pub(crate) fn enqueue_rejected_steer(&mut self) -> bool {
-@@ -212,6 +340,9 @@ impl ChatWidget {
+@@ -216,6 +345,9 @@ impl ChatWidget {
          self.input_queue
              .rejected_steers_queue
              .push_back(pending_steer.user_message);
@@ -1698,40 +1592,15 @@ index b6212c915..5902f7fd2 100644
          self.input_queue
              .rejected_steer_history_records
              .push_back(pending_steer.history_record);
-@@ -455,7 +586,32 @@ impl ChatWidget {
-                 .iter()
-                 .map(|pending| pending.compare_key.clone())
-                 .collect(),
-+            pending_steer_client_ids: self
-+                .input_queue
-+                .pending_steers
-+                .iter()
-+                .map(|pending| pending.client_user_message_id.clone())
-+                .collect(),
-+            pending_steer_turn_ids: self
-+                .input_queue
-+                .pending_steers
-+                .iter()
-+                .map(|pending| pending.active_turn_id.clone())
-+                .collect(),
-+            pending_steer_edit_orders: self
-+                .input_queue
-+                .pending_steers
-+                .iter()
-+                .map(|pending| pending.edit_order)
-+                .collect(),
-+            pending_steer_states: self
-+                .input_queue
-+                .pending_steers
-+                .iter()
-+                .map(|pending| pending.state)
-+                .collect(),
+@@ -448,6 +580,7 @@ impl ChatWidget {
+             safety_buffering_prompt: self.safety_buffering_prompt.clone(),
+             pending_steers: self.input_queue.pending_steers.clone(),
              rejected_steers_queue: self.input_queue.rejected_steers_queue.clone(),
 +            rejected_steer_edit_orders: self.input_queue.rejected_steer_edit_orders.clone(),
              rejected_steer_history_records: self.input_queue.rejected_steer_history_records.clone(),
              queued_user_messages: self.input_queue.queued_user_messages.clone(),
              queued_user_message_history_records: self
-@@ -463,6 +619,7 @@ impl ChatWidget {
+@@ -455,6 +588,7 @@ impl ChatWidget {
                  .queued_user_message_history_records
                  .clone(),
              recovered_queue: self.input_queue.recovered_queue,
@@ -1739,7 +1608,7 @@ index b6212c915..5902f7fd2 100644
              user_turn_pending_start: self.input_queue.user_turn_pending_start,
              submit_pending_steers_after_interrupt: self
                  .input_queue
-@@ -495,6 +652,7 @@ impl ChatWidget {
+@@ -488,6 +622,7 @@ impl ChatWidget {
                  preserve_in_flight_turn && input_state.user_turn_pending_start;
              self.input_queue.submit_pending_steers_after_interrupt =
                  preserve_in_flight_turn && input_state.submit_pending_steers_after_interrupt;
@@ -1747,65 +1616,26 @@ index b6212c915..5902f7fd2 100644
              self.update_collaboration_mode_indicator();
              self.refresh_model_dependent_surfaces();
              self.restore_composer_state(input_state.composer.unwrap_or_default());
-@@ -504,6 +662,17 @@ impl ChatWidget {
-                 UserMessageHistoryRecord::UserMessageText,
-             );
-             let mut pending_steer_compare_keys = input_state.pending_steer_compare_keys;
-+            let mut pending_steer_client_ids = input_state.pending_steer_client_ids;
-+            pending_steer_client_ids.resize(input_state.pending_steers.len(), String::new());
-+            let mut pending_steer_turn_ids = input_state.pending_steer_turn_ids;
-+            pending_steer_turn_ids.resize(input_state.pending_steers.len(), String::new());
-+            let mut pending_steer_edit_orders = input_state.pending_steer_edit_orders;
-+            pending_steer_edit_orders.resize(input_state.pending_steers.len(), 0);
-+            let mut pending_steer_states = input_state.pending_steer_states;
-+            pending_steer_states.resize(
-+                input_state.pending_steers.len(),
-+                PendingSteerState::Submitted,
-+            );
-             let pending_steers = input_state.pending_steers;
-             let mut queued_user_messages = input_state.queued_user_messages;
-             let mut queued_user_message_history_records =
-@@ -513,6 +682,14 @@ impl ChatWidget {
-                     .into_iter()
-                     .zip(pending_steer_history_records)
-                     .map(|(user_message, history_record)| PendingSteer {
-+                        client_user_message_id: pending_steer_client_ids
-+                            .pop_front()
-+                            .unwrap_or_default(),
-+                        active_turn_id: pending_steer_turn_ids.pop_front().unwrap_or_default(),
-+                        edit_order: pending_steer_edit_orders.pop_front().unwrap_or_default(),
-+                        state: pending_steer_states
-+                            .pop_front()
-+                            .unwrap_or(PendingSteerState::Submitted),
-                         compare_key: pending_steer_compare_keys.pop_front().unwrap_or_else(|| {
-                             PendingSteerCompareKey {
-                                 message: user_message.text.clone(),
-@@ -526,16 +703,31 @@ impl ChatWidget {
-                     .collect();
+@@ -499,12 +634,27 @@ impl ChatWidget {
+                 self.input_queue.pending_steers = pending_steers;
              } else {
                  self.input_queue.pending_steers.clear();
--                let mut safety_retry_follow_ups = pending_steers
+-                for pending in pending_steers.into_iter().rev() {
+-                    queued_user_messages.push_front(pending.user_message.into());
+-                    queued_user_message_history_records.push_front(pending.history_record);
 +                let mut safety_retry_follow_ups = VecDeque::new();
 +                let mut safety_retry_history_records = VecDeque::new();
-+                for (((message, edit_order), state), history_record) in pending_steers
-                     .into_iter()
--                    .map(QueuedUserMessage::from)
--                    .collect::<VecDeque<_>>();
-+                    .zip(pending_steer_edit_orders)
-+                    .zip(pending_steer_states)
-+                    .zip(pending_steer_history_records)
-+                {
-+                    if state != PendingSteerState::Claimed {
++                for pending in pending_steers {
++                    if pending.state != PendingSteerState::Claimed {
 +                        safety_retry_follow_ups.push_back(
-+                            QueuedUserMessage::from(message).with_edit_order(edit_order),
++                            QueuedUserMessage::from(pending.user_message)
++                                .with_edit_order(pending.edit_order),
 +                        );
-+                        safety_retry_history_records.push_back(history_record);
++                        safety_retry_history_records.push_back(pending.history_record);
 +                    }
-+                }
-                 safety_retry_follow_ups.append(&mut queued_user_messages);
-                 queued_user_messages = safety_retry_follow_ups;
--                pending_steer_history_records.append(&mut queued_user_message_history_records);
--                queued_user_message_history_records = pending_steer_history_records;
+                 }
++                safety_retry_follow_ups.append(&mut queued_user_messages);
++                queued_user_messages = safety_retry_follow_ups;
 +                safety_retry_history_records.append(&mut queued_user_message_history_records);
 +                queued_user_message_history_records = safety_retry_history_records;
              }
@@ -1817,7 +1647,7 @@ index b6212c915..5902f7fd2 100644
              self.input_queue.rejected_steer_history_records =
                  input_state.rejected_steer_history_records;
              self.input_queue.rejected_steer_history_records.resize(
-@@ -549,6 +741,25 @@ impl ChatWidget {
+@@ -518,6 +668,25 @@ impl ChatWidget {
                  self.input_queue.queued_user_messages.len(),
                  UserMessageHistoryRecord::UserMessageText,
              );
@@ -1844,7 +1674,7 @@ index b6212c915..5902f7fd2 100644
              self.turn_lifecycle
                  .restore_running(/*running*/ false, Instant::now());
 diff --git a/codex-rs/tui/src/chatwidget/input_submission.rs b/codex-rs/tui/src/chatwidget/input_submission.rs
-index 8a4133e72..e3e00b2b3 100644
+index 6e408aab3c..cefaf0246d 100644
 --- a/codex-rs/tui/src/chatwidget/input_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/input_submission.rs
 @@ -1,6 +1,7 @@
@@ -1867,33 +1697,26 @@ index 8a4133e72..e3e00b2b3 100644
              self.input_queue
                  .queued_user_message_history_records
                  .push_front(history_record);
-@@ -347,7 +349,13 @@ impl ChatWidget {
+@@ -347,9 +349,13 @@ impl ChatWidget {
          } else {
              None
          };
+-        let client_user_message_id = uuid::Uuid::new_v4().to_string();
 +        let client_user_message_id = Uuid::now_v7().to_string();
 +        let active_turn_id = self.turn_lifecycle.last_turn_id.clone().unwrap_or_default();
          let pending_steer = (!render_in_history).then(|| PendingSteer {
-+            client_user_message_id: client_user_message_id.clone(),
+             client_id: client_user_message_id.clone(),
 +            active_turn_id,
 +            edit_order: self.input_queue.next_edit_order(),
 +            state: PendingSteerState::Submitted,
              user_message: UserMessage {
                  text: text.clone(),
                  local_images: local_images.clone(),
-@@ -367,6 +375,7 @@ impl ChatWidget {
-         let active_permission_profile = self.config.permissions.active_permission_profile();
-         let op = AppCommand::user_turn(
-             items,
-+            Some(client_user_message_id),
-             self.config.cwd.to_path_buf(),
-             AskForApproval::from(self.config.permissions.approval_policy.value()),
-             active_permission_profile,
 diff --git a/codex-rs/tui/src/chatwidget/interaction.rs b/codex-rs/tui/src/chatwidget/interaction.rs
-index 015a69807..0cb6b0ec3 100644
+index e669e135be..ae1f601ed4 100644
 --- a/codex-rs/tui/src/chatwidget/interaction.rs
 +++ b/codex-rs/tui/src/chatwidget/interaction.rs
-@@ -116,13 +116,30 @@ impl ChatWidget {
+@@ -120,13 +120,30 @@ impl ChatWidget {
  
          if key_event.kind == KeyEventKind::Press
              && self.chat_keymap.edit_queued_message.is_pressed(key_event)
@@ -1929,25 +1752,8 @@ index 015a69807..0cb6b0ec3 100644
              }
              return;
          }
-diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
-index cb2c8d84c..c0ad8605c 100644
---- a/codex-rs/tui/src/chatwidget/replay.rs
-+++ b/codex-rs/tui/src/chatwidget/replay.rs
-@@ -86,8 +86,10 @@ impl ChatWidget {
-         let from_replay = render_source.is_replay();
-         let replay_kind = render_source.replay_kind();
-         match item {
--            ThreadItem::UserMessage { content, .. } => {
--                self.on_committed_user_message(&content, from_replay);
-+            ThreadItem::UserMessage {
-+                client_id, content, ..
-+            } => {
-+                self.on_committed_user_message(&content, client_id.as_deref(), from_replay);
-             }
-             ThreadItem::AgentMessage {
-                 id,
 diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index 8c3504085..f4952c867 100644
+index 64527b6208..6890e97e38 100644
 --- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 @@ -352,6 +352,7 @@ async fn parent_owned_thread_preserves_queued_input_before_draining() {
@@ -1958,14 +1764,9 @@ index 8c3504085..f4952c867 100644
          not_before: None,
          schedule_label: None,
          schedule_target_time: None,
-@@ -1767,11 +1768,17 @@ async fn restore_thread_input_state_applies_running_state_policy() {
-         pending_steers: VecDeque::from([UserMessage::from("submitted to the interrupted turn")]),
-         pending_steer_history_records: VecDeque::from([pending_history.clone()]),
-         pending_steer_compare_keys: VecDeque::new(),
-+        pending_steer_client_ids: VecDeque::new(),
-+        pending_steer_turn_ids: VecDeque::new(),
-+        pending_steer_edit_orders: VecDeque::new(),
-+        pending_steer_states: VecDeque::new(),
+@@ -1770,10 +1771,12 @@ async fn restore_thread_input_state_applies_running_state_policy() {
+             ..pending_steer("submitted to the interrupted turn")
+         }]),
          rejected_steers_queue: VecDeque::new(),
 +        rejected_steer_edit_orders: VecDeque::new(),
          rejected_steer_history_records: VecDeque::new(),
@@ -1977,21 +1778,22 @@ index 8c3504085..f4952c867 100644
          submit_pending_steers_after_interrupt: true,
          current_collaboration_mode: chat.current_collaboration_mode.clone(),
 diff --git a/codex-rs/tui/src/chatwidget/tests/helpers.rs b/codex-rs/tui/src/chatwidget/tests/helpers.rs
-index c852995d8..afdcc37b4 100644
+index dcf517ad38..d54622e7dd 100644
 --- a/codex-rs/tui/src/chatwidget/tests/helpers.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/helpers.rs
-@@ -936,6 +936,10 @@ pub(super) fn complete_assistant_message(
+@@ -954,7 +954,10 @@ pub(super) fn complete_assistant_message(
  
  pub(super) fn pending_steer(text: &str) -> PendingSteer {
      PendingSteer {
-+        client_user_message_id: format!("id-{text}"),
+-        client_id: "test-submission".to_string(),
++        client_id: format!("id-{text}"),
 +        active_turn_id: "turn-1".to_string(),
 +        edit_order: 0,
 +        state: PendingSteerState::Submitted,
          user_message: UserMessage::from(text),
          history_record: UserMessageHistoryRecord::UserMessageText,
          compare_key: PendingSteerCompareKey {
-@@ -956,10 +960,36 @@ pub(super) fn complete_user_message(chat: &mut ChatWidget, item_id: &str, text:
+@@ -975,10 +978,36 @@ pub(super) fn complete_user_message(chat: &mut ChatWidget, item_id: &str, text:
      );
  }
  
@@ -2028,7 +1830,7 @@ index c852995d8..afdcc37b4 100644
  ) {
      chat.handle_server_notification(
          ServerNotification::ItemCompleted(ItemCompletedNotification {
-@@ -968,7 +998,7 @@ pub(super) fn complete_user_message_for_inputs(
+@@ -987,7 +1016,7 @@ pub(super) fn complete_user_message_for_inputs(
              completed_at_ms: 0,
              item: AppServerThreadItem::UserMessage {
                  id: item_id.to_string(),
@@ -2038,17 +1840,12 @@ index c852995d8..afdcc37b4 100644
              },
          }),
 diff --git a/codex-rs/tui/src/chatwidget/tests/review_mode.rs b/codex-rs/tui/src/chatwidget/tests/review_mode.rs
-index ed3853e91..bbc1fe278 100644
+index e5b643baa1..309bce37e5 100644
 --- a/codex-rs/tui/src/chatwidget/tests/review_mode.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/review_mode.rs
-@@ -380,11 +380,17 @@ async fn restore_thread_input_state_restores_pending_steers_without_downgrading_
-             pending_steers,
-             pending_steer_history_records: VecDeque::new(),
-             pending_steer_compare_keys,
-+            pending_steer_client_ids: VecDeque::new(),
-+            pending_steer_turn_ids: VecDeque::new(),
-+            pending_steer_edit_orders: VecDeque::new(),
-+            pending_steer_states: VecDeque::new(),
+@@ -381,10 +381,12 @@ async fn restore_thread_input_state_restores_pending_steers_without_downgrading_
+             safety_buffering_prompt: None,
+             pending_steers: VecDeque::from([expected_pending.clone()]),
              rejected_steers_queue,
 +            rejected_steer_edit_orders: VecDeque::new(),
              rejected_steer_history_records: VecDeque::new(),
@@ -2059,7 +1856,7 @@ index ed3853e91..bbc1fe278 100644
              user_turn_pending_start: false,
              submit_pending_steers_after_interrupt: false,
              current_collaboration_mode: chat.current_collaboration_mode.clone(),
-@@ -520,6 +526,121 @@ async fn steer_enter_uses_pending_steers_while_final_answer_stream_is_active() {
+@@ -536,6 +538,121 @@ async fn steer_enter_uses_pending_steers_while_final_answer_stream_is_active() {
      assert!(lines_to_single_string(&inserted[0]).contains("queued while streaming"));
  }
  
@@ -2182,7 +1979,7 @@ index ed3853e91..bbc1fe278 100644
  async fn failed_pending_steer_submit_does_not_add_pending_preview() {
      let (mut chat, mut rx, op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/chatwidget/user_messages.rs b/codex-rs/tui/src/chatwidget/user_messages.rs
-index c5f03da3e..8e06b35a9 100644
+index ea78efe877..640bc58c8a 100644
 --- a/codex-rs/tui/src/chatwidget/user_messages.rs
 +++ b/codex-rs/tui/src/chatwidget/user_messages.rs
 @@ -67,6 +67,7 @@ pub(super) struct QueuedUserMessage {
@@ -2213,14 +2010,9 @@ index c5f03da3e..8e06b35a9 100644
      pub(super) fn with_schedule_label(mut self, label: String) -> Self {
          self.schedule_label = Some(label);
          self
-@@ -156,11 +163,18 @@ pub(crate) struct ThreadInputState {
-     pub(super) pending_steers: VecDeque<UserMessage>,
-     pub(super) pending_steer_history_records: VecDeque<UserMessageHistoryRecord>,
-     pub(super) pending_steer_compare_keys: VecDeque<PendingSteerCompareKey>,
-+    pub(super) pending_steer_client_ids: VecDeque<String>,
-+    pub(super) pending_steer_turn_ids: VecDeque<String>,
-+    pub(super) pending_steer_edit_orders: VecDeque<u64>,
-+    pub(super) pending_steer_states: VecDeque<PendingSteerState>,
+@@ -156,10 +163,13 @@ pub(crate) struct ThreadInputState {
+     pub(super) safety_buffering_prompt: Option<UserMessage>,
+     pub(crate) pending_steers: VecDeque<PendingSteer>,
      pub(super) rejected_steers_queue: VecDeque<UserMessage>,
 +    pub(super) rejected_steer_edit_orders: VecDeque<u64>,
      pub(super) rejected_steer_history_records: VecDeque<UserMessageHistoryRecord>,
@@ -2232,11 +2024,10 @@ index c5f03da3e..8e06b35a9 100644
      pub(super) user_turn_pending_start: bool,
      pub(super) submit_pending_steers_after_interrupt: bool,
      pub(super) current_collaboration_mode: CollaborationMode,
-@@ -200,8 +214,19 @@ impl From<&str> for UserMessage {
+@@ -199,10 +209,20 @@ impl From<&str> for UserMessage {
      }
  }
  
--#[derive(Debug)]
 +#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 +pub(super) enum PendingSteerState {
 +    Submitted,
@@ -2244,9 +2035,10 @@ index c5f03da3e..8e06b35a9 100644
 +    Claimed,
 +}
 +
-+#[derive(Debug, Clone)]
- pub(super) struct PendingSteer {
-+    pub(super) client_user_message_id: String,
+ #[derive(Debug, Clone, PartialEq)]
+ pub(crate) struct PendingSteer {
+     /// Preserved across request retries and thread switches until this submission commits.
+     pub(crate) client_id: String,
 +    pub(super) active_turn_id: String,
 +    pub(super) edit_order: u64,
 +    pub(super) state: PendingSteerState,
