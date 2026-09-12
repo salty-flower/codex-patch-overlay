@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.1"
+patch_suffix = "patch.2"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
@@ -75,3 +75,17 @@ status = "carried"
 risk = "high"
 owner = "local"
 notes = "Preserve vanilla same-turn Enter steering while adding an experimental, core-arbitrated recall window before atomic input consumption. TUI-generated UUIDv7 client message IDs flow through turn/start or turn/steer and committed user-item notifications; Alt+Up recalls the globally latest editable Enter/Tab input, restores it only on recalled/alreadyRecalled, and keeps claimed inputs hidden until their exact committed item arrives. Shell escapes, Plan streaming, and Tab next-turn semantics remain unchanged. This patch must not be retired merely because upstream exposes a queued-message editor: retirement requires equivalent core arbitration and an exact pending-steer recall protocol. Generated compressed app-server schema exports are carried as binary payloads and installed by the overlay because Nix's patch hook does not apply Git binary diffs."
+
+[[patches]]
+name = "websocket-reconnect"
+enabled = true
+file = "patches/websocket-reconnect.patch"
+upstream_base = "rust-v0.154.0"
+upstream_sha = "6b9826e3aa83b1a5947db50f4332cb9c65f1b340"
+source_hash = "sha256-Nm+61N6YHxGhjLsm/giVSEg4QvJmIgWxyTQ1L89kpCs="
+cargo_hash = "sha256-9F8dyEiVkhelrIyfQ9ZkvuxfIYNN6akbpadREa4A1n0="
+upstream_issue = "local-request"
+status = "carried"
+risk = "high"
+owner = "local"
+notes = "Detect silent Responses WebSocket loss with correlated protocol Ping/Pong probes: a 15-second heartbeat, five-second reply budget, an immediate probe before reuse, and a sleep-aware wall/monotonic clock comparison that probes promptly after resume. Mismatched or late Pong frames cannot satisfy another probe, and data frames received during a probe retain their order. Failed pumps are treated as closed; core invalidation clears socket-bound incremental continuation state before reconnecting with full local context. In-flight liveness recovery is surfaced on the first retry without logging credentials or request headers."
