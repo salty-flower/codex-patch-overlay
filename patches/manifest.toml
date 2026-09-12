@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.2"
+patch_suffix = "patch.3"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
@@ -89,3 +89,17 @@ status = "carried"
 risk = "high"
 owner = "local"
 notes = "Detect silent Responses WebSocket loss with correlated protocol Ping/Pong probes: a 15-second heartbeat, five-second reply budget, an immediate probe before reuse, and a sleep-aware wall/monotonic clock comparison that probes promptly after resume. Mismatched or late Pong frames cannot satisfy another probe, and data frames received during a probe retain their order. Failed pumps are treated as closed; core invalidation clears socket-bound incremental continuation state before reconnecting with full local context. In-flight liveness recovery is surfaced on the first retry without logging credentials or request headers."
+
+[[patches]]
+name = "codex-rotate"
+enabled = true
+file = "patches/codex-rotate.patch"
+upstream_base = "rust-v0.154.0"
+upstream_sha = "6b9826e3aa83b1a5947db50f4332cb9c65f1b340"
+source_hash = "sha256-Nm+61N6YHxGhjLsm/giVSEg4QvJmIgWxyTQ1L89kpCs="
+cargo_hash = "sha256-9F8dyEiVkhelrIyfQ9ZkvuxfIYNN6akbpadREa4A1n0="
+upstream_issue = "local-request"
+status = "carried"
+risk = "high"
+owner = "local"
+notes = "Add an opt-in external credential-helper authority for personal ChatGPT accounts. Request admission acquires an account-bound access snapshot; retries retain that account and refresh revision; quota exhaustion selects only known-headroom alternatives; WebSocket continuation is invalidated across account epochs; browser/device login enrolls directly through the helper; logout clears helper-owned selection without reviving the native auth store."

@@ -1,0 +1,4292 @@
+diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
+index c4ec80c..66d3e46 100644
+--- a/codex-rs/app-server/src/lib.rs
++++ b/codex-rs/app-server/src/lib.rs
+@@ -1375,9 +1375,12 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
+ }
+
+ fn loader_overrides_with_test_user_config_file(
+-    mut loader_overrides: LoaderOverrides,
++    loader_overrides: LoaderOverrides,
+     test_user_config_file: Option<std::path::PathBuf>,
+ ) -> IoResult<LoaderOverrides> {
++    #[cfg(debug_assertions)]
++    let mut loader_overrides = loader_overrides;
++
+     #[cfg(debug_assertions)]
+     if let Some(path) = test_user_config_file {
+         let path = AbsolutePathBuf::from_absolute_path(path).map_err(|err| {
+diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
+index 21ac6c8..02eafc0 100644
+--- a/codex-rs/app-server/src/message_processor.rs
++++ b/codex-rs/app-server/src/message_processor.rs
+@@ -1080,7 +1080,7 @@ impl MessageProcessor {
+                 .clients_revoke(params)
+                 .await
+                 .map(|response| Some(response.into())),
+-            ClientRequest::ConfigRequirementsRead { params: _, .. } => self
++            ClientRequest::ConfigRequirementsRead { .. } => self
+                 .config_processor
+                 .config_requirements_read()
+                 .await
+@@ -1139,7 +1139,7 @@ impl MessageProcessor {
+                 .unwatch(connection_id, params)
+                 .await
+                 .map(|response| Some(response.into())),
+-            ClientRequest::ModelProviderCapabilitiesRead { params: _, .. } => self
++            ClientRequest::ModelProviderCapabilitiesRead { .. } => self
+                 .config_processor
+                 .model_provider_capabilities_read()
+                 .await
+@@ -1538,7 +1538,7 @@ impl MessageProcessor {
+             ClientRequest::ThreadTimelineList { params, .. } => {
+                 self.thread_processor.thread_timeline_list(params).await
+             }
+-            ClientRequest::ThreadRealtimeListVoices { params: _, .. } => {
++            ClientRequest::ThreadRealtimeListVoices { .. } => {
+                 self.turn_processor.thread_realtime_list_voices().await
+             }
+             ClientRequest::ReviewStart { params, .. } => {
+diff --git a/codex-rs/app-server/src/request_processors/account_processor/rotate_transition.rs b/codex-rs/app-server/src/request_processors/account_processor/rotate_transition.rs
+new file mode 100644
+index 0000000..166c9f1
+--- /dev/null
++++ b/codex-rs/app-server/src/request_processors/account_processor/rotate_transition.rs
+@@ -0,0 +1,48 @@
++//! UI notification only: request admission happens synchronously in core.
++//!
++//! A background observer must never update global cloud policy or initiate an
++//! asynchronous account transition after B's first model request has begun.
++
++use super::*;
++
++pub(super) struct RotationObserver(tokio::task::JoinHandle<()>);
++
++impl Drop for RotationObserver {
++    fn drop(&mut self) {
++        self.0.abort();
++    }
++}
++
++pub(super) fn observe(
++    auth_manager: Arc<AuthManager>,
++    outgoing: Arc<OutgoingMessageSender>,
++) -> Arc<RotationObserver> {
++    let mut changes = auth_manager.auth_change_state_receiver();
++    let mut owner_generation = changes.borrow().owner_generation;
++    Arc::new(RotationObserver(tokio::spawn(async move {
++        while changes.changed().await.is_ok() {
++            let generation = changes.borrow_and_update().owner_generation;
++            if generation == owner_generation {
++                continue;
++            }
++            owner_generation = generation;
++            // Explicit API-key/logout RPCs own their notifications. In
++            // particular, clearing the helper precedes the API-key reload.
++            if !auth_manager.has_rotate_helper() {
++                continue;
++            }
++            let auth = auth_manager.auth_cached();
++            outgoing
++                .send_server_notification(ServerNotification::AccountUpdated(
++                    AccountUpdatedNotification {
++                        auth_mode: auth
++                            .as_ref()
++                            .map(CodexAuth::api_auth_mode)
++                            .map(auth_mode_to_api),
++                        plan_type: auth.as_ref().and_then(CodexAuth::account_plan_type),
++                    },
++                ))
++                .await;
++        }
++    })))
++}
+diff --git a/codex-rs/app-server/src/request_processors/account_processor.rs b/codex-rs/app-server/src/request_processors/account_processor.rs
+index ede9820..b1b13da 100644
+--- a/codex-rs/app-server/src/request_processors/account_processor.rs
++++ b/codex-rs/app-server/src/request_processors/account_processor.rs
+@@ -14,6 +14,7 @@ use codex_model_provider::is_supported_amazon_bedrock_region;
+
+ mod bedrock_setup;
+ mod rate_limit_resets;
++mod rotate_transition;
+
+ // Duration before a browser ChatGPT login attempt is abandoned.
+ const LOGIN_CHATGPT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+@@ -91,6 +92,7 @@ pub(crate) struct AccountRequestProcessor {
+     config: Arc<Config>,
+     config_manager: ConfigManager,
+     active_login: Arc<Mutex<Option<ActiveLogin>>>,
++    _rotation_observer: Option<Arc<rotate_transition::RotationObserver>>,
+ }
+
+ impl AccountRequestProcessor {
+@@ -101,7 +103,12 @@ impl AccountRequestProcessor {
+         config: Arc<Config>,
+         config_manager: ConfigManager,
+     ) -> Self {
++        let rotation_observer = config
++            .codex_rotate_helper
++            .is_some()
++            .then(|| rotate_transition::observe(Arc::clone(&auth_manager), Arc::clone(&outgoing)));
+         Self {
++            _rotation_observer: rotation_observer,
+             auth_manager,
+             thread_manager,
+             outgoing,
+@@ -430,6 +437,7 @@ impl AccountRequestProcessor {
+             self.config.auth_keyring_backend_kind(),
+         ) {
+             Ok(()) => {
++                self.auth_manager.clear_external_auth();
+                 self.auth_manager.reload().await;
+                 self.config_manager.clear_cloud_config_bundle_loader();
+                 Ok(())
+@@ -562,6 +570,7 @@ impl AccountRequestProcessor {
+         }
+
+         let mut opts = LoginServerOptions {
++            codex_rotate_helper: config.codex_rotate_helper.clone(),
+             open_browser: false,
+             codex_streamlined_login,
+             login_success_page,
+@@ -827,6 +836,11 @@ impl AccountRequestProcessor {
+         chatgpt_account_id: String,
+         chatgpt_plan_type: Option<String>,
+     ) -> Result<LoginAccountResponse, JSONRPCErrorError> {
++        if self.config.codex_rotate_helper.is_some() {
++            return Err(invalid_request(
++                "Codex Rotate owns ChatGPT authentication; use browser or device-code login to enroll a personal account",
++            ));
++        }
+         if !self
+             .auth_manager
+             .is_login_method_allowed(ForcedLoginMethod::Chatgpt)
+@@ -909,15 +923,33 @@ impl AccountRequestProcessor {
+         config_manager: ConfigManager,
+         thread_manager: Arc<ThreadManager>,
+         config: Arc<Config>,
+-        payload_v2: AccountLoginCompletedNotification,
++        mut payload_v2: AccountLoginCompletedNotification,
+     ) {
++        let auth_manager = thread_manager.auth_manager();
++        if payload_v2.success
++            && let Some(argv) = config.codex_rotate_helper.clone()
++        {
++            let activation = async {
++                let helper = codex_login::auth::RotateHelper::new(argv)?;
++                auth_manager
++                    .set_external_auth(Arc::new(helper))
++                    .await
++                    .map_err(std::io::Error::other)
++            }
++            .await;
++            if activation.is_err() {
++                payload_v2.success = false;
++                payload_v2.error = Some(
++                    "The account was enrolled but Codex Rotate activation failed; run codex-rotate doctor before retrying".to_string(),
++                );
++            }
++        }
+         let success = payload_v2.success;
+         outgoing
+             .send_server_notification(ServerNotification::AccountLoginCompleted(payload_v2))
+             .await;
+
+         if success {
+-            let auth_manager = thread_manager.auth_manager();
+             auth_manager.reload().await;
+             config_manager.replace_cloud_config_bundle_loader(
+                 auth_manager.clone(),
+@@ -962,7 +994,11 @@ impl AccountRequestProcessor {
+             }
+         }
+
+-        match self.auth_manager.logout_with_revoke().await {
++        let logout_result = match config.codex_rotate_helper.clone() {
++            Some(argv) => self.auth_manager.logout_with_rotate_helper(argv).await,
++            None => self.auth_manager.logout_with_revoke().await,
++        };
++        match logout_result {
+             Ok(_) => {}
+             Err(err) => {
+                 return Err(internal_error(format!("logout failed: {err}")));
+diff --git a/codex-rs/app-server/tests/suite/v2/account_rotate.rs b/codex-rs/app-server/tests/suite/v2/account_rotate.rs
+new file mode 100644
+index 0000000..67b8463
+--- /dev/null
++++ b/codex-rs/app-server/tests/suite/v2/account_rotate.rs
+@@ -0,0 +1,430 @@
++use anyhow::Result;
++use app_test_support::ChatGptIdTokenClaims;
++use app_test_support::TestAppServer;
++use app_test_support::encode_id_token;
++use app_test_support::write_models_cache;
++use codex_app_server_protocol::Account;
++use codex_app_server_protocol::AccountLoginCompletedNotification;
++use codex_app_server_protocol::AccountUpdatedNotification;
++use codex_app_server_protocol::AuthMode;
++use codex_app_server_protocol::GetAccountParams;
++use codex_app_server_protocol::GetAccountResponse;
++use codex_app_server_protocol::GetAuthStatusParams;
++use codex_app_server_protocol::GetAuthStatusResponse;
++use codex_app_server_protocol::JSONRPCErrorError;
++use codex_app_server_protocol::LoginAccountResponse;
++use codex_app_server_protocol::LogoutAccountResponse;
++use codex_app_server_protocol::RequestId;
++use codex_config::types::AuthCredentialsStoreMode;
++use codex_login::AuthKeyringBackendKind;
++use codex_login::login_with_api_key;
++use codex_protocol::account::PlanType;
++use pretty_assertions::assert_eq;
++use serde_json::Value;
++use serde_json::json;
++use std::path::Path;
++use std::time::Duration;
++use tempfile::TempDir;
++use test_case::test_case;
++use tokio::time::timeout;
++use wiremock::Mock;
++use wiremock::MockServer;
++use wiremock::ResponseTemplate;
++use wiremock::matchers::method;
++use wiremock::matchers::path;
++
++const READ_TIMEOUT: Duration = Duration::from_secs(60);
++
++fn snapshot_response() -> Result<Value> {
++    let id_token = encode_id_token(
++        &ChatGptIdTokenClaims::new()
++            .email("rotate@example.com")
++            .plan_type("pro")
++            .chatgpt_user_id("rotate-user")
++            .chatgpt_account_id("rotate-account"),
++    )?;
++    Ok(json!({"version": 1, "ok": true, "snapshot": {
++        "account_key": "personal-profile", "account_id": "rotate-account",
++        "selection_epoch": 1, "credential_revision": 1,
++        "access_token": "synthetic-access", "id_token": id_token,
++        "expires_at": chrono::Utc::now().timestamp() + 3600
++    }}))
++}
++
++fn write_config(codex_home: &Path, base_url: &str, response: Value) -> Result<()> {
++    let response_path = codex_home.join("helper-response.json");
++    std::fs::write(&response_path, serde_json::to_vec(&response)?)?;
++    // This synthetic helper deliberately keeps token fixtures out of argv.
++    let helper = json!([
++        "/bin/sh",
++        "-c",
++        r#"IFS= read -r request; case "$request" in
++        *'"op":"register"'*) printf '%s' '{"version":1,"ok":true,"account_key":"personal-profile"}' ;;
++        *'"op":"logout"'*)
++            if test -f "$2"; then printf 'logout-before-delete\n' >> "$3";
++            else printf 'logout-after-delete\n' >> "$3"; fi; cat "$1" ;;
++        *) printf 'acquire\n' >> "$3"; cat "$1" ;; esac"#,
++        "rotate-test-helper",
++        response_path,
++        codex_home.join("auth.json"),
++        codex_home.join("helper-audit.txt")
++    ]);
++    std::fs::write(
++        codex_home.join("config.toml"),
++        format!(
++            "model = \"mock-model\"\nmodel_provider = \"mock\"\n\
++         cli_auth_credentials_store = \"file\"\ncodex_rotate_helper = {helper}\n\
++         chatgpt_base_url = \"{base_url}/backend-api\"\n\
++         [features]\nshell_snapshot = false\n\
++         [model_providers.mock]\nname = \"Mock\"\nbase_url = \"{base_url}/v1\"\n\
++         requires_openai_auth = true\nwire_api = \"responses\"\n\
++         request_max_retries = 0\nstream_max_retries = 0\n"
++        ),
++    )?;
++    write_models_cache(codex_home)?;
++    Ok(())
++}
++
++fn save_api_key(codex_home: &Path) -> Result<()> {
++    login_with_api_key(
++        codex_home,
++        "sk-synthetic",
++        AuthCredentialsStoreMode::File,
++        AuthKeyringBackendKind::default(),
++    )?;
++    Ok(())
++}
++
++async fn start_app(codex_home: &Path, issuer: &str) -> Result<TestAppServer> {
++    let revoke_endpoint = format!("{issuer}/oauth/revoke");
++    TestAppServer::builder()
++        .with_codex_home(codex_home)
++        .without_auto_env()
++        .with_env_overrides(&[
++            ("OPENAI_API_KEY", None),
++            ("CODEX_APP_SERVER_LOGIN_ISSUER", Some(issuer)),
++            (
++                "CODEX_REVOKE_TOKEN_URL_OVERRIDE",
++                Some(revoke_endpoint.as_str()),
++            ),
++        ])
++        .build_initialized_with_timeout(READ_TIMEOUT)
++        .await
++}
++
++fn chatgpt_account() -> Account {
++    Account::Chatgpt {
++        email: Some("rotate@example.com".into()),
++        plan_type: PlanType::Pro,
++    }
++}
++
++async fn assert_account(app: &mut TestAppServer, account: Account) -> Result<()> {
++    let request = app
++        .send_get_account_request(GetAccountParams {
++            refresh_token: false,
++        })
++        .await?;
++    let response: GetAccountResponse = timeout(READ_TIMEOUT, app.read_response(request)).await??;
++    assert_eq!(
++        response,
++        GetAccountResponse {
++            account: Some(account),
++            requires_openai_auth: true
++        }
++    );
++    Ok(())
++}
++
++async fn assert_updated(
++    app: &mut TestAppServer,
++    auth_mode: AuthMode,
++    plan_type: Option<PlanType>,
++) -> Result<()> {
++    let updated: AccountUpdatedNotification =
++        timeout(READ_TIMEOUT, app.read_notification("account/updated")).await??;
++    assert_eq!(
++        updated,
++        AccountUpdatedNotification {
++            auth_mode: Some(auth_mode),
++            plan_type
++        }
++    );
++    Ok(())
++}
++
++#[tokio::test]
++async fn configured_inactive_helper_rejects_external_tokens_without_replacing_api_key() -> Result<()>
++{
++    let codex_home = TempDir::new()?;
++    let server = MockServer::start().await;
++    write_config(
++        codex_home.path(),
++        &server.uri(),
++        json!({
++            "version": 1, "ok": false, "error": {"code": "must_not_be_called"}
++        }),
++    )?;
++    save_api_key(codex_home.path())?;
++    let original_auth = std::fs::read(codex_home.path().join("auth.json"))?;
++    let mut app = start_app(codex_home.path(), &server.uri()).await?;
++    let request = app
++        .send_chatgpt_auth_tokens_login_request(
++            "synthetic-external-token".into(),
++            "external-account".into(),
++            Some("pro".into()),
++        )
++        .await?;
++    let error = timeout(
++        READ_TIMEOUT,
++        app.read_stream_until_error_message(RequestId::Integer(request)),
++    )
++    .await??;
++    assert_eq!(error.error, JSONRPCErrorError {
++        code: -32600,
++        message: "Codex Rotate owns ChatGPT authentication; use browser or device-code login to enroll a personal account".into(),
++        data: None,
++    });
++    assert_account(&mut app, Account::ApiKey {}).await?;
++    assert_eq!(
++        std::fs::read(codex_home.path().join("auth.json"))?,
++        original_auth
++    );
++    Ok(())
++}
++
++#[tokio::test]
++async fn api_key_login_replaces_active_rotate_authority_before_success_notification() -> Result<()>
++{
++    let codex_home = TempDir::new()?;
++    let server = MockServer::start().await;
++    write_config(codex_home.path(), &server.uri(), snapshot_response()?)?;
++    let mut app = start_app(codex_home.path(), &server.uri()).await?;
++    assert_account(&mut app, chatgpt_account()).await?;
++    let request = app
++        .send_login_account_api_key_request("sk-replacement")
++        .await?;
++    let response: LoginAccountResponse =
++        timeout(READ_TIMEOUT, app.read_response(request)).await??;
++    assert_eq!(response, LoginAccountResponse::ApiKey {});
++    assert_updated(&mut app, AuthMode::ApiKey, /*plan_type*/ None).await?;
++    assert_account(&mut app, Account::ApiKey {}).await?;
++    Ok(())
++}
++
++#[derive(Clone, Copy)]
++enum Activation {
++    Success,
++    Failure,
++}
++
++#[test_case(Activation::Success; "success")]
++#[test_case(Activation::Failure; "failure")]
++#[tokio::test]
++async fn api_logout_pauses_configured_rotate_before_deleting_credentials(
++    activation: Activation,
++) -> Result<()> {
++    let codex_home = TempDir::new()?;
++    let server = MockServer::start().await;
++    Mock::given(method("POST"))
++        .and(path("/oauth/revoke"))
++        .respond_with(ResponseTemplate::new(200))
++        .expect(0)
++        .mount(&server)
++        .await;
++    let reply = match activation {
++        Activation::Success => json!({"version": 1, "ok": true}),
++        Activation::Failure => json!({"version": 1, "ok": false,
++            "error": {"code": "io_error", "message": "synthetic-secret-must-not-leak"}}),
++    };
++    write_config(codex_home.path(), &server.uri(), reply)?;
++    save_api_key(codex_home.path())?;
++    let auth_path = codex_home.path().join("auth.json");
++    let original_auth = std::fs::read(&auth_path)?;
++    let audit_path = codex_home.path().join("helper-audit.txt");
++    let mut app = start_app(codex_home.path(), &server.uri()).await?;
++    assert!(
++        !audit_path.exists(),
++        "API startup must not acquire Rotate credentials"
++    );
++    let request = app.send_logout_account_request().await?;
++    match activation {
++        Activation::Success => {
++            let response: LogoutAccountResponse =
++                timeout(READ_TIMEOUT, app.read_response(request)).await??;
++            assert_eq!(response, LogoutAccountResponse {});
++            let updated: AccountUpdatedNotification =
++                timeout(READ_TIMEOUT, app.read_notification("account/updated")).await??;
++            assert_eq!(
++                updated,
++                AccountUpdatedNotification {
++                    auth_mode: None,
++                    plan_type: None
++                }
++            );
++            assert!(!auth_path.exists());
++        }
++        Activation::Failure => {
++            let error = timeout(
++                READ_TIMEOUT,
++                app.read_stream_until_error_message(RequestId::Integer(request)),
++            )
++            .await??;
++            assert_eq!(
++                error.error,
++                JSONRPCErrorError {
++                    code: -32603,
++                    message: "logout failed: Codex Rotate unavailable; run codex-rotate doctor"
++                        .into(),
++                    data: None,
++                }
++            );
++            assert_eq!(std::fs::read(&auth_path)?, original_auth);
++            assert_account(&mut app, Account::ApiKey {}).await?;
++        }
++    }
++    assert_eq!(
++        std::fs::read_to_string(&audit_path)?,
++        "logout-before-delete\n"
++    );
++    Ok(())
++}
++
++#[test_case(Activation::Success; "success")]
++#[test_case(Activation::Failure; "failure")]
++#[tokio::test]
++async fn device_login_reports_rotate_activation_result(activation: Activation) -> Result<()> {
++    let codex_home = TempDir::new()?;
++    let server = MockServer::start().await;
++    let snapshot = snapshot_response()?;
++    let reply = match activation {
++        Activation::Success => snapshot.clone(),
++        Activation::Failure => json!({"version": 1, "ok": false,
++            "error": {"code": "io_error", "message": "synthetic-secret-must-not-leak"}}),
++    };
++    write_config(codex_home.path(), &server.uri(), reply)?;
++    save_api_key(codex_home.path())?;
++    for (endpoint, body) in [
++        (
++            "/api/accounts/deviceauth/usercode",
++            json!({
++                "device_auth_id": "synthetic-device", "user_code": "CODE-12345", "interval": "0"
++            }),
++        ),
++        (
++            "/api/accounts/deviceauth/token",
++            json!({
++                "authorization_code": "synthetic-code", "code_challenge": "challenge", "code_verifier": "verifier"
++            }),
++        ),
++        (
++            "/oauth/token",
++            json!({
++                "id_token": snapshot["snapshot"]["id_token"],
++                "access_token": "synthetic-access", "refresh_token": "synthetic-refresh"
++            }),
++        ),
++    ] {
++        Mock::given(method("POST"))
++            .and(path(endpoint))
++            .respond_with(ResponseTemplate::new(200).set_body_json(body))
++            .expect(1)
++            .mount(&server)
++            .await;
++    }
++    let mut app = start_app(codex_home.path(), &server.uri()).await?;
++    let request = app.send_login_account_chatgpt_device_code_request().await?;
++    let login: LoginAccountResponse = timeout(READ_TIMEOUT, app.read_response(request)).await??;
++    let LoginAccountResponse::ChatgptDeviceCode { login_id, .. } = login else {
++        anyhow::bail!("unexpected login response: {login:?}");
++    };
++    let completed: AccountLoginCompletedNotification = timeout(
++        READ_TIMEOUT,
++        app.read_notification("account/login/completed"),
++    )
++    .await??;
++    let expected = match activation {
++        Activation::Success => (true, None),
++        Activation::Failure => (false, Some(
++            "The account was enrolled but Codex Rotate activation failed; run codex-rotate doctor before retrying".into()
++        )),
++    };
++    assert_eq!(
++        completed,
++        AccountLoginCompletedNotification {
++            login_id: Some(login_id),
++            success: expected.0,
++            error: expected.1,
++            onboarding_entrypoint: None,
++        }
++    );
++    assert!(
++        !codex_home.path().join("auth.json").exists(),
++        "refresh tokens must remain helper-owned"
++    );
++    match activation {
++        Activation::Success => {
++            assert_updated(&mut app, AuthMode::Chatgpt, Some(PlanType::Pro)).await?;
++            assert_account(&mut app, chatgpt_account()).await?;
++            let mut second = snapshot;
++            second["snapshot"]["account_key"] = json!("second-profile");
++            second["snapshot"]["account_id"] = json!("second-account");
++            second["snapshot"]["selection_epoch"] = json!(2);
++            second["snapshot"]["id_token"] = json!(encode_id_token(
++                &ChatGptIdTokenClaims::new()
++                    .email("second@example.com")
++                    .plan_type("plus")
++                    .chatgpt_user_id("second-user")
++                    .chatgpt_account_id("second-account"),
++            )?);
++            std::fs::write(
++                codex_home.path().join("helper-response.json"),
++                serde_json::to_vec(&second)?,
++            )?;
++            let request = app
++                .send_get_auth_status_request(GetAuthStatusParams {
++                    include_token: Some(false),
++                    refresh_token: Some(false),
++                })
++                .await?;
++            let _: GetAuthStatusResponse =
++                timeout(READ_TIMEOUT, app.read_response(request)).await??;
++            let updated = timeout(READ_TIMEOUT, async {
++                loop {
++                    let notification: AccountUpdatedNotification =
++                        app.read_notification("account/updated").await?;
++                    if notification.plan_type == Some(PlanType::Plus) {
++                        break Ok::<_, anyhow::Error>(notification);
++                    }
++                }
++            })
++            .await??;
++            assert_eq!(
++                updated,
++                AccountUpdatedNotification {
++                    auth_mode: Some(AuthMode::Chatgpt),
++                    plan_type: Some(PlanType::Plus),
++                }
++            );
++            assert_account(
++                &mut app,
++                Account::Chatgpt {
++                    email: Some("second@example.com".into()),
++                    plan_type: PlanType::Plus,
++                },
++            )
++            .await?;
++        }
++        Activation::Failure => {
++            assert!(
++                timeout(
++                    Duration::from_millis(250),
++                    app.read_stream_until_notification_message("account/updated")
++                )
++                .await
++                .is_err()
++            );
++        }
++    }
++    Ok(())
++}
+diff --git a/codex-rs/app-server/tests/suite/v2/mod.rs b/codex-rs/app-server/tests/suite/v2/mod.rs
+index 281c381..f0ec67d 100644
+--- a/codex-rs/app-server/tests/suite/v2/mod.rs
++++ b/codex-rs/app-server/tests/suite/v2/mod.rs
+@@ -1,4 +1,6 @@
+ mod account;
++#[cfg(unix)]
++mod account_rotate;
+ mod account_thread_usage;
+ mod analytics;
+ mod app_installed;
+diff --git a/codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs b/codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs
+index 863ccb9..88fe990 100644
+--- a/codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs
++++ b/codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs
+@@ -542,7 +542,7 @@ async fn turn_start_shell_zsh_fork_subcommand_decline_marks_parent_declined_v2()
+     let mut target_decision_index = 0;
+     let first_file_str = first_file.to_string_lossy().into_owned();
+     let second_file_str = second_file.to_string_lossy().into_owned();
+-    let parent_shell_hint = format!("&& {}", &first_file_str);
++    let parent_shell_hint = format!("&& {first_file_str}");
+     while target_decision_index < target_decisions.len() || !saw_parent_approval {
+         let server_req = timeout(
+             DEFAULT_READ_TIMEOUT,
+diff --git a/codex-rs/cli/src/login.rs b/codex-rs/cli/src/login.rs
+index 22e607c..f094082 100644
+--- a/codex-rs/cli/src/login.rs
++++ b/codex-rs/cli/src/login.rs
+@@ -138,21 +138,24 @@ async fn clear_existing_auth_before_login(
+ }
+
+ pub async fn login_with_chatgpt(
++    codex_rotate_helper: Option<Vec<String>>,
+     codex_home: PathBuf,
+     forced_chatgpt_workspace_id: Option<Vec<String>>,
+     cli_auth_credentials_store_mode: AuthCredentialsStoreMode,
+     auth_keyring_backend_kind: AuthKeyringBackendKind,
+     auth_route_config: AuthRouteConfig,
+ ) -> std::io::Result<()> {
+-    clear_existing_auth_before_login(
+-        &codex_home,
+-        cli_auth_credentials_store_mode,
+-        auth_keyring_backend_kind,
+-        &auth_route_config,
+-    )
+-    .await;
++    if codex_rotate_helper.is_none() {
++        clear_existing_auth_before_login(
++            &codex_home,
++            cli_auth_credentials_store_mode,
++            auth_keyring_backend_kind,
++            &auth_route_config,
++        )
++        .await;
++    }
+
+-    let opts = ServerOptions::new(
++    let mut opts = ServerOptions::new(
+         codex_home,
+         CLIENT_ID.to_string(),
+         forced_chatgpt_workspace_id,
+@@ -160,6 +163,7 @@ pub async fn login_with_chatgpt(
+         auth_keyring_backend_kind,
+         auth_route_config,
+     );
++    opts.codex_rotate_helper = codex_rotate_helper;
+     let server = run_login_server(opts)?;
+
+     print_login_server_start(server.actual_port, &server.auth_url);
+@@ -182,6 +186,7 @@ pub async fn run_login_with_chatgpt(cli_config_overrides: CliConfigOverrides) ->
+
+     let effective_chatgpt_workspaces = config.auth_config().effective_chatgpt_workspaces();
+     match login_with_chatgpt(
++        config.codex_rotate_helper.clone(),
+         config.codex_home.to_path_buf(),
+         effective_chatgpt_workspaces,
+         config.cli_auth_credentials_store_mode,
+@@ -332,13 +337,15 @@ pub async fn run_login_with_device_code(
+         std::process::exit(1);
+     }
+     let auth_route_config = config.auth_route_config();
+-    clear_existing_auth_before_login(
+-        &config.codex_home,
+-        config.cli_auth_credentials_store_mode,
+-        config.auth_keyring_backend_kind(),
+-        &auth_route_config,
+-    )
+-    .await;
++    if config.codex_rotate_helper.is_none() {
++        clear_existing_auth_before_login(
++            &config.codex_home,
++            config.cli_auth_credentials_store_mode,
++            config.auth_keyring_backend_kind(),
++            &auth_route_config,
++        )
++        .await;
++    }
+     let effective_chatgpt_workspaces = config.auth_config().effective_chatgpt_workspaces();
+     let mut opts = ServerOptions::new(
+         config.codex_home.to_path_buf(),
+@@ -348,6 +355,7 @@ pub async fn run_login_with_device_code(
+         config.auth_keyring_backend_kind(),
+         auth_route_config,
+     );
++    opts.codex_rotate_helper = config.codex_rotate_helper.clone();
+     if let Some(iss) = issuer_base_url {
+         opts.issuer = iss;
+     }
+@@ -383,13 +391,15 @@ pub async fn run_login_with_device_code_fallback_to_browser(
+         std::process::exit(1);
+     }
+     let auth_route_config = config.auth_route_config();
+-    clear_existing_auth_before_login(
+-        &config.codex_home,
+-        config.cli_auth_credentials_store_mode,
+-        config.auth_keyring_backend_kind(),
+-        &auth_route_config,
+-    )
+-    .await;
++    if config.codex_rotate_helper.is_none() {
++        clear_existing_auth_before_login(
++            &config.codex_home,
++            config.cli_auth_credentials_store_mode,
++            config.auth_keyring_backend_kind(),
++            &auth_route_config,
++        )
++        .await;
++    }
+
+     let effective_chatgpt_workspaces = config.auth_config().effective_chatgpt_workspaces();
+     let mut opts = ServerOptions::new(
+@@ -400,6 +410,7 @@ pub async fn run_login_with_device_code_fallback_to_browser(
+         config.auth_keyring_backend_kind(),
+         auth_route_config,
+     );
++    opts.codex_rotate_helper = config.codex_rotate_helper.clone();
+     if let Some(iss) = issuer_base_url {
+         opts.issuer = iss;
+     }
+@@ -509,20 +520,47 @@ pub async fn run_login_status(cli_config_overrides: CliConfigOverrides) -> ! {
+
+ pub async fn run_logout(cli_config_overrides: CliConfigOverrides) -> ! {
+     let config = load_config_or_exit(cli_config_overrides).await;
+-    let auth_route_config = config.auth_route_config();
+-
+-    let logged_out = match logout_with_revoke(
+-        &config.codex_home,
+-        config.cli_auth_credentials_store_mode,
+-        config.auth_keyring_backend_kind(),
+-        &auth_route_config,
+-    )
+-    .await
+-    {
+-        Ok(logged_out) => logged_out,
+-        Err(err) => {
+-            eprintln!("Error logging out: {err}");
+-            std::process::exit(1);
++    let logged_out = if let Some(argv) = &config.codex_rotate_helper {
++        let result = async {
++            if is_workload_identity_selected() {
++                return Err(std::io::Error::other(
++                    "workload identity auth is managed by the host and cannot be logged out",
++                ));
++            }
++            // Logout must not acquire/refresh a pool account before pausing it.
++            let mut auth_config = config.auth_config();
++            auth_config.codex_rotate_helper = None;
++            let manager = AuthManager::shared_from_auth_config(
++                auth_config,
++                /*enable_codex_api_key_env*/ false,
++            )
++            .await
++            .map_err(std::io::Error::other)?;
++            manager.logout_with_rotate_helper(argv.clone()).await
++        }
++        .await;
++        match result {
++            Ok(logged_out) => logged_out,
++            Err(err) => {
++                eprintln!("Error logging out: {err}");
++                std::process::exit(1);
++            }
++        }
++    } else {
++        let auth_route_config = config.auth_route_config();
++        match logout_with_revoke(
++            &config.codex_home,
++            config.cli_auth_credentials_store_mode,
++            config.auth_keyring_backend_kind(),
++            &auth_route_config,
++        )
++        .await
++        {
++            Ok(logged_out) => logged_out,
++            Err(err) => {
++                eprintln!("Error logging out: {err}");
++                std::process::exit(1);
++            }
+         }
+     };
+
+diff --git a/codex-rs/cloud-tasks/src/lib.rs b/codex-rs/cloud-tasks/src/lib.rs
+index 6643684..1c3dea7 100644
+--- a/codex-rs/cloud-tasks/src/lib.rs
++++ b/codex-rs/cloud-tasks/src/lib.rs
+@@ -13,7 +13,9 @@ use codex_cloud_tasks_client::TaskStatus;
+ use codex_git_utils::current_branch_name;
+ use codex_git_utils::default_branch_name;
+ use codex_http_client::ClientRouteClass;
++#[cfg(debug_assertions)]
+ use codex_http_client::HttpClientFactory;
++#[cfg(debug_assertions)]
+ use codex_http_client::OutboundProxyPolicy;
+ use codex_http_client::RouteAwareClientPool;
+ use codex_login::default_client::get_codex_user_agent;
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index 7bf9814..35757c3 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -263,6 +263,9 @@ pub struct ConfigToml {
+     #[serde(default)]
+     pub forced_login_method: Option<ForcedLoginMethod>,
+
++    /// Personal credential authority command, executed without a shell.
++    pub codex_rotate_helper: Option<Vec<String>>,
++
+     /// Preferred backend for storing CLI auth credentials.
+     /// file (default): Use a file in the Codex home directory.
+     /// keyring: Use an OS-specific keyring service.
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index 653f2cf..f2a0cdc 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -6015,6 +6015,13 @@
+       "default": null,
+       "description": "Preferred backend for storing CLI auth credentials. file (default): Use a file in the Codex home directory. keyring: Use an OS-specific keyring service. auto: Use the keyring if available, otherwise use a file."
+     },
++    "codex_rotate_helper": {
++      "description": "Personal credential authority command, executed without a shell.",
++      "items": {
++        "type": "string"
++      },
++      "type": "array"
++    },
+     "compact_prompt": {
+       "description": "Compact prompt used for history compaction.",
+       "type": "string"
+diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
+index 0d1bb5f..cfee2a1 100644
+--- a/codex-rs/core/src/client.rs
++++ b/codex-rs/core/src/client.rs
+@@ -71,8 +71,11 @@ use codex_login::AuthManager;
+ use codex_login::CodexAuth;
+ use codex_login::RefreshTokenError;
+ use codex_login::UnauthorizedRecovery;
++use codex_login::default_client::RESIDENCY_HEADER_NAME;
++use codex_login::default_client::ResidencyRequirement;
+ use codex_login::default_client::add_originator_header;
+ use codex_login::default_client::create_client_for_route;
++use codex_login::default_client::create_client_for_route_with_residency;
+ use codex_otel::SessionTelemetry;
+ use codex_otel::current_span_w3c_trace_context;
+ use codex_protocol::ResponseItemId;
+@@ -277,6 +280,8 @@ pub struct ModelClient {
+ /// the previous turn's sticky-routing token into the next turn, which violates the client/server
+ /// contract and can cause routing bugs.
+ pub struct ModelClientSession {
++    rotate_step_auth: Option<CodexAuth>,
++    rotate_step_residency: Option<ResidencyRequirement>,
+     client: ModelClient,
+     websocket_session: WebsocketSession,
+     /// Turn state for sticky routing.
+@@ -300,6 +305,7 @@ struct LastResponse {
+
+ #[derive(Debug, Default)]
+ struct WebsocketSession {
++    rotation: Option<codex_login::auth::RotateIdentity>,
+     connection: Option<ApiWebSocketConnection>,
+     endpoint: Option<ResponsesEndpoint>,
+     last_request: Option<ResponsesApiRequest>,
+@@ -524,6 +530,8 @@ impl ModelClient {
+             client: self.clone(),
+             websocket_session: self.take_cached_websocket_session(),
+             turn_state: Arc::new(OnceLock::new()),
++            rotate_step_auth: None,
++            rotate_step_residency: None,
+         }
+     }
+
+@@ -579,6 +587,8 @@ impl ModelClient {
+     #[allow(clippy::too_many_arguments)]
+     pub(crate) async fn compact_conversation_history(
+         &self,
++        rotate_auth: Option<&CodexAuth>,
++        rotate_residency: Option<ResidencyRequirement>,
+         prompt: &Prompt,
+         model_info: &ModelInfo,
+         turn_state: Option<Arc<OnceLock<String>>>,
+@@ -590,7 +600,9 @@ impl ModelClient {
+         if prompt.input.is_empty() {
+             return Ok(Vec::new());
+         }
+-        let client_setup = self.current_client_setup().await?;
++        let client_setup = self
++            .current_client_setup_for_request(Some(&model_info.slug), rotate_auth, rotate_residency)
++            .await?;
+         let transport =
+             self.build_api_transport(&client_setup.api_provider, RESPONSES_COMPACT_ENDPOINT)?;
+         let request_telemetry = Self::build_request_telemetry(
+@@ -1025,6 +1037,44 @@ impl ModelClient {
+     /// This centralizes setup used by both prewarm and normal request paths so they stay in
+     /// lockstep when auth/provider resolution changes.
+     async fn current_client_setup(&self) -> Result<CurrentClientSetup> {
++        self.current_client_setup_for_request(
++            /*model*/ None, /*pinned*/ None, /*rotate_residency*/ None,
++        )
++        .await
++    }
++
++    async fn current_client_setup_for_request(
++        &self,
++        model: Option<&str>,
++        pinned: Option<&CodexAuth>,
++        rotate_residency: Option<ResidencyRequirement>,
++    ) -> Result<CurrentClientSetup> {
++        let scope = || ProviderAuthScope {
++            agent_identity_policy: self.agent_identity_policy,
++            session_source: self.state.session_source.clone(),
++            agent_identity_session_fallback: self.state.agent_identity_session_fallback.clone(),
++        };
++        if let Some((auth, mut api_provider, resolved_auth)) = self
++            .state
++            .provider
++            .rotate_request_setup(model, pinned, scope())
++            .await?
++        {
++            if pinned.is_some() {
++                api_provider.headers.remove(RESIDENCY_HEADER_NAME);
++                if let Some(ResidencyRequirement::Us) = rotate_residency {
++                    api_provider
++                        .headers
++                        .insert(RESIDENCY_HEADER_NAME, HeaderValue::from_static("us"));
++                }
++            }
++            return Ok(CurrentClientSetup {
++                auth: Some(auth),
++                api_provider,
++                api_auth: resolved_auth.auth,
++                agent_identity_telemetry: resolved_auth.agent_identity_telemetry,
++            });
++        }
+         let auth = self.state.provider.auth().await;
+         let api_provider = self.state.provider.api_provider().await?;
+         let resolved_auth = self
+@@ -1126,11 +1176,29 @@ impl ModelClient {
+         endpoint: &str,
+     ) -> Result<ReqwestTransport> {
+         let request_url = api_provider.url_for_path(endpoint);
+-        let client = create_client_for_route(
+-            &self.http_client_factory,
+-            &request_url,
+-            ClientRouteClass::Api,
+-        )
++        let client = if self
++            .state
++            .provider
++            .auth_manager()
++            .is_some_and(|manager| manager.has_rotate_helper())
++        {
++            let residency = api_provider
++                .headers
++                .get(RESIDENCY_HEADER_NAME)
++                .map(|_| ResidencyRequirement::Us);
++            create_client_for_route_with_residency(
++                &self.http_client_factory,
++                &request_url,
++                ClientRouteClass::Api,
++                residency,
++            )
++        } else {
++            create_client_for_route(
++                &self.http_client_factory,
++                &request_url,
++                ClientRouteClass::Api,
++            )
++        }
+         .map_err(std::io::Error::from)?;
+         Ok(ReqwestTransport::from_http_client(client))
+     }
+@@ -1162,6 +1230,21 @@ impl ModelClient {
+             self.state.auth_env_telemetry.clone(),
+         );
+         let websocket_connect_timeout = self.state.provider.info().websocket_connect_timeout();
++        let default_headers = if self
++            .state
++            .provider
++            .auth_manager()
++            .is_some_and(|manager| manager.has_rotate_helper())
++        {
++            codex_login::default_client::default_headers_with_residency(
++                api_provider
++                    .headers
++                    .get(RESIDENCY_HEADER_NAME)
++                    .map(|_| ResidencyRequirement::Us),
++            )
++        } else {
++            codex_login::default_client::default_headers()
++        };
+         let start = Instant::now();
+         let result = match tokio::time::timeout(
+             websocket_connect_timeout,
+@@ -1170,7 +1253,7 @@ impl ModelClient {
+                 .connect(
+                     &self.http_client_factory,
+                     headers,
+-                    codex_login::default_client::default_headers(),
++                    default_headers,
+                     /*turn_state*/ None,
+                     Some(websocket_telemetry),
+                 ),
+@@ -1278,10 +1361,28 @@ impl Drop for ModelClientSession {
+ }
+
+ impl ModelClientSession {
++    /// Pins the model step's prepared identity through requests, tools and retries.
++    pub(crate) fn set_rotate_step_auth(
++        &mut self,
++        auth: Option<CodexAuth>,
++        residency: Option<ResidencyRequirement>,
++    ) {
++        self.rotate_step_auth = auth;
++        self.rotate_step_residency = residency;
++    }
+     pub(crate) fn turn_state(&self) -> Arc<OnceLock<String>> {
+         Arc::clone(&self.turn_state)
+     }
+
++    fn adopt_rotation_snapshot(&mut self, auth: Option<&CodexAuth>) {
++        let identity = auth.and_then(CodexAuth::rotate_identity).cloned();
++        if self.websocket_session.rotation != identity {
++            self.reset_websocket_session();
++            self.turn_state = Arc::new(OnceLock::new());
++            self.websocket_session.rotation = identity;
++        }
++    }
++
+     fn reset_websocket_session(&mut self) {
+         self.websocket_session.connection = None;
+         self.websocket_session.endpoint = None;
+@@ -1431,6 +1532,7 @@ impl ModelClientSession {
+                 "failed to build websocket prewarm client setup: {err}"
+             ))
+         })?;
++        self.adopt_rotation_snapshot(client_setup.auth.as_ref());
+         let auth_context = AuthRequestTelemetryContext::new(
+             client_setup.auth.as_ref().map(CodexAuth::auth_mode),
+             client_setup.api_auth.as_ref(),
+@@ -1567,7 +1669,7 @@ impl ModelClientSession {
+         )
+     )]
+     async fn stream_responses_api(
+-        &self,
++        &mut self,
+         prompt: &Prompt,
+         model_info: &ModelInfo,
+         session_telemetry: &SessionTelemetry,
+@@ -1583,8 +1685,22 @@ impl ModelClientSession {
+             .map(AuthManager::unauthorized_recovery);
+         let mut provider_auth_recovery_attempted = false;
+         let mut pending_retry = PendingUnauthorizedRetry::default();
++        let mut request_auth = self.rotate_step_auth.clone();
+         loop {
+-            let client_setup = self.client.current_client_setup().await?;
++            let client_setup = self
++                .client
++                .current_client_setup_for_request(
++                    Some(&model_info.slug),
++                    request_auth.as_ref(),
++                    self.rotate_step_residency,
++                )
++                .await?;
++            self.adopt_rotation_snapshot(client_setup.auth.as_ref());
++            request_auth = client_setup
++                .auth
++                .as_ref()
++                .filter(|auth| auth.rotate_identity().is_some())
++                .cloned();
+             let endpoint = self
+                 .client
+                 .responses_endpoint(client_setup.auth.as_ref(), &model_info.slug);
+@@ -1688,6 +1804,7 @@ impl ModelClientSession {
+                     pending_retry = PendingUnauthorizedRetry::from_recovery(
+                         handle_unauthorized(
+                             unauthorized_transport,
++                            &mut request_auth,
+                             &mut auth_recovery,
+                             &mut provider_auth_recovery_attempted,
+                             session_telemetry,
+@@ -1750,8 +1867,22 @@ impl ModelClientSession {
+             .map(AuthManager::unauthorized_recovery);
+         let mut provider_auth_recovery_attempted = false;
+         let mut pending_retry = PendingUnauthorizedRetry::default();
++        let mut request_auth = self.rotate_step_auth.clone();
+         loop {
+-            let client_setup = self.client.current_client_setup().await?;
++            let client_setup = self
++                .client
++                .current_client_setup_for_request(
++                    Some(&model_info.slug),
++                    request_auth.as_ref(),
++                    self.rotate_step_residency,
++                )
++                .await?;
++            self.adopt_rotation_snapshot(client_setup.auth.as_ref());
++            request_auth = client_setup
++                .auth
++                .as_ref()
++                .filter(|auth| auth.rotate_identity().is_some())
++                .cloned();
+             let endpoint = self
+                 .client
+                 .responses_endpoint(client_setup.auth.as_ref(), &model_info.slug);
+@@ -1823,6 +1954,7 @@ impl ModelClientSession {
+                     pending_retry = PendingUnauthorizedRetry::from_recovery(
+                         handle_unauthorized(
+                             unauthorized_transport,
++                            &mut request_auth,
+                             &mut auth_recovery,
+                             &mut provider_auth_recovery_attempted,
+                             session_telemetry,
+@@ -2428,8 +2560,13 @@ fn emit_auth_recovery_event(
+     }
+ }
+
++#[allow(
++    clippy::too_many_arguments,
++    reason = "Keep the rejected request snapshot explicit beside existing recovery state"
++)]
+ async fn handle_unauthorized(
+     transport: TransportError,
++    request_auth: &mut Option<CodexAuth>,
+     auth_recovery: &mut Option<UnauthorizedRecovery>,
+     provider_auth_recovery_attempted: &mut bool,
+     session_telemetry: &SessionTelemetry,
+@@ -2437,6 +2574,20 @@ async fn handle_unauthorized(
+     event_sender: Option<&Sender<ProtocolEvent>>,
+     turn_id: Option<&str>,
+ ) -> Result<UnauthorizedRecoveryExecution> {
++    if let Some(rejected) = request_auth.as_ref() {
++        if *provider_auth_recovery_attempted {
++            return Err(provider.map_api_error(ApiError::Transport(transport)));
++        }
++        *provider_auth_recovery_attempted = true;
++        let manager = provider.auth_manager().ok_or_else(|| {
++            CodexErr::InvalidRequest("Codex Rotate credential authority unavailable".to_string())
++        })?;
++        *request_auth = Some(manager.refresh_request_auth(rejected).await?);
++        return Ok(UnauthorizedRecoveryExecution {
++            mode: "codex_rotate",
++            phase: "same_account_refresh",
++        });
++    }
+     let debug = extract_response_debug_context(&transport);
+     if !*provider_auth_recovery_attempted {
+         *provider_auth_recovery_attempted = true;
+diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
+index 348d169..3bf6da0 100644
+--- a/codex-rs/core/src/client_tests.rs
++++ b/codex-rs/core/src/client_tests.rs
+@@ -96,6 +96,61 @@ use wiremock::matchers::path;
+ const TEST_CHATGPT_ID_TOKEN: &str = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfdXNlcl9pZCI6InVzZXItMTIzNDUiLCJ1c2VyX2lkIjoidXNlci0xMjM0NSIsImNoYXRncHRfcGxhbl90eXBlIjoicHJvIiwiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjb3VudC0xMjMifX0.c2ln";
+ const TEST_INSTALLATION_ID: &str = "11111111-1111-4111-8111-111111111111";
+
++#[cfg(unix)]
++#[tokio::test]
++async fn rotate_revision_change_resets_continuation_and_turn_routing() {
++    let response = json!({"version": 1, "ok": true, "snapshot": {
++        "account_key": "personal-a", "account_id": "account-123", "selection_epoch": 9,
++        "credential_revision": 2, "access_token": "synthetic-access", "id_token": TEST_CHATGPT_ID_TOKEN,
++        "expires_at": chrono::Utc::now().timestamp() + 3600,
++    }});
++    let helper = codex_login::auth::RotateHelper::new(vec![
++        "/bin/sh".into(),
++        "-c".into(),
++        format!("IFS= read -r request; printf '%s' '{response}'"),
++    ])
++    .unwrap();
++    let auth = helper
++        .acquire(/*model*/ None, /*pinned*/ None)
++        .await
++        .unwrap();
++    let client = test_model_client(SessionSource::Cli);
++    let mut session = client.new_session();
++    session.adopt_rotation_snapshot(Some(&auth));
++    session
++        .turn_state
++        .set("old-account-routing".into())
++        .unwrap();
++    let (_send, receive) = tokio::sync::oneshot::channel();
++    session.websocket_session.last_response_rx = Some(receive);
++    session.websocket_session.last_response_from_untraced_warmup = true;
++    session.adopt_rotation_snapshot(Some(&auth));
++    assert_eq!(
++        session.turn_state.get().map(String::as_str),
++        Some("old-account-routing")
++    );
++    assert!(session.websocket_session.last_response_rx.is_some());
++    session
++        .websocket_session
++        .rotation
++        .as_mut()
++        .unwrap()
++        .credential_revision = 1;
++    session.adopt_rotation_snapshot(Some(&auth));
++    assert_eq!(
++        (
++            session.turn_state.get(),
++            session.websocket_session.last_response_from_untraced_warmup
++        ),
++        (None, false)
++    );
++    assert!(session.websocket_session.last_response_rx.is_none());
++    assert_eq!(
++        session.websocket_session.rotation.as_ref(),
++        auth.rotate_identity()
++    );
++}
++
+ fn test_model_client(session_source: SessionSource) -> ModelClient {
+     test_model_client_with_thread_id(ThreadId::new(), session_source)
+ }
+@@ -193,6 +248,8 @@ async fn compact_uses_bearer_after_agent_identity_session_fallback() -> anyhow::
+
+     let output = client
+         .compact_conversation_history(
++            /*rotate_auth*/ None,
++            /*rotate_residency*/ None,
+             &prompt,
+             &test_model_info(),
+             /*turn_state*/ None,
+@@ -892,6 +949,7 @@ async fn bedrock_unauthorized_error_uses_provider_mapping() {
+                     .to_string(),
+             ),
+         },
++        /*request_auth*/ &mut None,
+         &mut auth_recovery,
+         &mut provider_auth_recovery_attempted,
+         &test_session_telemetry(),
+@@ -988,6 +1046,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
+         let (event_sender, event_receiver) = async_channel::unbounded();
+         let result = super::handle_unauthorized(
+             unauthorized(),
++            /*request_auth*/ &mut None,
+             &mut auth_recovery,
+             &mut provider_auth_recovery_attempted,
+             &telemetry,
+@@ -1007,6 +1066,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
+             );
+             super::handle_unauthorized(
+                 unauthorized(),
++                /*request_auth*/ &mut None,
+                 &mut auth_recovery,
+                 &mut provider_auth_recovery_attempted,
+                 &telemetry,
+diff --git a/codex-rs/core/src/compact_remote_request.rs b/codex-rs/core/src/compact_remote_request.rs
+index b6b418c..70156e5 100644
+--- a/codex-rs/core/src/compact_remote_request.rs
++++ b/codex-rs/core/src/compact_remote_request.rs
+@@ -79,6 +79,8 @@ pub(super) async fn run_remote_compact_attempt(
+         .services
+         .model_client
+         .compact_conversation_history(
++            step_context.rotate_auth.as_ref(),
++            turn_context.config.enforce_residency.value(),
+             &prompt,
+             turn_context.model_info(),
+             turn_state,
+diff --git a/codex-rs/core/src/config/auth_keyring.rs b/codex-rs/core/src/config/auth_keyring.rs
+index e344501..a8ad8cf 100644
+--- a/codex-rs/core/src/config/auth_keyring.rs
++++ b/codex-rs/core/src/config/auth_keyring.rs
+@@ -19,6 +19,7 @@ impl Config {
+
+     pub fn auth_config(&self) -> AuthConfig {
+         AuthConfig {
++            codex_rotate_helper: self.codex_rotate_helper.clone(),
+             codex_home: self.codex_home.to_path_buf(),
+             auth_credentials_store_mode: self.cli_auth_credentials_store_mode,
+             keyring_backend_kind: self.auth_keyring_backend_kind(),
+@@ -56,6 +57,7 @@ pub fn bootstrap_auth_config(
+         })
+         .filter(|workspaces| !workspaces.is_empty());
+     let mut auth_config = AuthConfig {
++        codex_rotate_helper: config.codex_rotate_helper.clone(),
+         codex_home: codex_home.to_path_buf(),
+         auth_credentials_store_mode: config.cli_auth_credentials_store.unwrap_or_default(),
+         keyring_backend_kind: resolve_bootstrap_auth_keyring_backend_kind(bootstrap_config)?,
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index 4c21c06..c93f05f 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -1031,6 +1031,9 @@ pub struct Config {
+     /// When set, restricts the login mechanism users may use.
+     pub forced_login_method: Option<ForcedLoginMethod>,
+
++    /// Personal credential authority command, executed without a shell.
++    pub codex_rotate_helper: Option<Vec<String>>,
++
+     /// Explicit or feature-derived web search mode.
+     pub web_search_mode: Constrained<WebSearchMode>,
+
+@@ -1347,6 +1350,9 @@ pub struct TerminalResizeReflowConfig {
+ }
+
+ impl AuthManagerConfig for Config {
++    fn codex_rotate_helper(&self) -> Option<Vec<String>> {
++        self.codex_rotate_helper.clone()
++    }
+     fn codex_home(&self) -> PathBuf {
+         self.codex_home.to_path_buf()
+     }
+@@ -4363,6 +4369,7 @@ impl Config {
+             experimental_thread_store: thread_store_config(cfg.experimental_thread_store),
+             forced_chatgpt_workspace_id,
+             forced_login_method,
++            codex_rotate_helper: cfg.codex_rotate_helper.clone(),
+             web_search_mode: constrained_web_search_mode.value,
+             web_search_config,
+             experimental_request_user_input_enabled,
+diff --git a/codex-rs/core/src/session/mcp.rs b/codex-rs/core/src/session/mcp.rs
+index d4505ea..87b8417 100644
+--- a/codex-rs/core/src/session/mcp.rs
++++ b/codex-rs/core/src/session/mcp.rs
+@@ -179,6 +179,10 @@ impl Session {
+             error!("MCP runtime refresh semaphore closed");
+             return;
+         };
++        self.refresh_mcp_under_gate(&_refresh).await;
++    }
++
++    async fn refresh_mcp_under_gate(self: &Arc<Self>, _guard: &tokio::sync::SemaphorePermit<'_>) {
+         loop {
+             let environments = self.services.turn_environments.snapshot().await;
+             let ready_environments = environments
+@@ -244,13 +248,18 @@ impl Session {
+                     executor_capability_discovery.as_deref(),
+                 )
+                 .await;
+-            self.publish_mcp_runtime(
+-                &desired,
+-                mcp_projection,
+-                &ready_selected_capability_roots,
+-                Some(self.mcp_elicitation_reviewer()),
+-            )
+-            .await;
++            if let Err(error) = self
++                .publish_mcp_runtime(
++                    &desired,
++                    mcp_projection,
++                    &ready_selected_capability_roots,
++                    Some(self.mcp_elicitation_reviewer()),
++                )
++                .await
++            {
++                warn!(%error, "MCP runtime account preparation failed");
++                return;
++            }
+             refresh_invalidation.published = true;
+         }
+     }
+@@ -324,7 +333,7 @@ impl Session {
+             mcp_projection,
+             &ready_selected_capability_roots,
+             Some(self.mcp_elicitation_reviewer()),
+-        );
++        )?;
+         anyhow::ensure!(
+             input.mcp_servers.contains_key(CODEX_APPS_MCP_SERVER_NAME),
+             "unknown MCP server '{CODEX_APPS_MCP_SERVER_NAME}'"
+@@ -345,7 +354,7 @@ impl Session {
+         selected_capability_roots: &[ResolvedSelectedCapabilityRoot],
+         required_servers: &[String],
+         required_plugins: &HashSet<String>,
+-    ) -> Arc<codex_mcp::McpBinding> {
++    ) -> CodexResult<Arc<codex_mcp::McpBinding>> {
+         let ready_selected_capability_roots =
+             Self::ready_selected_capability_roots(selected_capability_roots);
+         if self
+@@ -372,7 +381,28 @@ impl Session {
+         {
+             self.mark_mcp_runtime_dirty();
+         }
+-        self.refresh_mcp_if_dirty().await;
++        // Keep the refresh publication gate through identity validation and
++        // binding capture. Existing steps retain their immutable old handles.
++        let auth = self.services.auth_manager.auth_cached();
++        let _rotate_barrier = if auth.as_ref().and_then(CodexAuth::rotate_identity).is_some() {
++            let guard = self.mcp_refresh.acquire().await.map_err(|_| {
++                CodexErr::InvalidRequest("Codex Rotate MCP preparation is unavailable".to_string())
++            })?;
++            self.refresh_mcp_under_gate(&guard).await;
++            if !self
++                .services
++                .mcp_runtime
++                .current_auth_matches(auth.as_ref())
++            {
++                return Err(CodexErr::InvalidRequest(
++                    "Codex Rotate account changed during MCP preparation; no model request was sent".to_string(),
++                ));
++            }
++            Some(guard)
++        } else {
++            self.refresh_mcp_if_dirty().await;
++            None
++        };
+         let required_servers = required_servers
+             .iter()
+             .chain(&recovered_oauth_servers)
+@@ -384,10 +414,10 @@ impl Session {
+             .current_binding_with_requirements(&required_servers, required_plugins)
+             .await
+         {
+-            return binding;
++            return Ok(binding);
+         }
+         let config = Arc::new(self.runtime_mcp_config(&turn_context.config).await);
+-        Arc::new(codex_mcp::McpBinding::empty(config))
++        Ok(Arc::new(codex_mcp::McpBinding::empty(config)))
+     }
+
+     #[tracing::instrument(
+@@ -704,13 +734,17 @@ impl Session {
+             .await;
+         let mut desired = self.latest_mcp_desired_state(auth).await;
+         desired.config = Arc::new(refresh_config.clone());
+-        self.publish_mcp_runtime(
+-            &desired,
+-            mcp_projection,
+-            &ready_selected_capability_roots,
+-            elicitation_reviewer,
+-        )
+-        .await;
++        if let Err(error) = self
++            .publish_mcp_runtime(
++                &desired,
++                mcp_projection,
++                &ready_selected_capability_roots,
++                elicitation_reviewer,
++            )
++            .await
++        {
++            warn!(%error, "MCP runtime account preparation failed");
++        }
+     }
+
+     pub(crate) fn ready_selected_capability_roots(
+diff --git a/codex-rs/core/src/session/mcp_runtime.rs b/codex-rs/core/src/session/mcp_runtime.rs
+index c3c329e..277ac62 100644
+--- a/codex-rs/core/src/session/mcp_runtime.rs
++++ b/codex-rs/core/src/session/mcp_runtime.rs
+@@ -135,7 +135,7 @@ impl Session {
+             "session_init.mcp_manager_init",
+             otel.name = "session_init.mcp_manager_init",
+         ))
+-        .await;
++        .await?;
+
+         self.services.mcp_runtime.validate_required_servers().await
+     }
+@@ -303,7 +303,7 @@ impl Session {
+         mcp_projection: McpRuntimeProjection,
+         ready_selected_capability_roots: &[SelectedCapabilityRoot],
+         elicitation_reviewer: Option<ElicitationReviewerHandle>,
+-    ) {
++    ) -> anyhow::Result<()> {
+         let mcp_projection = self
+             .project_selected_environment_mcp_servers(
+                 &desired.session_source,
+@@ -318,9 +318,10 @@ impl Session {
+             mcp_projection,
+             ready_selected_capability_roots,
+             elicitation_reviewer,
+-        );
++        )?;
+         self.services.mcp_runtime.replace(input).await;
+         self.services.thread_extension_data.insert(selected_plugins);
++        Ok(())
+     }
+
+     pub(super) fn build_mcp_runtime_input(
+@@ -329,8 +330,18 @@ impl Session {
+         mcp_projection: McpRuntimeProjection,
+         ready_selected_capability_roots: &[SelectedCapabilityRoot],
+         elicitation_reviewer: Option<ElicitationReviewerHandle>,
+-    ) -> McpRuntimeInput {
++    ) -> anyhow::Result<McpRuntimeInput> {
+         let auth = desired.auth.clone();
++        let auth_manager = match auth
++            .as_ref()
++            .filter(|auth| auth.rotate_identity().is_some())
++        {
++            Some(auth) => self
++                .services
++                .auth_manager
++                .for_request_snapshot(auth.clone())?,
++            None => Arc::clone(&self.services.auth_manager),
++        };
+         let McpRuntimeProjection {
+             mut config,
+             plugins_available,
+@@ -380,7 +391,7 @@ impl Session {
+                 })
+                 .collect(),
+         );
+-        McpRuntimeInput {
++        Ok(McpRuntimeInput {
+             startup_policy: if matches!(desired.session_source, SessionSource::SubAgent(_)) {
+                 McpStartupPolicy::LazyWhenCached
+             } else {
+@@ -399,9 +410,9 @@ impl Session {
+             codex_apps_tools_cache_key: connector_runtime_context_key(auth.as_ref()),
+             client_mcp_extensions: self.services.client_mcp_extensions.for_mcp_servers(),
+             auth,
+-            auth_manager: Some(Arc::clone(&self.services.auth_manager)),
++            auth_manager: Some(auth_manager),
+             elicitation_reviewer,
+             elicitation_lifecycle: Some(self.mcp_elicitation_lifecycle()),
+-        }
++        })
+     }
+ }
+diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
+index 1d2f717..f17a205 100644
+--- a/codex-rs/core/src/session/mod.rs
++++ b/codex-rs/core/src/session/mod.rs
+@@ -236,6 +236,7 @@ mod retained_context;
+ mod review;
+ mod rollout_budget;
+ mod rollout_reconstruction;
++mod rotate_step;
+ #[allow(clippy::module_inception)]
+ pub(crate) mod session;
+ mod step_activation;
+@@ -3541,16 +3542,17 @@ impl Session {
+     }
+
+     #[tracing::instrument(name = "step_context.capture", level = "info", skip_all)]
+-    async fn capture_step_context_inner(
++    pub(super) async fn capture_prepared_step_context(
+         self: &Arc<Self>,
+         turn_context: Arc<TurnContext>,
+         cancellation_token: &CancellationToken,
+         required_servers: &[String],
+         required_plugins: &HashSet<String>,
++        rotate_auth: Option<CodexAuth>,
++        mut settings: Arc<ResolvedStepSettings>,
+     ) -> CodexResult<Arc<StepContext>> {
+         // Capture once before asynchronous planning; all request consumers
+         // retain this immutable settings version even if the turn is updated.
+-        let mut settings = turn_context.current_settings.load_full();
+         if matches!(
+             turn_context.session_source,
+             SessionSource::SubAgent(SubAgentSource::ThreadSpawn { .. })
+@@ -3631,6 +3633,7 @@ impl Session {
+         }
+         .or_cancel(cancellation_token)
+         .await?;
++        let mcp = mcp?;
+         let mut selected_plugins = self
+             .services
+             .thread_extension_data
+@@ -3675,6 +3678,7 @@ impl Session {
+             );
+         }
+         Ok(Arc::new(StepContext {
++            rotate_auth,
+             settings,
+             token_budget,
+             session_telemetry,
+diff --git a/codex-rs/core/src/session/rotate_step.rs b/codex-rs/core/src/session/rotate_step.rs
+new file mode 100644
+index 0000000..71797b6
+--- /dev/null
++++ b/codex-rs/core/src/session/rotate_step.rs
+@@ -0,0 +1,276 @@
++//! Personal account admission before any account-dependent step preparation.
++//!
++//! Managed cloud configuration is deliberately outside this personal adapter.
++//! Never replace process-global cloud state asynchronously after starting a request.
++
++use super::*;
++use codex_config::ConfigLayerSource;
++use codex_config::ConfigRequirements;
++use codex_config::RequirementSource;
++use codex_protocol::account::PlanType;
++use codex_protocol::config_types::ForcedLoginMethod;
++
++fn validate_personal_step(config: &Config, auth: &CodexAuth) -> CodexResult<()> {
++    if !matches!(
++        auth.account_plan_type(),
++        Some(PlanType::Free | PlanType::Go | PlanType::Plus | PlanType::Pro | PlanType::ProLite)
++    ) || config
++        .config_layer_stack
++        .layers_low_to_high()
++        .any(|layer| matches!(layer.name, ConfigLayerSource::EnterpriseManaged { .. }))
++        || has_cloud_requirements(config.config_layer_stack.requirements())
++    {
++        return Err(CodexErr::InvalidRequest(
++            "Codex Rotate supports personal accounts only; managed or unknown account contexts require rotation to be disabled".to_string(),
++        ));
++    }
++    let requirements = config.config_layer_stack.requirements();
++    if config
++        .forced_login_method
++        .is_some_and(|method| method != ForcedLoginMethod::Chatgpt)
++        || config
++            .forced_chatgpt_workspace_id
++            .as_ref()
++            .is_some_and(|allowed| {
++                !auth
++                    .get_account_id()
++                    .is_some_and(|account| allowed.contains(&account))
++            })
++        || requirements
++            .allowed_login_methods
++            .as_ref()
++            .is_some_and(|allowed| !allowed.value.contains(&ForcedLoginMethod::Chatgpt))
++        || requirements
++            .allowed_chatgpt_workspaces
++            .as_ref()
++            .is_some_and(|allowed| {
++                !auth
++                    .get_account_id()
++                    .is_some_and(|account| allowed.value.contains(&account))
++            })
++    {
++        return Err(CodexErr::InvalidRequest(
++            "Codex Rotate account is not permitted by the current session requirements".to_string(),
++        ));
++    }
++    Ok(())
++}
++
++fn is_cloud_source(source: &RequirementSource) -> bool {
++    match source {
++        RequirementSource::EnterpriseManaged { .. } => true,
++        RequirementSource::Composite { sources } => sources.iter().any(is_cloud_source),
++        RequirementSource::Unknown
++        | RequirementSource::MdmManagedPreferences { .. }
++        | RequirementSource::SystemRequirementsToml { .. }
++        | RequirementSource::LegacyManagedConfigTomlFromFile { .. }
++        | RequirementSource::LegacyManagedConfigTomlFromMdm => false,
++    }
++}
++
++fn has_cloud_requirements(requirements: &ConfigRequirements) -> bool {
++    // Exhaustive destructuring keeps newly introduced managed authority visible
++    // at this fail-closed boundary, including requirement-only cloud bundles.
++    let ConfigRequirements {
++        allowed_login_methods,
++        allowed_chatgpt_workspaces,
++        cli_auth_credentials_store,
++        chatgpt_base_url,
++        sqlite_home,
++        log_dir,
++        model_catalog_json,
++        check_for_update_on_startup,
++        allow_login_shell,
++        feedback,
++        approval_policy,
++        approvals_reviewer,
++        auto_review_required_models,
++        permission_profile,
++        windows_sandbox_mode,
++        windows_sandbox_private_desktop,
++        web_search_mode,
++        allow_managed_hooks_only,
++        allow_appshots,
++        allow_remote_control,
++        computer_use,
++        feature_requirements,
++        managed_hooks,
++        mcp_servers,
++        plugins,
++        marketplaces,
++        exec_policy,
++        enforce_residency,
++        network,
++        application,
++        filesystem,
++        additional_developer_instructions,
++        guardian_policy_config_source,
++    } = requirements;
++    [
++        allowed_login_methods.as_ref().map(|value| &value.source),
++        allowed_chatgpt_workspaces
++            .as_ref()
++            .map(|value| &value.source),
++        cli_auth_credentials_store
++            .as_ref()
++            .map(|value| &value.source),
++        chatgpt_base_url.as_ref().map(|value| &value.source),
++        sqlite_home.as_ref().map(|value| &value.source),
++        log_dir.as_ref().map(|value| &value.source),
++        model_catalog_json.as_ref().map(|value| &value.source),
++        check_for_update_on_startup
++            .as_ref()
++            .map(|value| &value.source),
++        allow_login_shell.as_ref().map(|value| &value.source),
++        feedback.as_ref().map(|value| &value.source),
++        approval_policy.source.as_ref(),
++        approvals_reviewer.source.as_ref(),
++        auto_review_required_models
++            .as_ref()
++            .map(|value| &value.source),
++        permission_profile.source.as_ref(),
++        windows_sandbox_mode.source.as_ref(),
++        windows_sandbox_private_desktop
++            .as_ref()
++            .map(|value| &value.source),
++        web_search_mode.source.as_ref(),
++        allow_managed_hooks_only.as_ref().map(|value| &value.source),
++        allow_appshots.as_ref().map(|value| &value.source),
++        allow_remote_control.as_ref().map(|value| &value.source),
++        computer_use.as_ref().map(|value| &value.source),
++        feature_requirements.as_ref().map(|value| &value.source),
++        managed_hooks
++            .as_ref()
++            .and_then(|value| value.source.as_ref()),
++        mcp_servers.as_ref().map(|value| &value.source),
++        plugins.as_ref().map(|value| &value.source),
++        marketplaces.as_ref().map(|value| &value.source),
++        exec_policy.as_ref().map(|value| &value.source),
++        enforce_residency.source.as_ref(),
++        network.as_ref().map(|value| &value.source),
++        application.as_ref().map(|value| &value.source),
++        filesystem.as_ref().map(|value| &value.source),
++        additional_developer_instructions
++            .as_ref()
++            .map(|value| &value.source),
++        guardian_policy_config_source.as_ref(),
++    ]
++    .into_iter()
++    .flatten()
++    .any(is_cloud_source)
++}
++
++impl Session {
++    pub(super) async fn capture_step_context_inner(
++        self: &Arc<Self>,
++        turn_context: Arc<TurnContext>,
++        cancellation_token: &CancellationToken,
++        required_servers: &[String],
++        required_plugins: &HashSet<String>,
++    ) -> CodexResult<Arc<StepContext>> {
++        let settings = turn_context.current_settings.load_full();
++        let manager = Arc::clone(&self.services.auth_manager);
++        let rotate_auth =
++            if manager.has_rotate_helper() && turn_context.provider.info().requires_openai_auth {
++                Some(
++                    manager
++                        .auth_for_request(Some(&settings.model_info.slug), /*pinned*/ None)
++                        .or_cancel(cancellation_token)
++                        .await??
++                        .ok_or_else(|| {
++                            CodexErr::InvalidRequest("Codex Rotate is signed out".to_string())
++                        })?,
++                )
++            } else {
++                None
++            };
++        let prepare = async {
++            if let Some(auth) = &rotate_auth {
++                validate_personal_step(&turn_context.config, auth)?;
++                {
++                    let state = self.state.lock().await;
++                    let current = &state.session_configuration.original_config_do_not_use;
++                    validate_personal_step(current, auth)?;
++                    if current.enforce_residency.value()
++                        != turn_context.config.enforce_residency.value()
++                    {
++                        return Err(CodexErr::InvalidRequest(
++                            "Codex Rotate cannot change the admitted turn's residency requirements"
++                                .to_string(),
++                        ));
++                    }
++                }
++                let plugins = &self.services.plugins_manager;
++                let plugins_config = turn_context.config.plugins_config_input();
++                if plugins_config.plugins_enabled
++                    && plugins_config.remote_plugin_enabled
++                    && plugins
++                        .build_remote_installed_plugin_marketplaces_from_cache(&[])
++                        .is_none()
++                {
++                    plugins
++                        .build_and_cache_remote_installed_plugin_marketplaces(
++                            &plugins_config,
++                            Some(auth),
++                            &[],
++                            /*on_effective_plugins_changed*/ None,
++                        )
++                        .or_cancel(cancellation_token)
++                        .await?
++                        .map_err(|_| CodexErr::InvalidRequest(
++                            "Codex Rotate could not prepare the selected account's plugin inventory; no model request was sent".to_string(),
++                        ))?;
++                    // The awaited metadata refresh does not run background bundle
++                    // reconciliation or delete files retained by another account's turn.
++                    plugins.clear_cache();
++                    self.services.skills_service.clear_cache();
++                    self.mark_mcp_runtime_dirty();
++                }
++            }
++            let step = self
++                .capture_prepared_step_context(
++                    turn_context,
++                    cancellation_token,
++                    required_servers,
++                    required_plugins,
++                    rotate_auth.clone(),
++                    settings,
++                )
++                .await?;
++            if let Some(auth) = &rotate_auth {
++                let state = self.state.lock().await;
++                let current = &state.session_configuration.original_config_do_not_use;
++                validate_personal_step(current, auth)?;
++                if current.enforce_residency.value() != step.turn.config.enforce_residency.value() {
++                    return Err(CodexErr::InvalidRequest(
++                        "Codex Rotate residency requirements changed during request preparation"
++                            .to_string(),
++                    ));
++                }
++                let plugins = step.turn.config.plugins_config_input();
++                if plugins.plugins_enabled
++                    && plugins.remote_plugin_enabled
++                    && self
++                        .services
++                        .plugins_manager
++                        .build_remote_installed_plugin_marketplaces_from_cache(&[])
++                        .is_none()
++                {
++                    return Err(CodexErr::InvalidRequest(
++                        "Codex Rotate plugin inventory changed during request preparation; retry this turn".to_string(),
++                    ));
++                }
++            }
++            Ok(step)
++        };
++        if let Some(auth) = rotate_auth.clone() {
++            manager.scope_request_auth(auth, prepare).await
++        } else {
++            prepare.await
++        }
++    }
++}
++
++#[cfg(test)]
++#[path = "rotate_step_tests.rs"]
++mod tests;
+diff --git a/codex-rs/core/src/session/rotate_step_tests.rs b/codex-rs/core/src/session/rotate_step_tests.rs
+new file mode 100644
+index 0000000..dfe23ad
+--- /dev/null
++++ b/codex-rs/core/src/session/rotate_step_tests.rs
+@@ -0,0 +1,38 @@
++use super::*;
++use codex_config::Sourced;
++use pretty_assertions::assert_eq;
++
++#[tokio::test]
++async fn personal_step_revalidates_current_workspace_and_login_requirements() {
++    let (_, turn) = super::super::tests::make_session_and_context().await;
++    let mut config = (*turn.config).clone();
++    let auth =
++        CodexAuth::from_external_chatgpt_tokens("header.e30.synthetic", "account-b", Some("pro"))
++            .expect("personal test auth");
++    assert!(validate_personal_step(&config, &auth).is_ok());
++    config.forced_chatgpt_workspace_id = Some(vec!["account-a".into()]);
++    assert!(validate_personal_step(&config, &auth).is_err());
++    config.forced_chatgpt_workspace_id = Some(vec!["account-b".into()]);
++    assert!(validate_personal_step(&config, &auth).is_ok());
++    config.forced_login_method = Some(ForcedLoginMethod::Api);
++    assert!(validate_personal_step(&config, &auth).is_err());
++}
++
++#[test]
++fn requirement_only_and_composite_cloud_bundles_fail_closed() {
++    let mut requirements = ConfigRequirements::default();
++    assert_eq!(has_cloud_requirements(&requirements), false);
++    requirements.allowed_login_methods = Some(Sourced::new(
++        vec![ForcedLoginMethod::Chatgpt],
++        RequirementSource::Composite {
++            sources: vec![
++                RequirementSource::Unknown,
++                RequirementSource::EnterpriseManaged {
++                    id: "policy".into(),
++                    name: "managed workspace".into(),
++                },
++            ],
++        },
++    ));
++    assert_eq!(has_cloud_requirements(&requirements), true);
++}
+diff --git a/codex-rs/core/src/session/step_context.rs b/codex-rs/core/src/session/step_context.rs
+index ff91aad..cfe0f7c 100644
+--- a/codex-rs/core/src/session/step_context.rs
++++ b/codex-rs/core/src/session/step_context.rs
+@@ -8,12 +8,15 @@ use crate::session::turn_context::TurnContext;
+ use crate::tools::router::ToolRouter;
+ use codex_exec_server::ExecutorCapabilityDiscoverySnapshot;
+ use codex_exec_server::ResolvedSelectedCapabilityRoot;
++use codex_login::CodexAuth;
+ use codex_mcp::McpBinding;
+ use codex_otel::SessionTelemetry;
+
+ /// Request-scoped state that may change between model sampling requests.
+ pub(crate) struct StepContext {
+     pub(crate) turn: Arc<TurnContext>,
++    /// Exact personal account captured before plugin, MCP and tool preparation.
++    pub(crate) rotate_auth: Option<CodexAuth>,
+     /// One immutable settings version captured before request preparation.
+     pub(crate) settings: Arc<ResolvedStepSettings>,
+     /// Frozen turn preferences resolved against this step's captured model.
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index 116e450..93d91db 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -254,6 +254,7 @@ impl StepContext {
+         });
+         settings.service_tier = turn.config.service_tier.clone();
+         Arc::new(Self {
++            rotate_auth: None,
+             token_budget: token_budget::resolve_token_budget(
+                 turn.configured_token_budget.as_ref(),
+                 turn.use_model_token_budget_defaults,
+@@ -9083,7 +9084,8 @@ async fn refresh_mcp_servers_uses_latest_state_for_existing_turns() {
+             /*required_servers*/ &[],
+             /*required_plugins*/ &HashSet::new(),
+         )
+-        .await;
++        .await
++        .expect("MCP runtime should remain available");
+
+     let configured_servers = codex_mcp::configured_mcp_servers(new_step.mcp.config());
+     assert_eq!(
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+index 4719e1d..5e0e560 100644
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -1487,6 +1487,18 @@ async fn run_sampling_request(
+                     return Err(err);
+                 }
+                 CodexErrorDetails::UsageLimitReached(e) => {
++                    if let Some(auth) = &step_context.rotate_auth {
++                        sess.services
++                            .auth_manager
++                            .report_rotate_exhausted(
++                                auth,
++                                Some(&step_context.settings.model_info.slug),
++                                // One error cannot establish every active quota reset.
++                                /*reset_at*/
++                                None,
++                            )
++                            .await;
++                    }
+                     let rate_limits = e.rate_limits.clone();
+                     if let Some(rate_limits) = rate_limits {
+                         sess.update_rate_limits(&turn_context, *rate_limits).await;
+@@ -2302,6 +2314,10 @@ async fn try_run_sampling_request(
+         .features
+         .enabled(Feature::ConcurrentReasoningSummaries)
+         && turn_context.provider.info().is_openai();
++    client_session.set_rotate_step_auth(
++        step_context.rotate_auth.clone(),
++        turn_context.config.enforce_residency.value(),
++    );
+     let mut stream = client_session
+         .stream(
+             prompt,
+@@ -2326,6 +2342,7 @@ async fn try_run_sampling_request(
+     )> = None;
+     let mut should_emit_turn_diff = false;
+     let mut should_emit_token_count = false;
++    let mut rotate_rate_limits = None;
+     const MAX_ANALYTICS_TOOL_CALL_IDS_PER_RESPONSE: usize = 256;
+     let mut analytics_tool_call_ids = Vec::new();
+     let reasoning_effort = step_context
+@@ -2629,6 +2646,14 @@ async fn try_run_sampling_request(
+                 sess.set_server_reasoning_included(included).await;
+             }
+             ResponseEvent::RateLimits(snapshot) => {
++                let model = step_context.settings.model_info.slug.as_str();
++                if step_context.rotate_auth.is_some()
++                    && codex_login::AuthManager::rotate_usage_is_exhausted(Some(model), &snapshot)
++                {
++                    // A later partial headroom bucket must not erase an
++                    // already-observed exhausted bucket in this attempt.
++                    rotate_rate_limits = Some(snapshot.clone());
++                }
+                 // Update internal state with latest rate limits, but defer sending until
+                 // token usage is available to avoid duplicate TokenCount events.
+                 sess.record_rate_limits_info(snapshot).await;
+@@ -2846,6 +2871,15 @@ async fn try_run_sampling_request(
+     )
+     .await;
+
++    if let (Some(auth), Some(limits)) = (&step_context.rotate_auth, rotate_rate_limits) {
++        // Flush semantic output first. At most one bounded advisory write per
++        // attempt runs before the next model-step acquisition, without spawning.
++        sess.services
++            .auth_manager
++            .report_rotate_usage(auth, Some(&step_context.settings.model_info.slug), &limits)
++            .await;
++    }
++
+     let tool_blocking_timing_guard = if in_flight.is_empty() {
+         None
+     } else {
+diff --git a/codex-rs/core/tests/suite/mod.rs b/codex-rs/core/tests/suite/mod.rs
+index 1c6a629..d8169b6 100644
+--- a/codex-rs/core/tests/suite/mod.rs
++++ b/codex-rs/core/tests/suite/mod.rs
+@@ -152,6 +152,8 @@ mod rmcp_client;
+ mod rollout_budget;
+ mod rollout_compression;
+ mod rollout_list_find;
++#[cfg(unix)]
++mod rotate_step;
+ mod safety_buffering;
+ mod safety_check_downgrade;
+ mod search_tool;
+diff --git a/codex-rs/core/tests/suite/rotate_step.rs b/codex-rs/core/tests/suite/rotate_step.rs
+new file mode 100644
+index 0000000..d0eadd1
+--- /dev/null
++++ b/codex-rs/core/tests/suite/rotate_step.rs
+@@ -0,0 +1,322 @@
++//! Offline request-boundary regression using the real helper and plugin paths.
++
++use anyhow::Result;
++use base64::Engine;
++use base64::engine::general_purpose::URL_SAFE_NO_PAD;
++use codex_config::McpServerTransportConfig;
++use codex_core::TurnInputRequest;
++use codex_core::config::ConfigBuilder;
++use codex_core::config::Constrained;
++use codex_core::plugins_manager_for_config;
++use codex_exec_server_test_support::environment_manager_without_environments;
++use codex_features::Feature;
++use codex_login::AuthManager;
++use codex_login::CodexAuth;
++use codex_login::auth::RotateHelper;
++use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
++use codex_mcp::CodexAppsToolsCache;
++use codex_mcp::EffectiveMcpServer;
++use codex_mcp::McpRuntime;
++use codex_mcp::McpRuntimeContext;
++use codex_mcp::McpRuntimeInput;
++use codex_mcp::McpStartupPolicy;
++use codex_mcp::McpToolCatalogCache;
++use codex_protocol::mcp::ClientMcpExtensions;
++use codex_protocol::protocol::AskForApproval;
++use codex_protocol::protocol::EventMsg;
++use codex_protocol::user_input::UserInput;
++use core_test_support::apps_test_server::AppsTestServer;
++use core_test_support::responses;
++use core_test_support::skip_if_no_network;
++use core_test_support::test_codex::test_codex;
++use core_test_support::wait_for_event;
++use pretty_assertions::assert_eq;
++use serde_json::Value;
++use serde_json::json;
++use std::collections::HashMap;
++use std::io::Write;
++use std::path::Path;
++use std::sync::Arc;
++use tokio_util::sync::CancellationToken;
++use wiremock::Mock;
++use wiremock::ResponseTemplate;
++use wiremock::matchers::method;
++use wiremock::matchers::path;
++
++fn select_account(file: &Path, account: &str, epoch: u64) -> Result<()> {
++    let claims = json!({ "https://api.openai.com/auth": {
++        "chatgpt_account_id": account, "chatgpt_user_id": account, "chatgpt_plan_type": "pro"
++    }});
++    let id_token = format!(
++        "e30.{}.signature",
++        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims)?)
++    );
++    let snapshot = json!({ "version": 1, "ok": true, "snapshot": {
++        "account_key": account, "account_id": account, "selection_epoch": epoch,
++        "credential_revision": 1, "id_token": id_token, "access_token": format!("synthetic-{account}"),
++        "expires_at": chrono::Utc::now().timestamp() + 3600,
++    }});
++    let mut pending = tempfile::NamedTempFile::new_in(file.parent().expect("fixture directory"))?;
++    writeln!(pending, "{snapshot}")?;
++    pending.persist(file)?;
++    Ok(())
++}
++
++fn helper_for_profiles(directory: &Path) -> Result<Arc<RotateHelper>> {
++    Ok(Arc::new(RotateHelper::new(vec![
++        "/bin/sh".into(), "-c".into(),
++        "IFS= read -r request; case \"$request\" in *'\"account_key\":\"account-a\"'*) profile=account-a;; *'\"account_key\":\"account-b\"'*) profile=account-b;; *'\"account_key\":\"account-c\"'*) profile=account-c;; *) profile=selected;; esac; IFS= read -r response < \"$1/$profile.json\"; printf '%s\\n' \"$response\"".into(),
++        "rotate-fixture".into(), directory.to_string_lossy().into_owned(),
++    ])?))
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn rotate_step_prepares_selected_plugins_before_first_request_and_pins_late_selection()
++-> Result<()> {
++    skip_if_no_network!(Ok(()));
++    let server = responses::start_mock_server().await;
++    let responses = responses::mount_sse_sequence(
++        &server,
++        vec![
++            responses::sse_completed("response-a"),
++            responses::sse_completed("response-b"),
++        ],
++    )
++    .await;
++    let fixture = tempfile::tempdir()?;
++    let selection = fixture.path().join("selected.json");
++    select_account(&fixture.path().join("account-a.json"), "account-a", 1)?;
++    select_account(&fixture.path().join("account-b.json"), "account-b", 2)?;
++    select_account(&fixture.path().join("account-c.json"), "account-c", 3)?;
++    select_account(&selection, "account-a", 1)?;
++    let late_selection = selection.clone();
++    Mock::given(method("GET"))
++        .and(path("/ps/plugins/installed"))
++        .respond_with(move |request: &wiremock::Request| {
++            if request
++                .headers
++                .get("chatgpt-account-id")
++                .and_then(|value| value.to_str().ok())
++                == Some("account-b")
++            {
++                // A different consumer selects C while B's account-dependent
++                // preparation is in progress. B must still be the request owner.
++                select_account(&late_selection, "account-c", 3).expect("change synthetic account");
++            }
++            ResponseTemplate::new(200).set_body_json(json!({
++                "plugins": [], "pagination": {"next_page_token": null},
++            }))
++        })
++        .mount(&server)
++        .await;
++    let plugin_base = server.uri();
++    let mut builder = test_codex()
++        .with_auth(CodexAuth::from_api_key("seed"))
++        .with_config(move |config| {
++            config.chatgpt_base_url = plugin_base;
++            config
++                .features
++                .enable(Feature::Plugins)
++                .expect("enable plugins");
++            config
++                .features
++                .enable(Feature::RemotePlugin)
++                .expect("enable remote plugins");
++            // This fixture owns only Responses and plugin metadata endpoints;
++            // agent identity bootstrap has separate auth-layer coverage.
++            config
++                .features
++                .disable(Feature::UseAgentIdentity)
++                .expect("disable external bootstrap");
++        });
++    let test = builder.build_with_auto_env(&server).await?;
++    test.thread_manager
++        .auth_manager()
++        .set_external_auth(helper_for_profiles(fixture.path())?)
++        .await?;
++    test.submit_turn("retain the first account's conversation context")
++        .await?;
++    select_account(&selection, "account-b", 2)?;
++    test.codex
++        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
++            text: "continue the same conversation".into(),
++            text_elements: Vec::new(),
++        }]))
++        .await?;
++    wait_for_event(&test.codex, |event| {
++        if let EventMsg::Error(error) = event {
++            panic!("rotation preparation failed: {}", error.message);
++        }
++        matches!(event, EventMsg::TurnComplete(_))
++    })
++    .await;
++    let requests = responses.requests();
++    assert_eq!(
++        requests
++            .iter()
++            .map(|request| request.header("chatgpt-account-id"))
++            .collect::<Vec<_>>(),
++        vec![Some("account-a".into()), Some("account-b".into())]
++    );
++    assert!(
++        requests[1]
++            .message_input_texts("user")
++            .iter()
++            .any(|text| text.contains("retain the first account"))
++    );
++    let ordered = server
++        .received_requests()
++        .await
++        .expect("recorded requests")
++        .into_iter()
++        .filter(|request| {
++            matches!(
++                request.url.path(),
++                "/ps/plugins/installed" | "/v1/responses"
++            )
++        })
++        .map(|request| {
++            (
++                request.url.path().to_string(),
++                request
++                    .headers
++                    .get("chatgpt-account-id")
++                    .and_then(|value| value.to_str().ok())
++                    .map(str::to_owned),
++            )
++        })
++        .collect::<Vec<_>>();
++    let b_prepared = ordered
++        .iter()
++        .position(|(path, account)| {
++            path == "/ps/plugins/installed" && account.as_deref() == Some("account-b")
++        })
++        .expect("B plugins prepared");
++    let b_sent = ordered
++        .iter()
++        .position(|(path, account)| {
++            path == "/v1/responses" && account.as_deref() == Some("account-b")
++        })
++        .expect("B inference sent");
++    assert!(b_prepared < b_sent);
++    Ok(())
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn rotate_spawned_mcp_requests_retain_the_original_owner_after_selection_changes()
++-> Result<()> {
++    skip_if_no_network!(Ok(()));
++    let server = responses::start_mock_server().await;
++    let apps_server = AppsTestServer::mount_hosted_plugin_runtime_searchable(&server).await?;
++    let fixture = tempfile::tempdir()?;
++    let selection = fixture.path().join("selected.json");
++    select_account(&fixture.path().join("account-a.json"), "account-a", 1)?;
++    select_account(&fixture.path().join("account-b.json"), "account-b", 2)?;
++    select_account(&selection, "account-a", 1)?;
++    let manager = AuthManager::from_auth_for_testing_with_home(
++        CodexAuth::from_api_key("seed"),
++        fixture.path().to_path_buf(),
++    );
++    manager
++        .set_external_auth(helper_for_profiles(fixture.path())?)
++        .await?;
++    let auth = manager.auth_cached().expect("selected A");
++    let request_manager = manager.for_request_snapshot(auth.clone())?;
++    // Like the existing MCP auth refresh fixture, construct the trusted server
++    // directly: effective origin resolution must not trust localhost in production.
++    let mut server_config = codex_mcp::hosted_plugin_runtime_mcp_server_config(
++        &apps_server.chatgpt_base_url,
++        /*apps_mcp_product_sku*/ None,
++        /*originator*/ None,
++    );
++    let McpServerTransportConfig::StreamableHttp {
++        bearer_token_env_var,
++        ..
++    } = &mut server_config.transport
++    else {
++        panic!("hosted runtime must use HTTP");
++    };
++    *bearer_token_env_var = None;
++    let mut config = ConfigBuilder::default()
++        .codex_home(fixture.path().to_path_buf())
++        .build()
++        .await?;
++    config.permissions.approval_policy = Constrained::allow_any(AskForApproval::Never);
++    let plugins = plugins_manager_for_config(&config, Arc::clone(&request_manager));
++    let runtime = McpRuntime::new(McpRuntimeInput {
++        startup_policy: McpStartupPolicy::Eager,
++        config: Arc::new(config.to_mcp_config(&plugins).await),
++        plugins_available: false,
++        ready_selected_capability_roots: Vec::new(),
++        mcp_servers: HashMap::from([(
++            CODEX_APPS_MCP_SERVER_NAME.to_string(),
++            EffectiveMcpServer::configured(server_config),
++        )]),
++        submit_id: "retained-account-a".into(),
++        tx_event: None,
++        startup_cancellation_token: CancellationToken::new(),
++        runtime_context: McpRuntimeContext::new(
++            Arc::new(environment_manager_without_environments()),
++            fixture.path().to_path_buf(),
++        ),
++        codex_apps_tools_cache: CodexAppsToolsCache::default(),
++        tool_catalog_cache: McpToolCatalogCache::default(),
++        codex_apps_tools_cache_key: codex_mcp::codex_apps_tools_cache_key(Some(&auth)),
++        client_mcp_extensions: ClientMcpExtensions::default(),
++        auth: Some(auth),
++        auth_manager: Some(request_manager),
++        elicitation_reviewer: None,
++        elicitation_lifecycle: None,
++    })
++    .await;
++    select_account(&selection, "account-b", 2)?;
++    let selected_b = manager
++        .auth_for_request(Some("gpt-5.4"), /*pinned*/ None)
++        .await?
++        .expect("selected B");
++    assert_eq!(selected_b.get_account_id(), Some("account-b".to_string()));
++    // Tool startup and request transport run in spawned tasks, outside the
++    // selection task's scope. They must use the retained manager, not global B.
++    let result = runtime
++        .latest_call_tool(
++            CODEX_APPS_MCP_SERVER_NAME,
++            "calendar_create_event",
++            /*environment_id*/ None,
++            Some(json!({"title": "Lunch", "starts_at": "2026-09-12T12:00:00Z"})),
++            /*meta*/ None,
++            /*requested_timeout*/ None,
++            /*wait_for_server*/ true,
++        )
++        .await?;
++    assert_eq!(result.is_error, Some(false));
++    let calls = server
++        .received_requests()
++        .await
++        .expect("recorded requests")
++        .into_iter()
++        .filter(|request| {
++            request.url.path() == "/api/codex/ps/mcp"
++                && serde_json::from_slice::<Value>(&request.body)
++                    .ok()
++                    .is_some_and(|body| {
++                        body.get("method").and_then(Value::as_str) == Some("tools/call")
++                    })
++        })
++        .map(|request| {
++            request
++                .headers
++                .get("authorization")
++                .and_then(|value| value.to_str().ok())
++                .map(str::to_owned)
++        })
++        .collect::<Vec<_>>();
++    assert_eq!(calls, vec![Some("Bearer synthetic-account-a".to_string())]);
++    assert_eq!(
++        manager
++            .auth_cached()
++            .expect("shared owner unchanged")
++            .get_account_id(),
++        Some("account-b".to_string())
++    );
++    Ok(())
++}
+diff --git a/codex-rs/core/tests/suite/tools.rs b/codex-rs/core/tests/suite/tools.rs
+index 5ff4188..c1718b5 100644
+--- a/codex-rs/core/tests/suite/tools.rs
++++ b/codex-rs/core/tests/suite/tools.rs
+@@ -665,7 +665,7 @@ async fn sandbox_denied_exec_command_returns_original_output() -> Result<()> {
+         "printf {sentinel:?} >&2; printf {content:?} > {path:?}",
+         sentinel = format!("{sentinel}\n"),
+         content = "sandbox denied",
+-        path = &target_path
++        path = target_path
+     );
+     let args = json!({
+         "cmd": command,
+diff --git a/codex-rs/login/src/auth/auth_tests.rs b/codex-rs/login/src/auth/auth_tests.rs
+index 9927a60..590c0ae 100644
+--- a/codex-rs/login/src/auth/auth_tests.rs
++++ b/codex-rs/login/src/auth/auth_tests.rs
+@@ -33,6 +33,55 @@ const WORKSPACE_ID_ALLOWED: &str = "123e4567-e89b-42d3-a456-426614174000";
+ const WORKSPACE_ID_SECOND_ALLOWED: &str = "123e4567-e89b-42d3-a456-426614174001";
+ const WORKSPACE_ID_DISALLOWED: &str = "123e4567-e89b-42d3-a456-426614174002";
+
++#[tokio::test]
++async fn rotate_snapshot_never_uses_native_proactive_refresh_or_persistence() {
++    let home = tempdir().unwrap();
++    let claims = json!({"https://api.openai.com/auth": {
++        "chatgpt_account_id":"personal-account", "chatgpt_user_id":"personal-user", "chatgpt_plan_type":"pro"
++    }});
++    let id_token = format!(
++        "e30.{}.signature",
++        base64::engine::general_purpose::URL_SAFE_NO_PAD
++            .encode(serde_json::to_vec(&claims).unwrap())
++    );
++    let auth = CodexAuth::from_rotate_snapshot(
++        serde_json::from_value(json!({
++            "account_key":"personal-account", "account_id":"personal-account", "selection_epoch":1,
++            "credential_revision":1, "id_token":id_token, "access_token":"synthetic-access",
++            "expires_at":Utc::now().timestamp()+3600
++        }))
++        .unwrap(),
++        None,
++    )
++    .unwrap();
++    let CodexAuth::Chatgpt(chatgpt) = &auth else {
++        panic!("expected native ChatGPT identity")
++    };
++    chatgpt
++        .state
++        .auth_dot_json
++        .lock()
++        .unwrap()
++        .as_mut()
++        .unwrap()
++        .last_refresh = Some(Utc::now() - chrono::Duration::days(30));
++    assert!(!AuthManager::should_refresh_proactively(&auth));
++    let manager =
++        AuthManager::from_auth_for_testing_with_home(auth.clone(), home.path().to_path_buf());
++    let error = manager
++        .refresh_and_persist_chatgpt_token(chatgpt, String::new())
++        .await
++        .unwrap_err();
++    assert_eq!(
++        error.to_string(),
++        "Codex Rotate refresh requires a request snapshot"
++    );
++    let mut document = chatgpt.current_auth_json().unwrap();
++    document.tokens.as_mut().unwrap().refresh_token = "must-not-persist".into();
++    assert!(chatgpt.storage().save(&document).is_err());
++    assert!(!home.path().join("auth.json").exists());
++}
++
+ #[test]
+ fn header_auth_exposes_a_valid_chatgpt_account_id() {
+     for (account_id_header, expected_account_id) in [
+@@ -1833,6 +1882,7 @@ async fn build_config(
+     forced_chatgpt_workspace_id: Option<Vec<String>>,
+ ) -> AuthConfig {
+     AuthConfig {
++        codex_rotate_helper: None,
+         codex_home: codex_home.to_path_buf(),
+         auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         keyring_backend_kind: AuthKeyringBackendKind::Direct,
+@@ -1928,6 +1978,7 @@ impl AuthManagerConfig for TestAuthManagerConfig {
+
+ fn test_auth_manager_config(codex_home: &Path) -> TestAuthManagerConfig {
+     TestAuthManagerConfig(AuthConfig {
++        codex_rotate_helper: None,
+         codex_home: codex_home.to_path_buf(),
+         auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         keyring_backend_kind: AuthKeyringBackendKind::Direct,
+@@ -2505,6 +2556,7 @@ async fn enforce_login_restrictions_logs_out_for_personal_access_token_workspace
+     .expect("personal access token login should succeed");
+
+     let config = AuthConfig {
++        codex_rotate_helper: None,
+         codex_home: codex_home.path().to_path_buf(),
+         auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         keyring_backend_kind: AuthKeyringBackendKind::default(),
+@@ -2631,6 +2683,7 @@ async fn enforce_login_restrictions_logs_out_for_agent_identity_workspace_mismat
+     .expect("seed agent identity auth");
+
+     let config = AuthConfig {
++        codex_rotate_helper: None,
+         codex_home: codex_home.path().to_path_buf(),
+         auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         keyring_backend_kind: AuthKeyringBackendKind::Direct,
+diff --git a/codex-rs/login/src/auth/default_client.rs b/codex-rs/login/src/auth/default_client.rs
+index cd4cbd5..bb1535c 100644
+--- a/codex-rs/login/src/auth/default_client.rs
++++ b/codex-rs/login/src/auth/default_client.rs
+@@ -253,24 +253,49 @@ pub fn create_client_for_route(
+     http_client_factory: &HttpClientFactory,
+     request_url: &str,
+     route_class: ClientRouteClass,
++) -> Result<HttpClient, BuildRouteAwareHttpClientError> {
++    create_client_for_route_with_builder(
++        http_client_factory,
++        request_url,
++        route_class,
++        default_http_client_builder(),
++    )
++}
++
++/// Builds a client with request-scoped residency instead of process-global policy.
++pub fn create_client_for_route_with_residency(
++    http_client_factory: &HttpClientFactory,
++    request_url: &str,
++    route_class: ClientRouteClass,
++    residency: Option<ResidencyRequirement>,
++) -> Result<HttpClient, BuildRouteAwareHttpClientError> {
++    create_client_for_route_with_builder(
++        http_client_factory,
++        request_url,
++        route_class,
++        default_http_client_builder().default_headers(default_headers_with_residency(residency)),
++    )
++}
++
++fn create_client_for_route_with_builder(
++    http_client_factory: &HttpClientFactory,
++    request_url: &str,
++    route_class: ClientRouteClass,
++    builder: HttpClientBuilder,
+ ) -> Result<HttpClient, BuildRouteAwareHttpClientError> {
+     if matches!(
+         http_client_factory.outbound_proxy_policy(),
+         OutboundProxyPolicy::ReqwestDefault
+     ) {
+-        return Ok(create_client());
++        return Ok(build_default_client(builder));
+     }
+     if is_sandboxed() {
+         // Preserve the sandbox's existing no-proxy policy; sandboxed command egress is routed
+         // separately through network-proxy.
+-        return Ok(create_client());
++        return Ok(build_default_client(builder));
+     }
+
+-    default_http_client_builder().build_respecting_outbound_proxy_policy(
+-        http_client_factory,
+-        request_url,
+-        route_class,
+-    )
++    builder.build_respecting_outbound_proxy_policy(http_client_factory, request_url, route_class)
+ }
+
+ /// Builds the default Codex HTTP client for a concrete outbound route without blocking the
+@@ -350,6 +375,16 @@ pub fn default_headers() -> HeaderMap {
+     headers
+ }
+
++/// Returns shared headers with an explicit immutable residency policy.
++pub fn default_headers_with_residency(residency: Option<ResidencyRequirement>) -> HeaderMap {
++    let mut headers = default_headers();
++    headers.remove(RESIDENCY_HEADER_NAME);
++    if let Some(ResidencyRequirement::Us) = residency {
++        headers.insert(RESIDENCY_HEADER_NAME, HeaderValue::from_static("us"));
++    }
++    headers
++}
++
+ fn is_sandboxed() -> bool {
+     std::env::var("CODEX_SANDBOX").as_deref() == Ok("seatbelt")
+ }
+diff --git a/codex-rs/login/src/auth/manager.rs b/codex-rs/login/src/auth/manager.rs
+index 18b94ef..f4d9c34 100644
+--- a/codex-rs/login/src/auth/manager.rs
++++ b/codex-rs/login/src/auth/manager.rs
+@@ -40,6 +40,11 @@ use super::change_state::AuthChangeState;
+ use super::change_state::same_owner;
+ use super::external_bearer::BearerTokenRefresher;
+ use super::revoke::revoke_auth_tokens;
++use super::rotate::RequestSnapshotAuth;
++use super::rotate::RotateHelper;
++use super::rotate::RotateIdentity;
++use super::rotate::RotateSnapshot;
++use super::rotate::SnapshotStorage;
+ use super::workload_identity::WorkloadIdentityExternalAuth;
+ use super::workload_identity::WorkloadIdentitySessionError;
+ use crate::auth::AuthHeaders;
+@@ -174,6 +179,7 @@ pub struct ApiKeyAuth {
+ pub struct ChatgptAuth {
+     state: ChatgptAuthState,
+     storage: Arc<dyn AuthStorageBackend>,
++    rotation: Option<RotateIdentity>,
+ }
+
+ #[derive(Debug, Clone)]
+@@ -203,6 +209,10 @@ pub const REVOKE_TOKEN_URL_OVERRIDE_ENV_VAR: &str = "CODEX_REVOKE_TOKEN_URL_OVER
+ pub const CLIENT_ID_OVERRIDE_ENV_VAR: &str = "CODEX_APP_SERVER_LOGIN_CLIENT_ID";
+ static NEXT_DUMMY_AUTH_ID: AtomicU64 = AtomicU64::new(1);
+
++tokio::task_local! {
++    static ROTATE_REQUEST_AUTH: (usize, CodexAuth);
++}
++
+ #[derive(Debug, Error)]
+ pub enum RefreshTokenError {
+     #[error("{0}")]
+@@ -257,6 +267,15 @@ pub struct ExternalAuthRefreshContext {
+ ///
+ /// Implementations own the current auth value and any source-specific refresh mechanism.
+ pub trait ExternalAuth: Send + Sync {
++    /// Whether this auth source is an immutable request owner, not a login surface.
++    fn is_request_bound(&self) -> bool {
++        false
++    }
++    /// Exposes the personal, snapshot-bound credential authority when configured.
++    fn rotate_helper(&self) -> Option<&RotateHelper> {
++        None
++    }
++
+     /// Returns the provider's current auth value.
+     fn resolve(&self) -> ExternalAuthFuture<'_, CodexAuth>;
+
+@@ -392,7 +411,11 @@ impl CodexAuth {
+                     storage_mode,
+                     keyring_backend_kind,
+                 );
+-                Ok(Self::Chatgpt(ChatgptAuth { state, storage }))
++                Ok(Self::Chatgpt(ChatgptAuth {
++                    state,
++                    storage,
++                    rotation: None,
++                }))
+             }
+             AuthMode::ChatgptAuthTokens => Ok(Self::ChatgptAuthTokens(ChatgptAuthTokens { state })),
+             AuthMode::ApiKey => unreachable!("api key mode is handled above"),
+@@ -800,7 +823,11 @@ impl CodexAuth {
+             AuthCredentialsStoreMode::Ephemeral,
+             AuthKeyringBackendKind::default(),
+         );
+-        Self::Chatgpt(ChatgptAuth { state, storage })
++        Self::Chatgpt(ChatgptAuth {
++            state,
++            storage,
++            rotation: None,
++        })
+     }
+
+     /// Constructs in-memory ChatGPT auth from externally managed tokens.
+@@ -826,6 +853,77 @@ impl CodexAuth {
+             api_key: api_key.to_owned(),
+         })
+     }
++
++    /// Returns secret-free, immutable request ownership for managed rotation.
++    pub fn rotate_identity(&self) -> Option<&RotateIdentity> {
++        match self {
++            Self::Chatgpt(auth) => auth.rotation.as_ref(),
++            _ => None,
++        }
++    }
++
++    pub(super) fn from_rotate_snapshot(
++        snapshot: RotateSnapshot,
++        previous: Option<&Self>,
++    ) -> std::io::Result<Self> {
++        let id_token = snapshot.id_token.as_deref().ok_or_else(|| {
++            std::io::Error::other("Codex Rotate requires an identity token; re-enroll this account")
++        })?;
++        let id_token = parse_chatgpt_jwt_claims(id_token)
++            .map_err(|_| std::io::Error::other("Codex Rotate identity token is invalid"))?;
++        if !matches!(
++            id_token.get_chatgpt_plan_type_raw().as_deref(),
++            Some("free" | "go" | "plus" | "pro" | "prolite")
++        ) || id_token.chatgpt_account_is_fedramp
++        {
++            return Err(std::io::Error::other(
++                "Codex Rotate supports known personal ChatGPT plans only",
++            ));
++        }
++        if id_token.chatgpt_account_id.as_deref() != Some(snapshot.account_id.as_str())
++            || id_token
++                .chatgpt_user_id
++                .as_deref()
++                .is_none_or(str::is_empty)
++        {
++            return Err(std::io::Error::other(
++                "Codex Rotate identity does not match the selected account",
++            ));
++        }
++        let agent_identity = previous
++            .filter(|auth| {
++                auth.get_account_id().as_deref() == Some(snapshot.account_id.as_str())
++                    && auth.get_chatgpt_user_id() == id_token.chatgpt_user_id
++            })
++            .and_then(Self::get_current_auth_json)
++            .and_then(|auth| auth.agent_identity);
++        let auth_dot_json = AuthDotJson {
++            auth_mode: Some(AuthMode::Chatgpt),
++            openai_api_key: None,
++            tokens: Some(TokenData {
++                id_token,
++                access_token: snapshot.access_token,
++                refresh_token: String::new(),
++                account_id: Some(snapshot.account_id),
++            }),
++            last_refresh: Some(Utc::now()),
++            agent_identity,
++            personal_access_token: None,
++            bedrock_api_key: None,
++            bedrock_access_keys: None,
++        };
++        // The access-only snapshot uses private in-memory storage. Agent identity
++        // registration may persist its bound record here, never into native auth.json.
++        let storage = Arc::new(SnapshotStorage::new(auth_dot_json.clone()));
++        Ok(Self::Chatgpt(ChatgptAuth {
++            state: ChatgptAuthState {
++                auth_dot_json: Arc::new(Mutex::new(Some(auth_dot_json))),
++                client: create_client(),
++            },
++            storage,
++            rotation: Some(snapshot.identity),
++        }))
++    }
+ }
+
+ impl ManagedChatGptAgentIdentityBinding {
+@@ -1139,6 +1237,7 @@ pub fn load_auth_dot_json(
+
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub struct AuthConfig {
++    pub codex_rotate_helper: Option<Vec<String>>,
+     pub codex_home: PathBuf,
+     pub auth_credentials_store_mode: AuthCredentialsStoreMode,
+     pub keyring_backend_kind: AuthKeyringBackendKind,
+@@ -1187,6 +1286,41 @@ impl AuthConfig {
+         &self,
+         enable_codex_api_key_env: bool,
+     ) -> std::io::Result<Option<CodexAuth>> {
++        if enable_codex_api_key_env
++            && self.is_login_method_allowed(ForcedLoginMethod::Api)
++            && let Some(api_key) = read_codex_api_key_from_env()
++        {
++            return Ok(Some(CodexAuth::from_api_key(&api_key)));
++        }
++        if let Some(argv) = &self.codex_rotate_helper
++            && self.forced_login_method != Some(ForcedLoginMethod::Api)
++            && !load_auth_dot_json(
++                &self.codex_home,
++                self.auth_credentials_store_mode,
++                self.keyring_backend_kind,
++            )?
++            .is_some_and(|stored| {
++                !matches!(
++                    stored.resolved_mode(),
++                    AuthMode::Chatgpt | AuthMode::ChatgptAuthTokens
++                )
++            })
++        {
++            let auth = match RotateHelper::new(argv.clone())?
++                .acquire(/*model*/ None, /*pinned*/ None)
++                .await
++            {
++                Ok(auth) => auth,
++                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
++                Err(error) => return Err(error),
++            };
++            if !self.allows_auth(&auth) {
++                return Err(std::io::Error::other(
++                    "Codex Rotate account violates managed authentication requirements",
++                ));
++            }
++            return Ok(Some(auth));
++        }
+         let allowed_login_methods = self.allowed_login_methods();
+         let workspaces = self.effective_chatgpt_workspaces();
+         let agent_identity_authapi_base_url =
+@@ -1753,7 +1887,8 @@ impl AuthDotJson {
+         })
+     }
+
+-    pub(super) fn resolved_mode(&self) -> AuthMode {
++    /// Returns the persisted authentication mode, including legacy file inference.
++    pub fn resolved_mode(&self) -> AuthMode {
+         if let Some(mode) = self.auth_mode {
+             return mode;
+         }
+@@ -2060,6 +2195,11 @@ pub struct AuthManager {
+ /// `codex_core::config::Config`, but this trait keeps `codex-login` independent
+ /// from `codex-core`.
+ pub trait AuthManagerConfig {
++    /// Returns the opt-in personal credential authority command.
++    fn codex_rotate_helper(&self) -> Option<Vec<String>> {
++        None
++    }
++
+     /// Returns the Codex home directory used for auth storage.
+     fn codex_home(&self) -> PathBuf;
+
+@@ -2133,6 +2273,7 @@ impl AuthManager {
+     ) -> Self {
+         Self::new_from_auth_config(
+             AuthConfig {
++                codex_rotate_helper: None,
+                 codex_home,
+                 auth_credentials_store_mode,
+                 keyring_backend_kind,
+@@ -2154,6 +2295,7 @@ impl AuthManager {
+             .ok()
+             .flatten();
+         let AuthConfig {
++            codex_rotate_helper: _,
+             codex_home,
+             auth_credentials_store_mode,
+             keyring_backend_kind,
+@@ -2325,6 +2467,9 @@ impl AuthManager {
+
+     /// Current cached auth (clone) without attempting a refresh.
+     pub fn auth_cached(&self) -> Option<CodexAuth> {
++        if let Some(auth) = self.scoped_request_auth() {
++            return Some(auth);
++        }
+         self.inner
+             .read()
+             .ok()
+@@ -2356,6 +2501,9 @@ impl AuthManager {
+     /// a guarded reload and then refreshes only if the on-disk auth is unchanged.
+     #[instrument(level = "trace", skip_all)]
+     pub async fn auth(&self) -> Option<CodexAuth> {
++        if let Some(auth) = self.scoped_request_auth() {
++            return Some(auth);
++        }
+         if self.has_external_auth() {
+             self.reload().await;
+             return self.auth_cached();
+@@ -2379,6 +2527,17 @@ impl AuthManager {
+         let Some(auth) = self.auth().await else {
+             return Ok(None);
+         };
++        self.agent_identity_auth_for_snapshot(&auth, policy, session_source)
++            .await
++    }
++
++    /// Resolves agent identity from the attempt's auth, never the mutable global selection.
++    pub async fn agent_identity_auth_for_snapshot(
++        &self,
++        auth: &CodexAuth,
++        policy: AgentIdentityAuthPolicy,
++        session_source: SessionSource,
++    ) -> std::io::Result<Option<AgentIdentityAuth>> {
+         if policy == AgentIdentityAuthPolicy::ChatGptAuth && matches!(auth, CodexAuth::Chatgpt(_)) {
+             let _bootstrap_permit = self
+                 .agent_identity_lock
+@@ -2387,7 +2546,7 @@ impl AuthManager {
+                 .map_err(std::io::Error::other)?;
+             let effective_chatgpt_workspaces = self.effective_chatgpt_workspaces();
+             let cooldown_key = ManagedChatGptAgentIdentityBinding::from_auth(
+-                &auth,
++                auth,
+                 effective_chatgpt_workspaces.clone(),
+             )
+             .and_then(|binding| {
+@@ -2614,11 +2773,20 @@ impl AuthManager {
+         &self,
+         external_auth: Arc<dyn ExternalAuth>,
+     ) -> Result<(), RefreshTokenError> {
+-        if self.workload_identity_selected {
++        if self.workload_identity_selected
++            || self
++                .external_auth_provider()
++                .is_some_and(|source| source.is_request_bound())
++        {
+             return Err(permanent_external_auth_error(
+                 "workload identity auth cannot be replaced at runtime",
+             ));
+         }
++        if self.has_rotate_helper() && external_auth.rotate_helper().is_none() {
++            return Err(permanent_external_auth_error(
++                "Codex Rotate owns ChatGPT credentials; external-token login cannot replace it",
++            ));
++        }
+         self.install_external_auth(external_auth).await
+     }
+
+@@ -2639,7 +2807,11 @@ impl AuthManager {
+     }
+
+     pub fn clear_external_auth(&self) {
+-        if self.workload_identity_selected {
++        if self.workload_identity_selected
++            || self
++                .external_auth_provider()
++                .is_some_and(|source| source.is_request_bound())
++        {
+             return;
+         }
+         if let Ok(mut external_auth) = self.external_auth.write()
+@@ -2688,6 +2860,12 @@ impl AuthManager {
+         self.external_auth_provider().is_some()
+     }
+
++    /// Whether first-party requests are owned by the personal credential authority.
++    pub fn has_rotate_helper(&self) -> bool {
++        self.external_auth_provider()
++            .is_some_and(|auth| auth.rotate_helper().is_some())
++    }
++
+     pub fn is_workload_identity_selected(&self) -> bool {
+         self.workload_identity_selected
+     }
+@@ -2740,6 +2918,13 @@ impl AuthManager {
+         enable_codex_api_key_env: bool,
+     ) -> Result<Arc<Self>, AuthManagerInitializationError> {
+         let external_auth = WorkloadIdentityExternalAuth::from_process_config(&auth_config)?;
++        let rotation = auth_config.codex_rotate_helper.clone();
++        if rotation.is_some() && external_auth.is_some() {
++            return Err(permanent_external_auth_error(
++                "Codex Rotate cannot replace workload identity",
++            )
++            .into());
++        }
+         let mut manager = Self::new_from_auth_config(auth_config, enable_codex_api_key_env).await;
+         manager.workload_identity_selected = external_auth.is_some();
+         let manager = Arc::new(manager);
+@@ -2748,9 +2933,192 @@ impl AuthManager {
+                 .install_external_auth(Arc::new(external_auth))
+                 .await?;
+         }
++        if let Some(argv) = rotation
++            && !manager.auth_cached().is_some_and(|auth| {
++                !matches!(
++                    auth,
++                    CodexAuth::Chatgpt(_) | CodexAuth::ChatgptAuthTokens(_)
++                )
++            })
++        {
++            let helper = RotateHelper::new(argv).map_err(RefreshTokenError::from)?;
++            let helper: Arc<dyn ExternalAuth> = Arc::new(helper);
++            match manager.install_external_auth(Arc::clone(&helper)).await {
++                Ok(()) => {}
++                Err(RefreshTokenError::Transient(error))
++                    if error.kind() == std::io::ErrorKind::NotFound =>
++                {
++                    *manager.external_auth.write().map_err(|_| {
++                        RefreshTokenError::Transient(std::io::Error::other(
++                            "external auth lock is poisoned",
++                        ))
++                    })? = Some(helper);
++                }
++                Err(error) => return Err(error.into()),
++            }
++        }
+         Ok(manager)
+     }
+
++    /// Acquires one immutable request snapshot, with optional same-owner retry pinning.
++    pub async fn auth_for_request(
++        &self,
++        model: Option<&str>,
++        pinned: Option<&CodexAuth>,
++    ) -> std::io::Result<Option<CodexAuth>> {
++        if pinned.is_none()
++            && let Some(auth) = self.scoped_request_auth()
++        {
++            return Ok(Some(auth));
++        }
++        if let Some(external) = self.external_auth_provider()
++            && let Some(helper) = external.rotate_helper()
++        {
++            if let (Some(pinned), Some(scoped)) = (pinned, self.scoped_request_auth()) {
++                let same_owner = pinned
++                    .rotate_identity()
++                    .zip(scoped.rotate_identity())
++                    .is_some_and(|(pinned, scoped)| {
++                        pinned.account_key == scoped.account_key
++                            && pinned.selection_epoch == scoped.selection_epoch
++                    });
++                if !same_owner {
++                    return Err(std::io::Error::other(
++                        "Codex Rotate retry cannot change a scoped request owner",
++                    ));
++                }
++            }
++            let auth = match pinned {
++                Some(auth) => auth.clone(),
++                None => helper.acquire(model, /*pinned*/ None).await?,
++            };
++            self.validate_external_auth(&auth, external.as_ref())?;
++            // A pinned retry must not publish its old owner as the global selection.
++            if pinned.is_none() {
++                self.set_cached_auth(Some(auth.clone()));
++            }
++            return Ok(Some(auth));
++        }
++        Ok(self.auth().await)
++    }
++
++    /// Pins auth-dependent preparation to this exact manager and task. Spawned
++    /// tasks deliberately do not inherit this scope; callers pass snapshots explicitly.
++    pub async fn scope_request_auth<F: Future>(&self, auth: CodexAuth, future: F) -> F::Output {
++        ROTATE_REQUEST_AUTH
++            .scope((std::ptr::from_ref(self) as usize, auth), future)
++            .await
++    }
++
++    /// Forks request-owned auth for spawned MCP consumers. Policies are preserved;
++    /// refreshes are pinned to this account and never publish a global selection.
++    pub fn for_request_snapshot(&self, auth: CodexAuth) -> std::io::Result<Arc<Self>> {
++        let authority = self
++            .external_auth_provider()
++            .filter(|source| source.rotate_helper().is_some())
++            .ok_or_else(|| std::io::Error::other("Codex Rotate authority is unavailable"))?;
++        self.validate_external_auth(&auth, authority.as_ref())?;
++        if auth.rotate_identity().is_none() {
++            return Err(std::io::Error::other(
++                "Codex Rotate request owner is missing",
++            ));
++        }
++        let external: Arc<dyn ExternalAuth> =
++            Arc::new(RequestSnapshotAuth::new(authority, auth.clone()));
++        Ok(Arc::new(Self {
++            codex_home: self.codex_home.clone(),
++            inner: RwLock::new(CachedAuth {
++                auth: Some(auth),
++                permanent_refresh_failure: None,
++            }),
++            auth_change_tx: watch::channel(0).0,
++            auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
++            enable_codex_api_key_env: false,
++            auth_credentials_store_mode: self.auth_credentials_store_mode,
++            keyring_backend_kind: self.keyring_backend_kind,
++            forced_login_method: self.forced_login_method,
++            forced_chatgpt_workspace_id: RwLock::new(self.forced_chatgpt_workspace_id()),
++            managed_auth_policy: self.managed_auth_policy.clone(),
++            chatgpt_base_url: self.chatgpt_base_url.clone(),
++            agent_identity_authapi_base_url: self.agent_identity_authapi_base_url.clone(),
++            refresh_lock: Semaphore::new(/*permits*/ 1),
++            agent_identity_lock: Semaphore::new(/*permits*/ 1),
++            agent_identity_bootstrap_cooldown: Mutex::default(),
++            external_auth: RwLock::new(Some(external)),
++            workload_identity_selected: false,
++            auth_route_config: self.auth_route_config.clone(),
++        }))
++    }
++
++    fn scoped_request_auth(&self) -> Option<CodexAuth> {
++        ROTATE_REQUEST_AUTH
++            .try_with(|(manager, auth)| {
++                (*manager == std::ptr::from_ref(self) as usize).then(|| auth.clone())
++            })
++            .ok()
++            .flatten()
++    }
++
++    /// Refreshes the rejected request owner without consulting or overwriting global selection.
++    pub async fn refresh_request_auth(&self, rejected: &CodexAuth) -> std::io::Result<CodexAuth> {
++        let external = self
++            .external_auth_provider()
++            .ok_or_else(|| std::io::Error::other("Codex Rotate is not configured"))?;
++        let helper = external
++            .rotate_helper()
++            .ok_or_else(|| std::io::Error::other("Codex Rotate is not configured"))?;
++        let auth = helper.refresh_snapshot(rejected).await?;
++        self.validate_external_auth(&auth, external.as_ref())?;
++        Ok(auth)
++    }
++
++    /// Reports only confirmed exhaustion from partial response usage, never
++    /// replacing authoritative full usage with inferred headroom. Call at an
++    /// attempt boundary with the actual request owner.
++    pub async fn report_rotate_usage(
++        &self,
++        auth: &CodexAuth,
++        model: Option<&str>,
++        limits: &codex_protocol::protocol::RateLimitSnapshot,
++    ) {
++        if Self::rotate_usage_is_exhausted(model, limits) {
++            self.report_rotate_exhausted(auth, model, /*reset_at*/ None)
++                .await;
++        }
++    }
++
++    /// Whether a partial response quota confirms actionable request-model
++    /// exhaustion. Used to coalesce reports without losing an earlier bucket.
++    pub fn rotate_usage_is_exhausted(
++        model: Option<&str>,
++        limits: &codex_protocol::protocol::RateLimitSnapshot,
++    ) -> bool {
++        super::rotate::confirms_exhaustion(limits, model)
++    }
++
++    /// Reports only a confirmed subscription-quota error; generic 429s do not
++    /// establish exhaustion and must not call this method.
++    pub async fn report_rotate_exhausted(
++        &self,
++        auth: &CodexAuth,
++        model: Option<&str>,
++        reset_at: Option<i64>,
++    ) {
++        let Some(identity) = auth.rotate_identity() else {
++            return;
++        };
++        if let Some(external) = self.external_auth_provider()
++            && let Some(helper) = external.rotate_helper()
++        {
++            helper
++                .report(
++                    serde_json::json!({"op":"report_exhausted", "account_key":identity.account_key,
++                "model":model, "reset_at":reset_at}),
++                )
++                .await;
++        }
++    }
++
+     pub fn unauthorized_recovery(self: &Arc<Self>) -> UnauthorizedRecovery {
+         UnauthorizedRecovery::new(Arc::clone(self))
+     }
+@@ -2880,12 +3248,41 @@ impl AuthManager {
+         result
+     }
+
+-    /// Log out by deleting the on‑disk auth.json (if present). Returns Ok(true)
+-    /// if a file was removed, Ok(false) if no auth file existed. On success,
+-    /// reloads the in‑memory auth cache so callers immediately observe the
+-    /// unauthenticated state.
++    /// Pauses configured rotation even when explicit API credentials are active,
++    /// then clears native stores without token revocation. Permission checks and
++    /// helper acknowledgement precede every native credential mutation.
++    pub async fn logout_with_rotate_helper(&self, argv: Vec<String>) -> std::io::Result<bool> {
++        self.ensure_logout_allowed()?;
++        RotateHelper::new(argv)?
++            .rpc(serde_json::json!({"op":"logout"}))
++            .await?;
++        // Pause first. A helper failure must leave explicit API credentials
++        // intact, or the next process could fall back to the active pool.
++        logout_all_stores(
++            &self.codex_home,
++            self.auth_credentials_store_mode,
++            self.keyring_backend_kind,
++        )?;
++        if self.has_rotate_helper() {
++            self.set_cached_auth(None);
++        } else {
++            self.clear_external_auth();
++            self.reload().await;
++        }
++        Ok(true)
++    }
++
++    /// Logs out the currently active source without revoking subscription tokens.
++    /// Native stores and the in-memory cache are cleared when no helper is active.
+     pub async fn logout(&self) -> std::io::Result<bool> {
+         self.ensure_logout_allowed()?;
++        if let Some(external) = self.external_auth_provider()
++            && let Some(helper) = external.rotate_helper()
++        {
++            helper.rpc(serde_json::json!({"op": "logout"})).await?;
++            self.set_cached_auth(None);
++            return Ok(true);
++        }
+         let removed = logout_all_stores(
+             &self.codex_home,
+             self.auth_credentials_store_mode,
+@@ -2899,6 +3296,9 @@ impl AuthManager {
+
+     pub async fn logout_with_revoke(&self) -> std::io::Result<bool> {
+         self.ensure_logout_allowed()?;
++        if self.has_rotate_helper() {
++            return self.logout().await;
++        }
+         let auth_dot_json = self
+             .auth_cached()
+             .and_then(|auth| auth.get_current_auth_json());
+@@ -2918,6 +3318,14 @@ impl AuthManager {
+     }
+
+     fn ensure_logout_allowed(&self) -> std::io::Result<()> {
++        if self
++            .external_auth_provider()
++            .is_some_and(|source| source.is_request_bound())
++        {
++            return Err(std::io::Error::other(
++                "request-owned authentication cannot log out",
++            ));
++        }
+         if self.workload_identity_selected {
+             return Err(std::io::Error::new(
+                 std::io::ErrorKind::PermissionDenied,
+@@ -2943,6 +3351,9 @@ impl AuthManager {
+     }
+
+     fn should_refresh_proactively(auth: &CodexAuth) -> bool {
++        if auth.rotate_identity().is_some() {
++            return false;
++        }
+         let chatgpt_auth = match auth {
+             CodexAuth::Chatgpt(chatgpt_auth) => chatgpt_auth,
+             _ => return false,
+@@ -3035,6 +3446,11 @@ impl AuthManager {
+         auth: &ChatgptAuth,
+         refresh_token: String,
+     ) -> Result<(), RefreshTokenError> {
++        if auth.rotation.is_some() {
++            return Err(permanent_external_auth_error(
++                "Codex Rotate refresh requires a request snapshot",
++            ));
++        }
+         let refresh_response = request_chatgpt_token_refresh(refresh_token, auth.client()).await?;
+
+         persist_tokens(
+@@ -3052,6 +3468,7 @@ impl AuthManager {
+
+ fn auth_config_from(config: &impl AuthManagerConfig) -> AuthConfig {
+     AuthConfig {
++        codex_rotate_helper: config.codex_rotate_helper(),
+         codex_home: config.codex_home(),
+         auth_credentials_store_mode: config.cli_auth_credentials_store_mode(),
+         keyring_backend_kind: config.auth_keyring_backend_kind(),
+diff --git a/codex-rs/login/src/auth/mod.rs b/codex-rs/login/src/auth/mod.rs
+index 226255f..68619b1 100644
+--- a/codex-rs/login/src/auth/mod.rs
++++ b/codex-rs/login/src/auth/mod.rs
+@@ -14,6 +14,7 @@ mod workload_identity;
+ mod external_bearer;
+ mod manager;
+ mod revoke;
++mod rotate;
+
+ pub use auth_headers::AuthHeaders;
+ pub use bedrock_access_keys::BedrockAccessKeysAuth;
+@@ -24,4 +25,6 @@ pub use change_state::AuthChangeState;
+ pub use error::RefreshTokenFailedError;
+ pub use error::RefreshTokenFailedReason;
+ pub use manager::*;
++pub use rotate::RotateHelper;
++pub use rotate::RotateIdentity;
+ pub use workload_identity::is_workload_identity_selected;
+diff --git a/codex-rs/login/src/auth/rotate.rs b/codex-rs/login/src/auth/rotate.rs
+new file mode 100644
+index 0000000..14dbbdd
+--- /dev/null
++++ b/codex-rs/login/src/auth/rotate.rs
+@@ -0,0 +1,403 @@
++//! Personal, opt-in credential authority. No refresh credential enters this adapter.
++
++use super::manager::CodexAuth;
++use super::manager::ExternalAuth;
++use super::manager::ExternalAuthFuture;
++use super::manager::ExternalAuthRefreshContext;
++use super::storage::AuthDotJson;
++use super::storage::AuthStorageBackend;
++use codex_protocol::protocol::RateLimitSnapshot;
++use serde::Deserialize;
++use serde::Serialize;
++use serde_json::Value;
++use serde_json::json;
++use std::collections::HashMap;
++use std::io;
++use std::path::Path;
++use std::process::Stdio;
++use std::sync::Arc;
++use std::sync::Mutex;
++use std::time::Duration;
++use tokio::io::AsyncReadExt;
++use tokio::io::AsyncWriteExt;
++use tokio::process::Command;
++
++const MAX_MESSAGE_BYTES: u64 = 128 * 1024;
++const HELPER_TIMEOUT: Duration = Duration::from_secs(50);
++const OBSERVATION_TIMEOUT: Duration = Duration::from_secs(1);
++
++/// Secret-free identity used to bind a request, retry and socket to its credentials.
++#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
++pub struct RotateIdentity {
++    pub account_key: String,
++    pub selection_epoch: u64,
++    pub credential_revision: u64,
++}
++
++#[derive(Deserialize)]
++pub(super) struct RotateSnapshot {
++    #[serde(flatten)]
++    pub identity: RotateIdentity,
++    pub account_id: String,
++    pub access_token: String,
++    pub id_token: Option<String>,
++    pub expires_at: i64,
++}
++
++/// Runs the machine-state helper without a shell or secret-bearing diagnostics.
++pub struct RotateHelper {
++    argv: Vec<String>,
++    auth: Mutex<HashMap<String, CodexAuth>>,
++}
++
++pub(super) struct RequestSnapshotAuth {
++    authority: Arc<dyn ExternalAuth>,
++    current: Mutex<CodexAuth>,
++    update_lock: tokio::sync::Semaphore,
++}
++
++impl RequestSnapshotAuth {
++    pub fn new(authority: Arc<dyn ExternalAuth>, auth: CodexAuth) -> Self {
++        Self {
++            authority,
++            current: Mutex::new(auth),
++            update_lock: tokio::sync::Semaphore::new(/*permits*/ 1),
++        }
++    }
++}
++
++impl ExternalAuth for RequestSnapshotAuth {
++    fn is_request_bound(&self) -> bool {
++        true
++    }
++
++    fn resolve(&self) -> ExternalAuthFuture<'_, CodexAuth> {
++        Box::pin(async {
++            let _update = self
++                .update_lock
++                .acquire()
++                .await
++                .map_err(|_| io::Error::other("Codex Rotate request auth unavailable"))?;
++            let current = self
++                .current
++                .lock()
++                .map_err(|_| io::Error::other("Codex Rotate request auth unavailable"))?
++                .clone();
++            let helper = self
++                .authority
++                .rotate_helper()
++                .ok_or_else(|| io::Error::other("Codex Rotate authority is unavailable"))?;
++            let auth = helper.acquire(/*model*/ None, Some(&current)).await?;
++            *self
++                .current
++                .lock()
++                .map_err(|_| io::Error::other("Codex Rotate request auth unavailable"))? =
++                auth.clone();
++            Ok(auth)
++        })
++    }
++
++    fn refresh(&self, _context: ExternalAuthRefreshContext) -> ExternalAuthFuture<'_, CodexAuth> {
++        Box::pin(async {
++            let _update = self
++                .update_lock
++                .acquire()
++                .await
++                .map_err(|_| io::Error::other("Codex Rotate request auth unavailable"))?;
++            let current = self
++                .current
++                .lock()
++                .map_err(|_| io::Error::other("Codex Rotate request auth unavailable"))?
++                .clone();
++            let helper = self
++                .authority
++                .rotate_helper()
++                .ok_or_else(|| io::Error::other("Codex Rotate authority is unavailable"))?;
++            let auth = helper.refresh_snapshot(&current).await?;
++            *self
++                .current
++                .lock()
++                .map_err(|_| io::Error::other("Codex Rotate request auth unavailable"))? =
++                auth.clone();
++            Ok(auth)
++        })
++    }
++}
++
++pub(super) struct SnapshotStorage(Mutex<Option<AuthDotJson>>);
++
++impl SnapshotStorage {
++    pub fn new(auth: AuthDotJson) -> Self {
++        Self(Mutex::new(Some(auth)))
++    }
++}
++
++impl std::fmt::Debug for SnapshotStorage {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_struct("RotateSnapshotStorage")
++            .finish_non_exhaustive()
++    }
++}
++
++impl AuthStorageBackend for SnapshotStorage {
++    fn load(&self) -> io::Result<Option<AuthDotJson>> {
++        Ok(self
++            .0
++            .lock()
++            .map_err(|_| io::Error::other("Codex Rotate snapshot unavailable"))?
++            .clone())
++    }
++    fn save(&self, auth: &AuthDotJson) -> io::Result<()> {
++        if auth
++            .tokens
++            .as_ref()
++            .is_some_and(|tokens| !tokens.refresh_token.is_empty())
++        {
++            return Err(io::Error::other(
++                "Codex Rotate snapshots cannot store refresh credentials",
++            ));
++        }
++        *self
++            .0
++            .lock()
++            .map_err(|_| io::Error::other("Codex Rotate snapshot unavailable"))? =
++            Some(auth.clone());
++        Ok(())
++    }
++    fn delete(&self) -> io::Result<bool> {
++        Ok(self
++            .0
++            .lock()
++            .map_err(|_| io::Error::other("Codex Rotate snapshot unavailable"))?
++            .take()
++            .is_some())
++    }
++}
++
++impl RotateHelper {
++    pub fn new(argv: Vec<String>) -> io::Result<Self> {
++        if !argv
++            .first()
++            .is_some_and(|program| Path::new(program).is_absolute())
++        {
++            return Err(io::Error::other(
++                "codex_rotate_helper requires an absolute executable",
++            ));
++        }
++        Ok(Self {
++            argv,
++            auth: Mutex::new(HashMap::new()),
++        })
++    }
++
++    pub async fn rpc(&self, mut request: Value) -> io::Result<Value> {
++        request["version"] = json!(1);
++        let input = serde_json::to_vec(&request)
++            .map_err(|_| io::Error::other("invalid Codex Rotate request"))?;
++        if input.len() as u64 > MAX_MESSAGE_BYTES {
++            return Err(io::Error::other("Codex Rotate request exceeds size limit"));
++        }
++        tokio::time::timeout(HELPER_TIMEOUT, async {
++            let mut child = Command::new(&self.argv[0])
++                .args(&self.argv[1..])
++                .stdin(Stdio::piped())
++                .stdout(Stdio::piped())
++                .stderr(Stdio::null())
++                .kill_on_drop(true)
++                .spawn()
++                .map_err(|_| io::Error::other("Codex Rotate helper could not start"))?;
++            let mut stdin = child
++                .stdin
++                .take()
++                .ok_or_else(|| io::Error::other("Codex Rotate helper stdin unavailable"))?;
++            let stdout = child
++                .stdout
++                .take()
++                .ok_or_else(|| io::Error::other("Codex Rotate helper stdout unavailable"))?;
++            let write = async move {
++                stdin.write_all(&input).await?;
++                drop(stdin);
++                Ok::<_, io::Error>(())
++            };
++            let read = async {
++                let mut bytes = Vec::new();
++                stdout
++                    .take(MAX_MESSAGE_BYTES + 1)
++                    .read_to_end(&mut bytes)
++                    .await?;
++                if bytes.len() as u64 > MAX_MESSAGE_BYTES {
++                    return Err(io::Error::other("Codex Rotate response exceeds size limit"));
++                }
++                Ok::<_, io::Error>(bytes)
++            };
++            let (_, bytes) = tokio::try_join!(write, read)
++                .map_err(|_| io::Error::other("Codex Rotate helper I/O failed"))?;
++            let status = child
++                .wait()
++                .await
++                .map_err(|_| io::Error::other("Codex Rotate helper failed"))?;
++            let response: Value = serde_json::from_slice(&bytes)
++                .map_err(|_| io::Error::other("invalid Codex Rotate response"))?;
++            if response.get("version") != Some(&json!(1))
++                || response.get("ok") != Some(&json!(true))
++                || !status.success()
++            {
++                if response.get("version") == Some(&json!(1))
++                    && matches!(
++                        response["error"]["code"].as_str(),
++                        Some("signed_out" | "no_accounts")
++                    )
++                {
++                    return Err(io::Error::new(
++                        io::ErrorKind::NotFound,
++                        "Codex Rotate is signed out; run codex login",
++                    ));
++                }
++                // Never echo a helper-controlled message, code, stdout or stderr.
++                return Err(io::Error::other(
++                    "Codex Rotate unavailable; run codex-rotate doctor",
++                ));
++            }
++            Ok(response)
++        })
++        .await
++        .map_err(|_| io::Error::other("Codex Rotate helper timed out"))?
++    }
++
++    pub(super) async fn report(&self, request: Value) {
++        // Advisory reports never refresh credentials. Dropping a slow helper is
++        // safe and the next preflight can fetch an authoritative usage snapshot.
++        if !matches!(
++            tokio::time::timeout(OBSERVATION_TIMEOUT, self.rpc(request)).await,
++            Ok(Ok(_))
++        ) {
++            tracing::warn!("Codex Rotate usage observation unavailable");
++        }
++    }
++
++    async fn request_auth(&self, request: Value) -> io::Result<CodexAuth> {
++        let response = self.rpc(request).await?;
++        let snapshot: RotateSnapshot = serde_json::from_value(response["snapshot"].clone())
++            .map_err(|_| io::Error::other("invalid Codex Rotate credential snapshot"))?;
++        if snapshot.identity.account_key.is_empty()
++            || snapshot.account_id.is_empty()
++            || snapshot.access_token.is_empty()
++            || snapshot.expires_at <= chrono::Utc::now().timestamp()
++        {
++            return Err(io::Error::other(
++                "Codex Rotate returned unusable credentials",
++            ));
++        }
++        let mut cache = self
++            .auth
++            .lock()
++            .map_err(|_| io::Error::other("Codex Rotate cache unavailable"))?;
++        let key = snapshot.identity.account_key.clone();
++        let auth = CodexAuth::from_rotate_snapshot(snapshot, cache.get(&key))?;
++        if cache.len() >= 32
++            && !cache.contains_key(&key)
++            && let Some(oldest) = cache.keys().next().cloned()
++        {
++            cache.remove(&oldest);
++        }
++        cache.insert(key, auth.clone());
++        Ok(auth)
++    }
++
++    pub async fn acquire(
++        &self,
++        model: Option<&str>,
++        pinned: Option<&CodexAuth>,
++    ) -> io::Result<CodexAuth> {
++        let mut request = json!({"op": "acquire", "model": model});
++        if let Some(identity) = pinned.and_then(CodexAuth::rotate_identity) {
++            request["account_key"] = json!(identity.account_key);
++            request["selection_epoch"] = json!(identity.selection_epoch);
++        }
++        let auth = self.request_auth(request).await?;
++        if let Some(expected) = pinned.and_then(CodexAuth::rotate_identity)
++            && !auth.rotate_identity().is_some_and(|actual| {
++                actual.account_key == expected.account_key
++                    && actual.selection_epoch == expected.selection_epoch
++            })
++        {
++            return Err(io::Error::other(
++                "Codex Rotate changed a pinned request owner",
++            ));
++        }
++        Ok(auth)
++    }
++
++    pub async fn refresh_snapshot(&self, rejected: &CodexAuth) -> io::Result<CodexAuth> {
++        let identity = rejected
++            .rotate_identity()
++            .ok_or_else(|| io::Error::other("Codex Rotate rejected snapshot missing"))?;
++        let auth = self
++            .request_auth(json!({
++                "op": "refresh", "account_key": identity.account_key,
++                "selection_epoch": identity.selection_epoch,
++                "rejected_revision": identity.credential_revision,
++            }))
++            .await?;
++        if !auth.rotate_identity().is_some_and(|actual| {
++            actual.account_key == identity.account_key
++                && actual.selection_epoch == identity.selection_epoch
++                && actual.credential_revision > identity.credential_revision
++        }) || auth.get_account_id() != rejected.get_account_id()
++        {
++            return Err(io::Error::other(
++                "Codex Rotate returned an invalid refresh owner or revision",
++            ));
++        }
++        Ok(auth)
++    }
++}
++
++/// Partial response buckets cannot establish model headroom or a full reset
++/// bound. They can only confirm exhaustion for ordinary or exact-model quota.
++pub(super) fn confirms_exhaustion(limits: &RateLimitSnapshot, model: Option<&str>) -> bool {
++    let ordinary = limits.normal_model_slug.is_none()
++        && limits.limit_id.as_deref().is_none_or(|id| id == "codex");
++    let exact_model = model.is_some_and(|model| {
++        limits.normal_model_slug.as_deref() == Some(model)
++            || limits.limit_id.as_deref() == Some(model)
++            || limits.limit_name.as_deref() == Some(model)
++    });
++    if !ordinary && !exact_model {
++        return false;
++    }
++    limits.spend_control_reached == Some(true)
++        || [&limits.primary, &limits.secondary]
++            .into_iter()
++            .flatten()
++            .any(|window| {
++                window.used_percent.is_finite()
++                    && window.used_percent >= 100.0
++                    && window
++                        .resets_at
++                        .is_none_or(|reset| reset > chrono::Utc::now().timestamp())
++            })
++}
++
++impl ExternalAuth for RotateHelper {
++    fn resolve(&self) -> ExternalAuthFuture<'_, CodexAuth> {
++        Box::pin(self.acquire(/*model*/ None, /*pinned*/ None))
++    }
++
++    fn refresh(&self, _context: ExternalAuthRefreshContext) -> ExternalAuthFuture<'_, CodexAuth> {
++        // Shared-cache 401 recovery cannot safely identify the rejected request.
++        Box::pin(async {
++            Err(io::Error::other(
++                "Codex Rotate refresh requires a request snapshot",
++            ))
++        })
++    }
++
++    fn rotate_helper(&self) -> Option<&RotateHelper> {
++        Some(self)
++    }
++}
++
++#[cfg(test)]
++#[path = "rotate_tests.rs"]
++mod tests;
+diff --git a/codex-rs/login/src/auth/rotate_tests.rs b/codex-rs/login/src/auth/rotate_tests.rs
+new file mode 100644
+index 0000000..e96b7b3
+--- /dev/null
++++ b/codex-rs/login/src/auth/rotate_tests.rs
+@@ -0,0 +1,352 @@
++use super::*;
++use base64::Engine;
++use base64::engine::general_purpose::URL_SAFE_NO_PAD;
++use codex_protocol::auth::AuthMode;
++use pretty_assertions::assert_eq;
++
++fn snapshot(account: &str, revision: u64) -> Value {
++    let claims = json!({ "https://api.openai.com/auth": {
++        "chatgpt_account_id": account, "chatgpt_user_id": "user-a", "chatgpt_plan_type": "pro"
++    }});
++    let jwt = format!(
++        "e30.{}.signature",
++        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap())
++    );
++    json!({ "account_key": account, "account_id": account, "selection_epoch": 7,
++        "credential_revision": revision, "id_token": jwt, "access_token": "synthetic-access",
++        "expires_at": chrono::Utc::now().timestamp() + 3600 })
++}
++
++fn auth(account: &str, revision: u64) -> CodexAuth {
++    CodexAuth::from_rotate_snapshot(
++        serde_json::from_value(snapshot(account, revision)).unwrap(),
++        None,
++    )
++    .unwrap()
++}
++
++#[test]
++fn native_identity_preserved_without_a_refresh_credential() {
++    let auth = auth("account-a", 1);
++    let token = auth.get_token_data().unwrap();
++    assert_eq!(
++        (
++            auth.auth_mode(),
++            auth.get_account_id(),
++            auth.get_chatgpt_user_id(),
++            token.refresh_token
++        ),
++        (
++            AuthMode::Chatgpt,
++            Some("account-a".into()),
++            Some("user-a".into()),
++            String::new()
++        )
++    );
++}
++
++#[test]
++fn rejects_identity_mismatch_and_missing_native_identity() {
++    let mut mismatch = snapshot("account-a", 1);
++    mismatch["account_id"] = json!("account-b");
++    assert!(
++        CodexAuth::from_rotate_snapshot(serde_json::from_value(mismatch).unwrap(), None).is_err()
++    );
++    let mut missing = snapshot("account-a", 1);
++    missing["id_token"] = Value::Null;
++    assert!(
++        CodexAuth::from_rotate_snapshot(serde_json::from_value(missing).unwrap(), None).is_err()
++    );
++}
++
++#[test]
++fn command_must_be_an_absolute_program_not_a_shell_string() {
++    assert!(RotateHelper::new(vec![]).is_err());
++    assert!(RotateHelper::new(vec!["codex-rotate rpc".into()]).is_err());
++}
++
++#[tokio::test]
++async fn request_scope_is_manager_specific_and_not_inherited_by_spawned_tasks() {
++    let manager = super::super::manager::AuthManager::from_auth_for_testing(auth("account-a", 1));
++    let other = super::super::manager::AuthManager::from_auth_for_testing(auth("account-c", 1));
++    let spawned_manager = std::sync::Arc::clone(&manager);
++    manager
++        .scope_request_auth(auth("account-b", 2), async {
++            assert_eq!(
++                manager.auth_cached().unwrap().get_account_id(),
++                Some("account-b".into())
++            );
++            assert_eq!(
++                manager.auth().await.unwrap().get_account_id(),
++                Some("account-b".into())
++            );
++            assert_eq!(
++                manager
++                    .auth_for_request(None, None)
++                    .await
++                    .unwrap()
++                    .unwrap()
++                    .get_account_id(),
++                Some("account-b".into())
++            );
++            assert_eq!(
++                other.auth_cached().unwrap().get_account_id(),
++                Some("account-c".into())
++            );
++            let spawned =
++                tokio::spawn(
++                    async move { spawned_manager.auth_cached().unwrap().get_account_id() },
++                )
++                .await
++                .unwrap();
++            assert_eq!(spawned, Some("account-a".into()));
++        })
++        .await;
++    assert_eq!(
++        manager.auth_cached().unwrap().get_account_id(),
++        Some("account-a".into())
++    );
++}
++
++#[cfg(unix)]
++fn helper(response: Value) -> RotateHelper {
++    let response = serde_json::to_string(&response)
++        .unwrap()
++        .replace('\'', "'\\''");
++    RotateHelper::new(vec![
++        "/bin/sh".into(),
++        "-c".into(),
++        format!("IFS= read -r request; printf '%s' '{response}'"),
++    ])
++    .unwrap()
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn late_refresh_is_bound_to_rejected_owner_and_revision() {
++    let rejected = auth("account-a", 1);
++    let expected = auth("account-a", 2);
++    let authority = helper(json!({"version": 1, "ok": true, "snapshot": snapshot("account-a", 2)}));
++    let refreshed = authority.refresh_snapshot(&rejected).await.unwrap();
++    assert_eq!(refreshed.rotate_identity(), expected.rotate_identity());
++    let wrong_owner =
++        helper(json!({"version": 1, "ok": true, "snapshot": snapshot("account-b", 2)}));
++    assert!(wrong_owner.refresh_snapshot(&rejected).await.is_err());
++    assert!(
++        wrong_owner
++            .acquire(Some("production-model"), Some(&rejected))
++            .await
++            .is_err()
++    );
++    let stale = helper(json!({"version": 1, "ok": true, "snapshot": snapshot("account-a", 1)}));
++    assert!(stale.refresh_snapshot(&rejected).await.is_err());
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn refreshed_snapshot_overrides_scoped_revision_without_changing_owner() {
++    let manager = super::super::manager::AuthManager::from_auth_for_testing(auth("account-a", 1));
++    manager
++        .set_external_auth(std::sync::Arc::new(helper(json!({
++            "version": 1, "ok": true, "snapshot": snapshot("account-a", 1)
++        }))))
++        .await
++        .unwrap();
++    manager
++        .scope_request_auth(auth("account-a", 1), async {
++            let refreshed = auth("account-a", 2);
++            let actual = manager
++                .auth_for_request(None, Some(&refreshed))
++                .await
++                .unwrap()
++                .unwrap();
++            assert_eq!(actual.rotate_identity(), refreshed.rotate_identity());
++            assert!(
++                manager
++                    .auth_for_request(None, Some(&auth("account-b", 2)))
++                    .await
++                    .is_err()
++            );
++        })
++        .await;
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn helper_errors_never_echo_untrusted_output() {
++    let authority = helper(json!({"version": 1, "ok": false,
++        "error": {"code": "synthetic-secret", "message": "synthetic-secret"}}));
++    let message = authority
++        .rpc(json!({"op": "acquire"}))
++        .await
++        .unwrap_err()
++        .to_string();
++    assert!(!message.contains("synthetic-secret"));
++    let signed_out = helper(json!({"version": 1, "ok": false, "error": {"code": "signed_out"}}));
++    assert_eq!(
++        signed_out
++            .rpc(json!({"op": "acquire"}))
++            .await
++            .unwrap_err()
++            .kind(),
++        io::ErrorKind::NotFound
++    );
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn shared_cache_refresh_cannot_guess_the_rejected_snapshot() {
++    let authority = helper(json!({"version": 1, "ok": true, "snapshot": snapshot("account-b", 2)}));
++    let error = authority
++        .refresh(ExternalAuthRefreshContext {
++            reason: super::super::manager::ExternalAuthRefreshReason::Unauthorized,
++            previous_account_id: Some("account-a".into()),
++        })
++        .await
++        .unwrap_err();
++    assert_eq!(
++        error.to_string(),
++        "Codex Rotate refresh requires a request snapshot"
++    );
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn spawned_request_manager_refreshes_only_its_owner_without_native_writes() {
++    let home = tempfile::tempdir().unwrap();
++    let reply = |account, revision| {
++        serde_json::to_string(&json!({
++            "version":1,"ok":true,"snapshot":snapshot(account, revision)
++        }))
++        .unwrap()
++    };
++    let script = format!(
++        r#"IFS= read -r request
++case "$request" in
++  *'"op":"refresh"'*'"rejected_revision":1'*) printf '%s' '{}' ;;
++  *'"account_key":"account-a"'*) printf '%s' '{}' ;;
++  *) printf '%s' '{}' ;;
++esac"#,
++        reply("account-a", 2),
++        reply("account-a", 1),
++        reply("account-b", 1)
++    );
++    let manager = super::super::manager::AuthManager::from_auth_for_testing_with_home(
++        auth("account-b", 1),
++        home.path().to_path_buf(),
++    );
++    manager
++        .set_external_auth(Arc::new(
++            RotateHelper::new(vec!["/bin/sh".into(), "-c".into(), script]).unwrap(),
++        ))
++        .await
++        .unwrap();
++    let competing = RequestSnapshotAuth::new(
++        Arc::new(helper(json!({
++            "version":1,"ok":true,"snapshot":snapshot("account-a", 1)
++        }))),
++        auth("account-a", 1),
++    );
++    assert!(
++        manager
++            .set_external_auth(Arc::new(competing))
++            .await
++            .is_err()
++    );
++    let fork = manager.for_request_snapshot(auth("account-a", 1)).unwrap();
++    let worker = Arc::clone(&fork);
++    let refreshed = tokio::spawn(async move {
++        assert_eq!(
++            worker.auth().await.unwrap().get_account_id().as_deref(),
++            Some("account-a")
++        );
++        worker.refresh_token_from_authority().await.unwrap();
++        worker.auth_cached().unwrap()
++    })
++    .await
++    .unwrap();
++    assert_eq!(
++        refreshed.rotate_identity(),
++        auth("account-a", 2).rotate_identity()
++    );
++    assert_eq!(
++        manager.auth_cached().unwrap().get_account_id().as_deref(),
++        Some("account-b")
++    );
++    assert!(fork.logout().await.is_err());
++    fork.clear_external_auth();
++    assert!(fork.has_external_auth());
++    assert!(!home.path().join("auth.json").exists());
++}
++
++#[test]
++fn rotation_rejects_managed_and_unknown_plans() {
++    for plan in ["business", "enterprise", "edu", "future-plan"] {
++        let claims = json!({"https://api.openai.com/auth": {
++            "chatgpt_account_id":"account-a", "chatgpt_user_id":"user-a", "chatgpt_plan_type":plan
++        }});
++        let mut value = snapshot("account-a", 1);
++        value["id_token"] = json!(format!(
++            "e30.{}.signature",
++            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap())
++        ));
++        assert!(
++            CodexAuth::from_rotate_snapshot(serde_json::from_value(value).unwrap(), None).is_err()
++        );
++    }
++}
++
++#[test]
++fn partial_usage_only_confirms_relevant_exhaustion_not_headroom() {
++    let mut limits: codex_protocol::protocol::RateLimitSnapshot = serde_json::from_value(json!({
++        "limit_id":"other-model", "normal_model_slug":"other-model",
++        "primary":{"used_percent":80.0,"window_minutes":300,"resets_at":9999999999_i64}
++    }))
++    .unwrap();
++    assert!(!confirms_exhaustion(&limits, Some("requested-model")));
++    limits.normal_model_slug = Some("requested-model".into());
++    assert!(!confirms_exhaustion(&limits, Some("requested-model")));
++    limits.primary.as_mut().unwrap().used_percent = 100.0;
++    assert!(confirms_exhaustion(&limits, Some("requested-model")));
++    limits.normal_model_slug = Some("other-model".into());
++    assert!(!confirms_exhaustion(&limits, Some("requested-model")));
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn configured_helper_logout_pauses_before_deleting_explicit_api_credentials() {
++    use codex_config::types::AuthCredentialsStoreMode;
++    for available in [false, true] {
++        let home = tempfile::tempdir().unwrap();
++        crate::login_with_api_key(
++            home.path(),
++            "synthetic-api-key",
++            AuthCredentialsStoreMode::File,
++            crate::AuthKeyringBackendKind::default(),
++        )
++        .unwrap();
++        let path = home.path().join("auth.json");
++        let before = std::fs::read(&path).unwrap();
++        let manager = super::super::manager::AuthManager::from_auth_for_testing_with_home(
++            CodexAuth::from_api_key("synthetic-api-key"),
++            home.path().to_path_buf(),
++        );
++        let response = if available {
++            json!({"version":1,"ok":true})
++        } else {
++            json!({"version":1,"ok":false,"error":{"code":"busy"}})
++        };
++        let result = manager
++            .logout_with_rotate_helper(helper(response).argv)
++            .await;
++        if available {
++            assert!(result.unwrap());
++            assert!(!path.exists());
++            assert!(manager.auth_cached().is_none());
++        } else {
++            assert!(result.is_err());
++            assert_eq!(std::fs::read(&path).unwrap(), before);
++            assert!(manager.auth_cached().unwrap().is_api_key_auth());
++        }
++    }
++}
+diff --git a/codex-rs/login/src/device_code_auth.rs b/codex-rs/login/src/device_code_auth.rs
+index a909da4..3782014 100644
+--- a/codex-rs/login/src/device_code_auth.rs
++++ b/codex-rs/login/src/device_code_auth.rs
+@@ -220,13 +220,11 @@ pub async fn complete_device_code_login(
+     }
+
+     crate::server::persist_tokens_async(
+-        &opts.codex_home,
++        &opts,
+         /*api_key*/ None,
+         tokens.id_token,
+         tokens.access_token,
+         tokens.refresh_token,
+-        opts.cli_auth_credentials_store_mode,
+-        opts.auth_keyring_backend_kind,
+     )
+     .await
+ }
+diff --git a/codex-rs/login/src/server.rs b/codex-rs/login/src/server.rs
+index 677c740..d4555ee 100644
+--- a/codex-rs/login/src/server.rs
++++ b/codex-rs/login/src/server.rs
+@@ -17,7 +17,6 @@ use std::io::Write;
+ use std::io::{self};
+ use std::net::SocketAddr;
+ use std::net::TcpStream;
+-use std::path::Path;
+ use std::path::PathBuf;
+ use std::sync::Arc;
+ use std::sync::LazyLock;
+@@ -68,6 +67,7 @@ static LOGIN_ERROR_PAGE_TEMPLATE: LazyLock<Template> = LazyLock::new(|| {
+ /// Options for launching the local login callback server.
+ #[derive(Debug, Clone)]
+ pub struct ServerOptions {
++    pub codex_rotate_helper: Option<Vec<String>>,
+     pub codex_home: PathBuf,
+     pub client_id: String,
+     pub issuer: String,
+@@ -93,6 +93,7 @@ impl ServerOptions {
+         auth_route_config: AuthRouteConfig,
+     ) -> Self {
+         Self {
++            codex_rotate_helper: None,
+             codex_home,
+             client_id,
+             issuer: DEFAULT_ISSUER.to_string(),
+@@ -435,13 +436,11 @@ async fn process_request(
+                     .await
+                     .ok();
+                     if let Err(err) = persist_tokens_async(
+-                        &opts.codex_home,
++                        opts,
+                         api_key.clone(),
+                         tokens.id_token.clone(),
+                         tokens.access_token.clone(),
+                         tokens.refresh_token.clone(),
+-                        opts.cli_auth_credentials_store_mode,
+-                        opts.auth_keyring_backend_kind,
+                     )
+                     .await
+                     {
+@@ -884,14 +883,58 @@ pub(crate) async fn exchange_code_for_tokens(
+
+ /// Persists exchanged credentials using the configured local auth store.
+ pub(crate) async fn persist_tokens_async(
+-    codex_home: &Path,
++    opts: &ServerOptions,
+     api_key: Option<String>,
+     id_token: String,
+     access_token: String,
+     refresh_token: String,
+-    auth_credentials_store_mode: AuthCredentialsStoreMode,
+-    keyring_backend_kind: AuthKeyringBackendKind,
+ ) -> io::Result<()> {
++    let codex_home = &opts.codex_home;
++    let auth_credentials_store_mode = opts.cli_auth_credentials_store_mode;
++    let keyring_backend_kind = opts.auth_keyring_backend_kind;
++    if let Some(argv) = &opts.codex_rotate_helper {
++        let identity = parse_chatgpt_jwt_claims(&id_token)
++            .map_err(|_| io::Error::other("Codex Rotate login identity is invalid"))?;
++        if !matches!(
++            identity.get_chatgpt_plan_type_raw().as_deref(),
++            Some("free" | "go" | "plus" | "pro" | "prolite")
++        ) || identity.chatgpt_account_is_fedramp
++        {
++            return Err(io::Error::other(
++                "Codex Rotate enrolls known personal ChatGPT plans only; disable rotation for managed login",
++            ));
++        }
++        let account_id = identity
++            .chatgpt_account_id
++            .ok_or_else(|| io::Error::other("Codex Rotate login is missing its account"))?;
++        crate::auth::RotateHelper::new(argv.to_vec())?
++            .rpc(serde_json::json!({
++                "op": "register", "select": true,
++                "auth": { "id_token": id_token, "access_token": access_token,
++                    "refresh_token": refresh_token, "account_id": account_id },
++            }))
++            .await?;
++        if crate::auth::load_auth_dot_json(
++            codex_home,
++            auth_credentials_store_mode,
++            keyring_backend_kind,
++        )?
++        .is_some_and(|stored| {
++            !matches!(
++                stored.resolved_mode(),
++                AuthMode::Chatgpt | AuthMode::ChatgptAuthTokens
++            )
++        }) {
++            // Explicit ChatGPT login replaces a previous API-key/PAT login only
++            // after the new credential authority has acknowledged registration.
++            crate::auth::logout(
++                codex_home,
++                auth_credentials_store_mode,
++                keyring_backend_kind,
++            )?;
++        }
++        return Ok(());
++    }
+     // Reuse existing synchronous logic but run it off the async runtime.
+     let codex_home = codex_home.to_path_buf();
+     tokio::task::spawn_blocking(move || {
+diff --git a/codex-rs/login/tests/suite/login_server_e2e.rs b/codex-rs/login/tests/suite/login_server_e2e.rs
+index fc1b4e6..692d8e0 100644
+--- a/codex-rs/login/tests/suite/login_server_e2e.rs
++++ b/codex-rs/login/tests/suite/login_server_e2e.rs
+@@ -125,6 +125,7 @@ async fn end_to_end_login_flow_persists_auth_json() -> Result<()> {
+     let server_home = codex_home.clone();
+
+     let opts = ServerOptions {
++        codex_rotate_helper: None,
+         codex_home: server_home,
+         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
+@@ -198,6 +199,7 @@ async fn hosted_login_redirects_to_configured_open_app_url() -> Result<()> {
+     let issuer = format!("http://{}:{}", issuer_addr.ip(), issuer_addr.port());
+     let tmp = tempdir()?;
+     let server = run_login_server(ServerOptions {
++        codex_rotate_helper: None,
+         codex_home: tmp.path().to_path_buf(),
+         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
+@@ -251,6 +253,7 @@ async fn creates_missing_codex_home_dir() -> Result<()> {
+     // Run server in background
+     let server_home = codex_home.clone();
+     let opts = ServerOptions {
++        codex_rotate_helper: None,
+         codex_home: server_home,
+         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
+@@ -294,6 +297,7 @@ async fn login_server_includes_forced_workspaces_as_one_query_param() -> Result<
+     let state = "state-multi".to_string();
+
+     let opts = ServerOptions {
++        codex_rotate_helper: None,
+         codex_home,
+         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
+@@ -338,6 +342,7 @@ async fn forced_chatgpt_workspace_id_mismatch_blocks_login() -> Result<()> {
+     let state = "state-mismatch".to_string();
+
+     let opts = ServerOptions {
++        codex_rotate_helper: None,
+         codex_home: codex_home.clone(),
+         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
+@@ -401,6 +406,7 @@ async fn oauth_access_denied_missing_entitlement_blocks_login_with_clear_error()
+     let state = "state-entitlement".to_string();
+
+     let opts = ServerOptions {
++        codex_rotate_helper: None,
+         codex_home: codex_home.clone(),
+         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
+@@ -472,6 +478,7 @@ async fn oauth_access_denied_unknown_reason_uses_generic_error_page() -> Result<
+     let state = "state-generic-denial".to_string();
+
+     let opts = ServerOptions {
++        codex_rotate_helper: None,
+         codex_home: codex_home.clone(),
+         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
+@@ -622,6 +629,7 @@ async fn cancels_previous_login_server_when_port_is_in_use() -> Result<()> {
+     let first_codex_home = first_tmp.path().to_path_buf();
+
+     let first_opts = ServerOptions {
++        codex_rotate_helper: None,
+         codex_home: first_codex_home,
+         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
+@@ -646,6 +654,7 @@ async fn cancels_previous_login_server_when_port_is_in_use() -> Result<()> {
+     let second_codex_home = second_tmp.path().to_path_buf();
+
+     let second_opts = ServerOptions {
++        codex_rotate_helper: None,
+         codex_home: second_codex_home,
+         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
+diff --git a/codex-rs/model-provider/src/auth.rs b/codex-rs/model-provider/src/auth.rs
+index f4d2764..9e7d24d 100644
+--- a/codex-rs/model-provider/src/auth.rs
++++ b/codex-rs/model-provider/src/auth.rs
+@@ -244,12 +244,12 @@ pub(crate) async fn resolve_provider_auth_for_scope(
+         return resolve_provider_auth(auth, provider).map(ResolvedProviderAuth::new);
+     }
+
+-    let Some(auth_manager) = auth_manager else {
++    let (Some(auth_manager), Some(snapshot)) = (auth_manager, auth) else {
+         return resolve_provider_auth(auth, provider).map(ResolvedProviderAuth::new);
+     };
+
+     match auth_manager
+-        .agent_identity_auth(agent_identity_policy, session_source)
++        .agent_identity_auth_for_snapshot(snapshot, agent_identity_policy, session_source)
+         .await
+     {
+         Ok(Some(agent_identity_auth)) => Ok(ResolvedProviderAuth::for_agent_identity(
+diff --git a/codex-rs/model-provider/src/provider.rs b/codex-rs/model-provider/src/provider.rs
+index 027850b..1491077 100644
+--- a/codex-rs/model-provider/src/provider.rs
++++ b/codex-rs/model-provider/src/provider.rs
+@@ -214,7 +214,43 @@ pub trait ModelProvider: fmt::Debug + Send + Sync {
+     /// Returns the current provider-scoped auth value, if one is configured.
+     fn auth(&self) -> ModelProviderFuture<'_, Option<CodexAuth>>;
+
++    /// Resolves a first-party request from one immutable credential snapshot.
++    /// Non-rotation providers retain their existing customized auth and routing.
++    fn rotate_request_setup<'a>(
++        &'a self,
++        model: Option<&'a str>,
++        pinned: Option<&'a CodexAuth>,
++        scope: ProviderAuthScope,
++    ) -> ModelProviderFuture<
++        'a,
++        codex_protocol::error::Result<Option<(CodexAuth, Provider, ResolvedProviderAuth)>>,
++    > {
++        Box::pin(async move {
++            if !provider_uses_first_party_auth_path(self.info()) {
++                return Ok(None);
++            }
++            let Some(manager) = self.auth_manager() else {
++                return Ok(None);
++            };
++            if !manager.has_rotate_helper() {
++                return Ok(None);
++            }
++            let auth = manager
++                .auth_for_request(model, pinned)
++                .await?
++                .ok_or_else(|| {
++                    CodexErr::InvalidRequest("Codex Rotate is signed out".to_string())
++                })?;
++            let mut provider = self.info().to_api_provider(Some(auth.auth_mode()))?;
++            enforce_managed_residency(&mut provider);
++            let resolved =
++                resolve_provider_auth_for_scope(Some(manager), Some(&auth), self.info(), scope)
++                    .await?;
++            Ok(Some((auth, provider, resolved)))
++        })
++    }
++
+     /// Returns the current app-visible account state for this provider.
+     fn account_state(&self) -> ProviderAccountResult;
+
+     /// Maps an API client error into the provider's user-facing error representation.
