@@ -369,7 +369,7 @@ index aa7c99700c..e8f6bba15e 100644
                      thread_settings,
                      start_options,
 diff --git a/codex-rs/core/src/session/input_queue.rs b/codex-rs/core/src/session/input_queue.rs
-index 3efdb90b0c..d5adf3c71c 100644
+index 3efdb90b0c..fd994c81c8 100644
 --- a/codex-rs/core/src/session/input_queue.rs
 +++ b/codex-rs/core/src/session/input_queue.rs
 @@ -6,10 +6,12 @@ use codex_diagnostics::GaugeGuard;
@@ -547,7 +547,7 @@ index 3efdb90b0c..d5adf3c71c 100644
  }
  
  #[cfg(test)]
-@@ -656,4 +757,99 @@ mod tests {
+@@ -656,4 +757,100 @@ mod tests {
              .await;
          assert!(input_queue.has_trigger_turn_mailbox_items().await);
      }
@@ -559,6 +559,7 @@ index 3efdb90b0c..d5adf3c71c 100644
 +                text_elements: Vec::new(),
 +            }],
 +            client_id: Some(client_id.to_string()),
++            acceptance_order: None,
 +        }
 +    }
 +
@@ -778,7 +779,7 @@ index b064e24566..55a8a5811a 100644
  
  async fn merge_additional_context_input(
 diff --git a/codex-rs/core/src/session/turn_input_tests.rs b/codex-rs/core/src/session/turn_input_tests.rs
-index 8c2d7c5b6a..7a76f34176 100644
+index 8c2d7c5b6a..52a73001a5 100644
 --- a/codex-rs/core/src/session/turn_input_tests.rs
 +++ b/codex-rs/core/src/session/turn_input_tests.rs
 @@ -21,6 +21,9 @@ use codex_protocol::protocol::AskForApproval;
@@ -908,7 +909,7 @@ index 8c2d7c5b6a..7a76f34176 100644
 +    )
 +    .await;
 +
-+    let (drained, _, _) = session
++    let (drained, _) = session
 +        .input_queue
 +        .get_pending_input(&session.active_turn)
 +        .await;
@@ -966,7 +967,7 @@ index 8c2d7c5b6a..7a76f34176 100644
 +            }
 +        }
 +    );
-+    let (pending, _, _) = session
++    let (pending, _) = session
 +        .input_queue
 +        .get_pending_input(&session.active_turn)
 +        .await;
