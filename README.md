@@ -19,7 +19,7 @@ for macOS (`aarch64-apple-darwin`) and Linux (`x86_64-unknown-linux-musl`), each
 `.sha256` checksum. No Nix required:
 
 ```sh
-tag=codex-0.137.0-patch.2
+tag=codex-0.154.0-patch.3
 target=aarch64-apple-darwin   # or x86_64-unknown-linux-musl
 base=https://github.com/salty-flower/codex-patch-overlay/releases/download/$tag
 curl -fsSL -O "$base/$tag-$target.tar.gz"
@@ -34,6 +34,46 @@ Or consume the Nix overlay, which always tracks the latest patch release:
 ```nix
 inputs.codex-patch-overlay.url = "github:salty-flower/codex-patch-overlay/latest-release";
 ```
+
+## Personal account switching
+
+Account switching is opt-in through `codex_rotate_helper`.
+The `codex-rotate` helper is a separate dependency, included in neither the release tarballs nor this Nix overlay.
+Its maintained source currently lives in the private machine-state repository; obtain access or supply a compatible version-1 helper separately.
+With access to a machine-state checkout, build its exported `codex-rotate` flake package on `aarch64-darwin` or `x86_64-linux`:
+
+```sh
+nix build /absolute/path/to/machine-state#codex-rotate
+```
+
+Create a helper settings file, for example `/absolute/path/codex-rotate.json`:
+
+```json
+{"state_dir": "/absolute/path/codex-rotate-state", "automatic": false}
+```
+
+Add this top-level key to your Codex `config.toml`, using the installed helper's absolute executable path:
+
+```toml
+codex_rotate_helper = ["/absolute/path/bin/codex-rotate", "--config", "/absolute/path/codex-rotate.json", "rpc"]
+```
+
+Run the patched `codex login` or `codex login --device-auth` to enroll and select a fresh account directly through the helper.
+Only personal Free, Go, Plus, Pro and ProLite accounts are supported; managed, Business, Enterprise, Edu and unknown account contexts are rejected.
+To import an existing `auth.json`, first stop every native or proxy process that can refresh those credentials, and keep those old refresh writers stopped:
+
+```sh
+/absolute/path/bin/codex-rotate --config /absolute/path/codex-rotate.json import --writers-stopped --select /absolute/path/auth.json
+```
+
+Use the helper's `list` command to inspect profiles and `switch <account-key-or-unique-label>` to select the account for subsequent model steps.
+Automatic quota-based selection is a helper setting, disabled by default with `automatic: false`.
+The helper's `enable` command opts in; automatic selection stays dormant until at least two profiles are enabled.
+The helper's `disable` command only pauses automatic selection; it does not remove the configured credential authority.
+Pass the same `--config /absolute/path/codex-rotate.json` to these helper commands.
+
+Bedrock credential transitions have local RPC coverage only; real AWS authentication and inference remain untested.
+See the [account-transition verification record](docs/records/2026-09-13-codex-rotate-review-fixes.md) for the tested boundaries.
 
 ## Contract
 
