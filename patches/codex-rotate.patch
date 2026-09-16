@@ -3884,10 +3884,10 @@ index 226255f..68619b1 100644
  pub use workload_identity::is_workload_identity_selected;
 diff --git a/codex-rs/login/src/auth/rotate.rs b/codex-rs/login/src/auth/rotate.rs
 new file mode 100644
-index 0000000..45b6aa5
+index 0000000..2fcb8d1
 --- /dev/null
 +++ b/codex-rs/login/src/auth/rotate.rs
-@@ -0,0 +1,466 @@
+@@ -0,0 +1,490 @@
 +//! Personal, opt-in credential authority. No refresh credential enters this adapter.
 +
 +use super::manager::CodexAuth;
@@ -3933,19 +3933,39 @@ index 0000000..45b6aa5
 +    #[cfg(test)]
 +    pub(super) fn process_exists(pid: i32) -> bool {
 +        // SAFETY: signal zero checks existence/permission without sending a signal.
-+        unsafe { kill(pid, /*signal*/ 0) } == 0
++        unsafe { kill(pid, /*signal*/ 0) == 0 }
 +    }
 +}
 +
 +// Keep this guard alive until after wait(), including when the RPC future is
 +// cancelled by either timeout. kill_on_drop alone only kills the direct child.
 +#[cfg(unix)]
-+struct HelperProcessGroup(u32);
++struct HelperProcessGroup {
++    pid: u32,
++    // A helper that answered and exited is finished work, not abandoned work.
++    // Only an abandoned RPC may signal the group, so a completed call can never
++    // SIGKILL a recycled process group.
++    armed: bool,
++}
++
++#[cfg(unix)]
++impl HelperProcessGroup {
++    fn new(pid: u32) -> Self {
++        Self { pid, armed: true }
++    }
++
++    fn disarm(&mut self) {
++        self.armed = false;
++    }
++}
 +
 +#[cfg(unix)]
 +impl Drop for HelperProcessGroup {
 +    fn drop(&mut self) {
-+        if let Ok(pid) = i32::try_from(self.0) {
++        if !self.armed {
++            return;
++        }
++        if let Ok(pid) = i32::try_from(self.pid) {
 +            // SAFETY: process_group(0) makes the spawned child's PID its PGID;
 +            // a positive PID targets only that helper's group, never our own.
 +            unix_process::kill_group(pid);
@@ -4138,7 +4158,7 @@ index 0000000..45b6aa5
 +                .spawn()
 +                .map_err(|_| io::Error::other("Codex Rotate helper could not start"))?;
 +            #[cfg(unix)]
-+            let _process_group = child.id().map(HelperProcessGroup);
++            let mut process_group = child.id().map(HelperProcessGroup::new);
 +            let mut stdin = child
 +                .stdin
 +                .take()
@@ -4169,6 +4189,10 @@ index 0000000..45b6aa5
 +                .wait()
 +                .await
 +                .map_err(|_| io::Error::other("Codex Rotate helper failed"))?;
++            #[cfg(unix)]
++            if let Some(group) = process_group.as_mut() {
++                group.disarm();
++            }
 +            let response: Value = serde_json::from_slice(&bytes)
 +                .map_err(|_| io::Error::other("invalid Codex Rotate response"))?;
 +            if response.get("version") != Some(&json!(1))

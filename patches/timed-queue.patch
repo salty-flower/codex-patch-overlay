@@ -131,7 +131,7 @@ index f45ae82..6c58f20 100644
              chat_keymap,
              permission_shortcut_pending: false,
 diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
-index 97d3e59..7379e83 100644
+index 97d3e59..da0f540 100644
 --- a/codex-rs/tui/src/chatwidget/input_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/input_flow.rs
 @@ -124,6 +124,10 @@ impl ChatWidget {
@@ -157,39 +157,10 @@ index 97d3e59..7379e83 100644
                  break;
              };
              match queued_message.action {
-@@ -229,6 +236,110 @@ impl ChatWidget {
+@@ -229,6 +236,81 @@ impl ChatWidget {
          submitted_follow_up
      }
  
-+    #[allow(dead_code)]
-+    pub(super) fn schedule_user_message(
-+        &mut self,
-+        user_message: UserMessage,
-+        delay: std::time::Duration,
-+        label: String,
-+    ) {
-+        let Some(thread_id) = self.thread_id else {
-+            self.add_error_message(
-+                "Session is still starting; try /later again in a moment.".to_string(),
-+            );
-+            return;
-+        };
-+        let not_before = std::time::Instant::now() + delay;
-+        let target_time = chrono::Local::now() + delay;
-+        self.input_queue.queued_user_messages.push_back(
-+            QueuedUserMessage::from(user_message)
-+                .scheduled_for(not_before)
-+                .with_schedule_label(label.clone())
-+                .with_schedule_target_time(target_time),
-+        );
-+        self.input_queue
-+            .queued_user_message_history_records
-+            .push_back(UserMessageHistoryRecord::UserMessageText);
-+        self.refresh_pending_input_preview();
-+        self.add_info_message(format!("Scheduled follow-up input {label}."), None);
-+        let _ = thread_id;
-+    }
-+
 +    pub(super) fn schedule_user_message_at(
 +        &mut self,
 +        user_message: UserMessage,
@@ -268,7 +239,7 @@ index 97d3e59..7379e83 100644
      pub(crate) fn is_user_turn_pending_or_running(&self) -> bool {
          self.input_queue.user_turn_pending_start
              || self.turn_lifecycle.agent_turn_running
-@@ -246,7 +357,7 @@ impl ChatWidget {
+@@ -246,7 +328,7 @@ impl ChatWidget {
      }
  
      /// Rebuild and update the bottom-pane pending-input preview.
@@ -277,7 +248,7 @@ index 97d3e59..7379e83 100644
          let has_queued = self.has_queued_follow_up_messages();
          if let Some(questions) = &mut self.bottom_pane.questions {
              questions.has_queued_messages = has_queued;
-@@ -257,6 +368,9 @@ impl ChatWidget {
+@@ -257,6 +339,9 @@ impl ChatWidget {
              preview.pending_steers,
              preview.rejected_steers,
          );
