@@ -1585,10 +1585,18 @@ index 4c21c06..c93f05f 100644
              web_search_config,
              experimental_request_user_input_enabled,
 diff --git a/codex-rs/core/src/session/mcp.rs b/codex-rs/core/src/session/mcp.rs
-index d4505ea..7ace671 100644
+index d4505ea..761adff 100644
 --- a/codex-rs/core/src/session/mcp.rs
 +++ b/codex-rs/core/src/session/mcp.rs
-@@ -179,6 +179,16 @@ impl Session {
+@@ -1,4 +1,7 @@
+ use super::mcp_refresh::McpRefreshInvalidationGuard;
++use super::mcp_refresh::PUBLICATION_BACKOFF;
++use super::mcp_refresh::PublicationClaim;
++use super::mcp_refresh::PublicationRounds;
+ use super::*;
+ use crate::environment_selection::combine_selected_capability_roots;
+ use codex_exec_server::ExecutorCapabilityDiscoveryCache;
+@@ -179,6 +182,19 @@ impl Session {
              error!("MCP runtime refresh semaphore closed");
              return;
          };
@@ -1599,29 +1607,33 @@ index d4505ea..7ace671 100644
 +        self: &Arc<Self>,
 +        _guard: &tokio::sync::SemaphorePermit<'_>,
 +    ) -> bool {
-+        // A publication may dirty its own inputs. Retry once, then yield the
-+        // gate with the dirty bit intact rather than monopolizing an idle task.
-+        let mut remaining_publications = 2;
++        // A publication may dirty its own inputs. Allow a small burst per
++        // round, then a bounded pause before the next round, so a transient
++        // re-invalidation settles instead of failing the caller's turn on the
++        // first burst. An unbounded publisher still gives the gate back with
++        // the dirty bit intact rather than monopolizing an idle task.
++        let mut rounds = PublicationRounds::new();
          loop {
              let environments = self.services.turn_environments.snapshot().await;
              let ready_environments = environments
-@@ -207,8 +217,13 @@ impl Session {
+@@ -207,8 +223,14 @@ impl Session {
                  self.mark_mcp_runtime_dirty();
              }
  
 -            if !self.mcp_refresh.claim() {
 -                return;
-+            match self
-+                .mcp_refresh
-+                .claim_with_budget(&mut remaining_publications)
-+            {
-+                Ok(true) => {}
-+                Ok(false) => return true,
-+                Err(()) => return false,
++            match rounds.claim(&self.mcp_refresh) {
++                PublicationClaim::Claimed => {}
++                PublicationClaim::Idle => return true,
++                PublicationClaim::Pause => {
++                    tokio::time::sleep(PUBLICATION_BACKOFF).await;
++                    continue;
++                }
++                PublicationClaim::Exhausted => return false,
              }
              let mut refresh_invalidation = McpRefreshInvalidationGuard {
                  refresh: &self.mcp_refresh,
-@@ -244,13 +259,18 @@ impl Session {
+@@ -244,13 +266,18 @@ impl Session {
                      executor_capability_discovery.as_deref(),
                  )
                  .await;
@@ -1647,7 +1659,7 @@ index d4505ea..7ace671 100644
              refresh_invalidation.published = true;
          }
      }
-@@ -324,7 +344,7 @@ impl Session {
+@@ -324,7 +351,7 @@ impl Session {
              mcp_projection,
              &ready_selected_capability_roots,
              Some(self.mcp_elicitation_reviewer()),
@@ -1656,7 +1668,7 @@ index d4505ea..7ace671 100644
          anyhow::ensure!(
              input.mcp_servers.contains_key(CODEX_APPS_MCP_SERVER_NAME),
              "unknown MCP server '{CODEX_APPS_MCP_SERVER_NAME}'"
-@@ -345,7 +365,7 @@ impl Session {
+@@ -345,7 +372,7 @@ impl Session {
          selected_capability_roots: &[ResolvedSelectedCapabilityRoot],
          required_servers: &[String],
          required_plugins: &HashSet<String>,
@@ -1665,7 +1677,7 @@ index d4505ea..7ace671 100644
          let ready_selected_capability_roots =
              Self::ready_selected_capability_roots(selected_capability_roots);
          if self
-@@ -372,7 +392,32 @@ impl Session {
+@@ -372,7 +399,32 @@ impl Session {
          {
              self.mark_mcp_runtime_dirty();
          }
@@ -1699,7 +1711,7 @@ index d4505ea..7ace671 100644
          let required_servers = required_servers
              .iter()
              .chain(&recovered_oauth_servers)
-@@ -384,10 +429,10 @@ impl Session {
+@@ -384,10 +436,10 @@ impl Session {
              .current_binding_with_requirements(&required_servers, required_plugins)
              .await
          {
@@ -1712,7 +1724,7 @@ index d4505ea..7ace671 100644
      }
  
      #[tracing::instrument(
-@@ -704,13 +749,17 @@ impl Session {
+@@ -704,13 +756,17 @@ impl Session {
              .await;
          let mut desired = self.latest_mcp_desired_state(auth).await;
          desired.config = Arc::new(refresh_config.clone());
@@ -1738,10 +1750,17 @@ index d4505ea..7ace671 100644
  
      pub(crate) fn ready_selected_capability_roots(
 diff --git a/codex-rs/core/src/session/mcp_refresh.rs b/codex-rs/core/src/session/mcp_refresh.rs
-index 9afd414..5a76562 100644
+index 9afd414..349cb3d 100644
 --- a/codex-rs/core/src/session/mcp_refresh.rs
 +++ b/codex-rs/core/src/session/mcp_refresh.rs
-@@ -22,11 +22,26 @@ impl McpRefresh {
+@@ -1,5 +1,6 @@
+ use std::sync::atomic::AtomicBool;
+ use std::sync::atomic::Ordering;
++use std::time::Duration;
+ use tokio::sync::AcquireError;
+ use tokio::sync::Semaphore;
+ use tokio::sync::SemaphorePermit;
+@@ -22,11 +23,26 @@ impl McpRefresh {
          self.pending.store(true, Ordering::Release);
      }
  
@@ -1769,7 +1788,68 @@ index 9afd414..5a76562 100644
      pub(super) fn claim(&self) -> bool {
          self.pending.swap(false, Ordering::AcqRel)
      }
-@@ -54,3 +69,27 @@ impl Drop for McpRefreshInvalidationGuard<'_> {
+@@ -41,6 +57,60 @@ impl McpRefresh {
+     }
+ }
+ 
++/// Publications allowed before an in-gate refresh pauses to let a
++/// self-invalidating publisher settle.
++const PUBLICATIONS_PER_ROUND: usize = 2;
++/// Rounds of publications plus backoff before a refresh reports failure.
++const PUBLICATION_ROUNDS: usize = 3;
++/// Pause between rounds. Bounded, so a wedged publisher cannot hold the gate.
++pub(super) const PUBLICATION_BACKOFF: Duration = Duration::from_millis(/*millis*/ 50);
++
++/// How the next in-gate publication attempt should proceed.
++pub(super) enum PublicationClaim {
++    /// Publish now.
++    Claimed,
++    /// Nothing is pending; the refresh is already up to date.
++    Idle,
++    /// This round is spent while work is still pending; pause and start a
++    /// fresh round.
++    Pause,
++    /// Every round is spent and work is still pending.
++    Exhausted,
++}
++
++/// Bounded retry policy for a publisher whose own publication dirties its
++/// inputs. Retrying once is not enough for a transient invalidation, and
++/// retrying forever monopolizes an idle task, so a spent round buys a short
++/// pause and a fresh round until the rounds run out.
++pub(super) struct PublicationRounds {
++    remaining_publications: usize,
++    remaining_rounds: usize,
++}
++
++impl PublicationRounds {
++    pub(super) fn new() -> Self {
++        Self {
++            remaining_publications: PUBLICATIONS_PER_ROUND,
++            remaining_rounds: PUBLICATION_ROUNDS,
++        }
++    }
++
++    pub(super) fn claim(&mut self, refresh: &McpRefresh) -> PublicationClaim {
++        match refresh.claim_with_budget(&mut self.remaining_publications) {
++            Ok(true) => PublicationClaim::Claimed,
++            Ok(false) => PublicationClaim::Idle,
++            Err(()) => {
++                if self.remaining_rounds <= 1 {
++                    return PublicationClaim::Exhausted;
++                }
++                self.remaining_rounds -= 1;
++                self.remaining_publications = PUBLICATIONS_PER_ROUND;
++                PublicationClaim::Pause
++            }
++        }
++    }
++}
++
+ /// Restores a claimed refresh when its task is cancelled before publication.
+ pub(super) struct McpRefreshInvalidationGuard<'a> {
+     pub(super) refresh: &'a McpRefresh,
+@@ -54,3 +124,65 @@ impl Drop for McpRefreshInvalidationGuard<'_> {
          }
      }
  }
@@ -1795,6 +1875,44 @@ index 9afd414..5a76562 100644
 +        let mut next_budget = 2;
 +        assert_eq!(refresh.claim_with_budget(&mut next_budget), Ok(true));
 +        assert_eq!(refresh.claim_with_budget(&mut next_budget), Ok(false));
++    }
++
++    #[test]
++    fn a_spent_round_pauses_then_a_fresh_round_claims_again() {
++        let refresh = McpRefresh::new();
++        let mut rounds = PublicationRounds::new();
++        for _ in 0..PUBLICATIONS_PER_ROUND {
++            refresh.invalidate();
++            assert!(matches!(rounds.claim(&refresh), PublicationClaim::Claimed));
++        }
++        refresh.invalidate();
++        assert!(matches!(rounds.claim(&refresh), PublicationClaim::Pause));
++        assert!(refresh.is_pending());
++        // The pause is what makes the next publication possible at all.
++        assert!(matches!(rounds.claim(&refresh), PublicationClaim::Claimed));
++        assert!(!refresh.is_pending());
++        assert!(matches!(rounds.claim(&refresh), PublicationClaim::Idle));
++    }
++
++    #[test]
++    fn exhausted_rounds_stop_retrying_with_work_still_pending() {
++        let refresh = McpRefresh::new();
++        let mut rounds = PublicationRounds::new();
++        let mut pauses = 0;
++        loop {
++            refresh.invalidate();
++            match rounds.claim(&refresh) {
++                PublicationClaim::Claimed => continue,
++                PublicationClaim::Pause => {
++                    pauses += 1;
++                    assert!(pauses < PUBLICATION_ROUNDS);
++                }
++                PublicationClaim::Exhausted => break,
++                PublicationClaim::Idle => panic!("pending work must never report idle"),
++            }
++        }
++        assert_eq!(pauses, PUBLICATION_ROUNDS - 1);
++        assert!(refresh.is_pending());
 +    }
 +}
 diff --git a/codex-rs/core/src/session/mcp_runtime.rs b/codex-rs/core/src/session/mcp_runtime.rs
