@@ -2815,10 +2815,18 @@ index 0000000000..3ca160bcb1
 +    }
 +}
 diff --git a/codex-rs/tui/src/tui/frame_requester.rs b/codex-rs/tui/src/tui/frame_requester.rs
-index 9dc117bd48..2b98dac5a7 100644
+index 9dc117bd48..90f5dcfdc1 100644
 --- a/codex-rs/tui/src/tui/frame_requester.rs
 +++ b/codex-rs/tui/src/tui/frame_requester.rs
-@@ -29,7 +29,34 @@ use super::frame_rate_limiter::FrameRateLimiter;
+@@ -12,6 +12,7 @@
+ //! [“Actors with Tokio”](https://ryhl.io/blog/actors-with-tokio/), with a
+ //! dedicated scheduler task and lightweight request handles.
+ 
++use std::collections::BTreeSet;
+ use std::time::Duration;
+ use std::time::Instant;
+ 
+@@ -29,7 +30,34 @@ use super::frame_rate_limiter::FrameRateLimiter;
  /// from anywhere in the TUI code.
  #[derive(Clone, Debug)]
  pub struct FrameRequester {
@@ -2854,13 +2862,13 @@ index 9dc117bd48..2b98dac5a7 100644
  }
  
  impl FrameRequester {
-@@ -47,12 +74,29 @@ impl FrameRequester {
+@@ -47,12 +75,29 @@ impl FrameRequester {
  
      /// Schedule a frame draw as soon as possible.
      pub fn schedule_frame(&self) {
 -        let _ = self.frame_schedule_tx.send(Instant::now());
 +        let _ = self.frame_schedule_tx.send(FrameSchedule {
-+            draw_at: Instant::now(),
++            draw_at: tokio::time::Instant::now().into_std(),
 +            preserve_after_earlier_draw: false,
 +        });
      }
@@ -2869,7 +2877,7 @@ index 9dc117bd48..2b98dac5a7 100644
      pub fn schedule_frame_in(&self, dur: Duration) {
 -        let _ = self.frame_schedule_tx.send(Instant::now() + dur);
 +        let _ = self.frame_schedule_tx.send(FrameSchedule {
-+            draw_at: Instant::now() + dur,
++            draw_at: tokio::time::Instant::now().into_std() + dur,
 +            preserve_after_earlier_draw: false,
 +        });
 +    }
@@ -2880,13 +2888,13 @@ index 9dc117bd48..2b98dac5a7 100644
 +    /// the delay even when unrelated activity requests an immediate frame.
 +    pub fn schedule_frame_in_guaranteed(&self, dur: Duration) {
 +        let _ = self.frame_schedule_tx.send(FrameSchedule {
-+            draw_at: Instant::now() + dur,
++            draw_at: tokio::time::Instant::now().into_std() + dur,
 +            preserve_after_earlier_draw: true,
 +        });
      }
  }
  
-@@ -74,14 +118,17 @@ impl FrameRequester {
+@@ -74,14 +119,17 @@ impl FrameRequester {
  /// To avoid wasted redraw work, draw notifications are clamped to a maximum of 120 FPS (see
  /// [`FrameRateLimiter`]).
  struct FrameScheduler {
@@ -2906,20 +2914,23 @@ index 9dc117bd48..2b98dac5a7 100644
          Self {
              receiver,
              draw_tx,
-@@ -96,19 +143,30 @@ impl FrameScheduler {
+@@ -96,19 +144,33 @@ impl FrameScheduler {
      async fn run(mut self) {
          const ONE_YEAR: Duration = Duration::from_secs(60 * 60 * 24 * 365);
          let mut next_deadline: Option<Instant> = None;
-+        let mut next_guaranteed_deadline: Option<Instant> = None;
++        let mut guaranteed_deadlines = BTreeSet::new();
          loop {
 -            let target = next_deadline.unwrap_or_else(|| Instant::now() + ONE_YEAR);
-+            let target = match (next_deadline, next_guaranteed_deadline) {
+-            let deadline = tokio::time::sleep_until(target.into());
++            let target = match (next_deadline, guaranteed_deadlines.first().copied()) {
 +                (Some(deadline), Some(guaranteed)) => deadline.min(guaranteed),
 +                (Some(deadline), None) => deadline,
 +                (None, Some(guaranteed)) => guaranteed,
-+                (None, None) => Instant::now() + ONE_YEAR,
++                (None, None) => tokio::time::Instant::now().into_std() + ONE_YEAR,
 +            };
-             let deadline = tokio::time::sleep_until(target.into());
++            // A retained deadline may now be too close to the last draw.
++            let fire_at = self.rate_limiter.clamp_deadline(target);
++            let deadline = tokio::time::sleep_until(fire_at.into());
              tokio::pin!(deadline);
  
              tokio::select! {
@@ -2933,29 +2944,42 @@ index 9dc117bd48..2b98dac5a7 100644
 -                    let draw_at = self.rate_limiter.clamp_deadline(draw_at);
 -                    next_deadline = Some(next_deadline.map_or(draw_at, |cur| cur.min(draw_at)));
 +                    let draw_at = self.rate_limiter.clamp_deadline(request.draw_at);
-+                    let deadline = if request.preserve_after_earlier_draw {
-+                        &mut next_guaranteed_deadline
++                    if request.preserve_after_earlier_draw {
++                        // An earlier refresh cannot satisfy a newer deadline: the
++                        // status command may not be due again until that later time.
++                        guaranteed_deadlines.insert(draw_at);
 +                    } else {
-+                        &mut next_deadline
-+                    };
-+                    *deadline = Some(deadline.map_or(draw_at, |cur| cur.min(draw_at)));
++                        next_deadline = Some(next_deadline.map_or(draw_at, |cur| cur.min(draw_at)));
++                    }
  
                      // Do not send a draw immediately here. By continuing the loop,
                      // we recompute the sleep target so the draw fires once via the
-@@ -120,6 +178,12 @@ impl FrameScheduler {
+@@ -116,9 +178,22 @@ impl FrameScheduler {
+                     continue;
+                 }
+                 _ = &mut deadline => {
+-                    if next_deadline.is_some() {
++                    // Consume every request satisfied by this draw, but preserve
++                    // deadlines whose effective fire time is still later.
++                    let ordinary_due = next_deadline
++                        .is_some_and(|at| self.rate_limiter.clamp_deadline(at) <= fire_at);
++                    if ordinary_due {
                          next_deadline = None;
-                         self.rate_limiter.mark_emitted(Instant::now());
+-                        self.rate_limiter.mark_emitted(Instant::now());
++                    }
++                    let mut guaranteed_due = false;
++                    while guaranteed_deadlines.first().is_some_and(|at| {
++                        self.rate_limiter.clamp_deadline(*at) <= fire_at
++                    }) {
++                        guaranteed_deadlines.pop_first();
++                        guaranteed_due = true;
++                    }
++                    if ordinary_due || guaranteed_due {
++                        self.rate_limiter.mark_emitted(tokio::time::Instant::now().into_std());
                          let _ = self.draw_tx.send(());
-+                    } else if next_guaranteed_deadline.is_some() {
-+                        // The guaranteed deadline fired on its own: no earlier
-+                        // unrelated draw consumed it, so emit its refresh draw.
-+                        next_guaranteed_deadline = None;
-+                        self.rate_limiter.mark_emitted(Instant::now());
-+                        let _ = self.draw_tx.send(());
                      }
                  }
-             }
-@@ -135,7 +199,7 @@ mod tests {
+@@ -135,7 +210,7 @@ mod tests {
  
      impl FrameRequester {
          /// Create a frame requester and expose its request channel for deterministic tests.
@@ -2964,7 +2988,7 @@ index 9dc117bd48..2b98dac5a7 100644
              let (tx, rx) = mpsc::unbounded_channel();
              (
                  FrameRequester {
-@@ -244,6 +308,31 @@ mod tests {
+@@ -244,6 +319,196 @@ mod tests {
          assert!(second.is_err(), "unexpected extra draw received");
      }
  
@@ -2993,11 +3017,181 @@ index 9dc117bd48..2b98dac5a7 100644
 +        assert!(second.is_ok(), "broadcast closed unexpectedly");
 +    }
 +
++    #[tokio::test(flavor = "current_thread", start_paused = true)]
++    async fn test_earlier_guaranteed_draw_preserves_later_ordinary_deadline() {
++        let (draw_tx, mut draw_rx) = broadcast::channel(16);
++        let requester = FrameRequester::new(draw_tx);
++
++        requester.schedule_frame_in(Duration::from_millis(200));
++        requester.schedule_frame_in_guaranteed(Duration::from_millis(100));
++
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(90))
++            .await
++            .expect_err("neither deadline is due yet");
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(20))
++            .await
++            .expect("guaranteed deadline should fire first")
++            .expect("broadcast closed unexpectedly");
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(50))
++            .await
++            .expect_err("guaranteed deadline must emit only once");
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(60))
++            .await
++            .expect("later ordinary deadline must survive")
++            .expect("broadcast closed unexpectedly");
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(50))
++            .await
++            .expect_err("both deadlines have been consumed");
++    }
++
++    #[tokio::test(flavor = "current_thread", start_paused = true)]
++    async fn test_equal_ordinary_and_guaranteed_deadlines_emit_once() {
++        let (draw_tx, mut draw_rx) = broadcast::channel(16);
++        let requester = FrameRequester::new(draw_tx);
++
++        // The paused clock gives both requests exactly the same deadline.
++        requester.schedule_frame_in(Duration::from_millis(100));
++        requester.schedule_frame_in_guaranteed(Duration::from_millis(100));
++        requester.schedule_frame_in_guaranteed(Duration::from_millis(100));
++
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(110))
++            .await
++            .expect("shared deadline should fire")
++            .expect("broadcast closed unexpectedly");
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(110))
++            .await
++            .expect_err("equal deadlines must be consumed by a single draw");
++    }
++
++    #[tokio::test(flavor = "current_thread", start_paused = true)]
++    async fn test_rate_limited_deadlines_coalesce_at_same_effective_fire_time() {
++        let (draw_tx, mut draw_rx) = broadcast::channel(16);
++        let requester = FrameRequester::new(draw_tx);
++
++        requester.schedule_frame_in(Duration::from_millis(5));
++        requester.schedule_frame_in_guaranteed(Duration::ZERO);
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(10))
++            .await
++            .expect("guaranteed deadline should fire first")
++            .expect("broadcast closed unexpectedly");
++
++        // Both retained requests are clamped to the same earliest legal draw.
++        requester.schedule_frame_in_guaranteed(Duration::from_millis(1));
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(10))
++            .await
++            .expect("coalesced retained deadlines should fire")
++            .expect("broadcast closed unexpectedly");
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(20))
++            .await
++            .expect_err("one draw must consume both effective deadlines");
++    }
++
++    #[tokio::test(flavor = "current_thread", start_paused = true)]
++    async fn test_newer_guaranteed_deadlines_survive_an_older_refresh() {
++        let (draw_tx, mut draw_rx) = broadcast::channel(16);
++        let requester = FrameRequester::new(draw_tx);
++
++        requester.schedule_frame_in_guaranteed(Duration::from_millis(100));
++        // Model a status refresh rescheduled before the old timer has fired.
++        // Its new interval is not due at the old timer, so losing the new timer
++        // would stop periodic refresh altogether.
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(50))
++            .await
++            .expect_err("old refresh is not due yet");
++        requester.schedule_frame_in_guaranteed(Duration::from_millis(150));
++        requester.schedule_frame_in_guaranteed(Duration::from_millis(100));
++
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(60))
++            .await
++            .expect("old guaranteed deadline must still fire")
++            .expect("broadcast closed unexpectedly");
++        for _ in 0..2 {
++            draw_rx
++                .recv()
++                .timeout(Duration::from_millis(20))
++                .await
++                .expect_err("later guaranteed deadlines must not fire early");
++            draw_rx
++                .recv()
++                .timeout(Duration::from_millis(40))
++                .await
++                .expect("each newer guaranteed deadline must survive")
++                .expect("broadcast closed unexpectedly");
++        }
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(110))
++            .await
++            .expect_err("all guaranteed deadlines have been consumed");
++    }
++
++    #[tokio::test(flavor = "current_thread", start_paused = true)]
++    async fn test_retained_deadline_respects_frame_rate_limit() {
++        let (draw_tx, mut draw_rx) = broadcast::channel(16);
++        let requester = FrameRequester::new(draw_tx);
++
++        requester.schedule_frame_in(Duration::from_millis(100));
++        requester.schedule_frame_in_guaranteed(Duration::from_millis(101));
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(110))
++            .await
++            .expect("ordinary deadline should fire first")
++            .expect("broadcast closed unexpectedly");
++        let first_draw = time::Instant::now();
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(5))
++            .await
++            .expect_err("retained deadline must be clamped after the earlier draw");
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(10))
++            .await
++            .expect("rate-limited guaranteed deadline must still fire")
++            .expect("broadcast closed unexpectedly");
++        assert!(first_draw.elapsed() >= MIN_FRAME_INTERVAL);
++        draw_rx
++            .recv()
++            .timeout(Duration::from_millis(20))
++            .await
++            .expect_err("retained deadline must emit only once");
++    }
++
      #[tokio::test(flavor = "current_thread", start_paused = true)]
      async fn test_limits_draw_notifications_to_120fps() {
          let (draw_tx, mut draw_rx) = broadcast::channel(16);
-@@ -282,7 +371,10 @@ mod tests {
-         let delayed_deadline = Instant::now() - MIN_FRAME_INTERVAL.saturating_mul(2);
+@@ -279,10 +544,14 @@ mod tests {
+     async fn test_late_draw_still_limits_the_next_frame() {
+         let (draw_tx, mut draw_rx) = broadcast::channel(16);
+         let requester = FrameRequester::new(draw_tx);
+-        let delayed_deadline = Instant::now() - MIN_FRAME_INTERVAL.saturating_mul(2);
++        let delayed_deadline =
++            tokio::time::Instant::now().into_std() - MIN_FRAME_INTERVAL.saturating_mul(2);
          requester
              .frame_schedule_tx
 -            .send(delayed_deadline)

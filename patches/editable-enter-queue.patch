@@ -1059,11 +1059,72 @@ index 4819d0fb9b..1d0b56d01b 100644
 +    /// A live turn already contains this client-provided user message id.
 +    DuplicateClientUserMessageId { client_id: String },
  }
+diff --git a/codex-rs/tui/src/app/app_server_events.rs b/codex-rs/tui/src/app/app_server_events.rs
+index a8317b3145..30490a24fa 100644
+--- a/codex-rs/tui/src/app/app_server_events.rs
++++ b/codex-rs/tui/src/app/app_server_events.rs
+@@ -320,12 +320,12 @@ impl App {
+                         .into_iter()
+                         .chain(self.agents_overview.input_states.get_mut(&thread_id))
+                     {
+-                        if input
++                        if let Some(index) = input
+                             .pending_steers
+-                            .front()
+-                            .is_some_and(|pending| pending.client_id == *client_id)
++                            .iter()
++                            .position(|pending| pending.client_id == *client_id)
+                         {
+-                            input.pending_steers.pop_front();
++                            input.pending_steers.remove(index);
+                         }
+                     }
+                 }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 7685beddb1..695fabfe18 100644
+index 7685beddb1..6e9e9284d2 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -755,6 +755,34 @@ impl App {
+@@ -24,6 +24,30 @@ use codex_config::types::WindowsSandboxModeToml;
+ const SHUTDOWN_FIRST_EXIT_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 2);
+ 
+ impl App {
++    pub(super) async fn resolve_steer_recall(
++        &mut self,
++        thread_id: ThreadId,
++        client_user_message_id: String,
++        result: std::result::Result<codex_app_server_protocol::TurnSteerRecallStatus, String>,
++    ) {
++        // Overview and channel snapshots can coexist. Update both so either restoration path
++        // observes the decision, even if a switch happened while the request was in flight.
++        if let Some(channel) = self.thread_event_channels.get(&thread_id)
++            && let Some(input) = channel.store.lock().await.input_state.as_mut()
++        {
++            input.on_steer_recall_resolved(&client_user_message_id, &result);
++        }
++        if let Some(input) = self.agents_overview.input_states.get_mut(&thread_id) {
++            input.on_steer_recall_resolved(&client_user_message_id, &result);
++        }
++        if self.current_displayed_thread_id() == Some(thread_id)
++            && self.chat_widget.thread_id() == Some(thread_id)
++        {
++            self.chat_widget
++                .on_steer_recall_resolved(client_user_message_id, result);
++        }
++    }
++
+     pub(super) async fn handle_event(
+         &mut self,
+         tui: &mut tui::Tui,
+@@ -40,6 +64,8 @@ impl App {
+                     | AppEvent::BeginThreadSwitchHistoryReplayBuffer
+                     | AppEvent::EndInitialHistoryReplayBuffer
+                     | AppEvent::FatalExitRequest(_)
++                    | AppEvent::RecallPendingSteer { .. }
++                    | AppEvent::SteerRecallResolved { .. }
+             )
+         {
+             return Ok(AppRunControl::Continue);
+@@ -755,6 +781,33 @@ impl App {
              AppEvent::FatalExitRequest(message) => {
                  return Ok(AppRunControl::Exit(ExitReason::Fatal(message)));
              }
@@ -1072,32 +1133,332 @@ index 7685beddb1..695fabfe18 100644
 +                expected_turn_id,
 +                client_user_message_id,
 +            } => {
-+                let result = app_server
-+                    .turn_steer_recall(thread_id, expected_turn_id, client_user_message_id.clone())
-+                    .await
-+                    .map(|response| response.status)
-+                    .map_err(|error| error.to_string());
-+                self.app_event_tx.send(AppEvent::SteerRecallResolved {
-+                    thread_id,
-+                    client_user_message_id,
-+                    result,
-+                });
++                if self.reconnect.offline {
++                    self.resolve_steer_recall(
++                        thread_id,
++                        client_user_message_id,
++                        Err("app-server is offline".to_string()),
++                    ).await;
++                } else {
++                    app_server.recall_pending_steer(
++                        thread_id,
++                        expected_turn_id,
++                        client_user_message_id,
++                        self.app_event_tx.clone(),
++                    );
++                }
 +            }
 +            AppEvent::SteerRecallResolved {
 +                thread_id,
 +                client_user_message_id,
 +                result,
 +            } => {
-+                if self.active_thread_id == Some(thread_id)
-+                    && self.chat_widget.thread_id() == Some(thread_id)
-+                {
-+                    self.chat_widget
-+                        .on_steer_recall_resolved(client_user_message_id, result);
-+                }
++                self.resolve_steer_recall(thread_id, client_user_message_id, result).await;
 +            }
              AppEvent::CodexOp(mut op) => {
                  if let AppCommand::OverrideTurnContext {
                      cwd,
+diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
+index 64c8bda18d..a0583b4cfc 100644
+--- a/codex-rs/tui/src/app/tests.rs
++++ b/codex-rs/tui/src/app/tests.rs
+@@ -72,6 +72,7 @@ async fn drain_managed_worktree_start(app: &mut App, server: &mut AppServerSessi
+ use codex_utils_absolute_path::test_support::PathExt;
+ 
+ use crate::chatwidget::ChatWidgetInit;
++use crate::chatwidget::ThreadInputStateRestoreMode;
+ use crate::chatwidget::create_initial_user_message;
+ use crate::chatwidget::tests::helpers::render_bottom_popup;
+ use crate::chatwidget::tests::helpers::set_active_cell;
+@@ -191,6 +192,288 @@ macro_rules! assert_app_snapshot {
+     };
+ }
+ 
++async fn prepare_recall_test_thread(app: &mut App, thread_id: ThreadId) {
++    let session = test_thread_session(thread_id, app.config.cwd.to_path_buf());
++    app.thread_event_channels.insert(
++        thread_id,
++        ThreadEventChannel::new_with_session(16, session.clone(), Vec::new()),
++    );
++    app.activate_thread_channel(thread_id).await;
++    app.chat_widget.handle_thread_session(session);
++    app.chat_widget
++        .handle_server_notification(turn_started_notification(thread_id, "turn-1"), None);
++    app.chat_widget.apply_external_edit("recall me".into());
++    app.chat_widget
++        .handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
++    assert_eq!(
++        app.chat_widget
++            .capture_thread_input_state()
++            .unwrap()
++            .pending_steers
++            .len(),
++        1
++    );
++    app.chat_widget
++        .handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::ALT));
++    app.chat_widget.apply_external_edit("saved draft".into());
++}
++
++#[tokio::test]
++async fn delayed_recall_survives_thread_switch_for_every_outcome() -> Result<()> {
++    use codex_app_server_protocol::TurnSteerRecallStatus;
++    for result in [
++        Ok(TurnSteerRecallStatus::Recalled),
++        Ok(TurnSteerRecallStatus::AlreadyRecalled),
++        Ok(TurnSteerRecallStatus::AlreadyConsumed),
++        Ok(TurnSteerRecallStatus::NotFound),
++        Err("transport error".to_string()),
++    ] {
++        for switch_back_before_reply in [false, true] {
++            let (mut app, mut events, _ops) = make_test_app_with_channels().await;
++            let owner = ThreadId::new();
++            prepare_recall_test_thread(&mut app, owner).await;
++            let input = app.chat_widget.capture_thread_input_state().unwrap();
++            let client_id = input.pending_steers[0].client_id.clone();
++            while events.try_recv().is_ok() {}
++            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
++            let task = crate::app_server_session::spawn_steer_recall(
++                owner,
++                client_id.clone(),
++                app.app_event_tx.clone(),
++                async move { reply_rx.await.expect("test reply") },
++            );
++            tokio::task::yield_now().await;
++            assert!(
++                !task.is_finished(),
++                "recall is still waiting for the server"
++            );
++            app.store_active_thread_receiver().await;
++            app.agents_overview
++                .input_states
++                .insert(owner, input.clone());
++            let other = ThreadId::new();
++            app.active_thread_id = Some(other);
++            app.chat_widget
++                .handle_thread_session(test_thread_session(other, app.config.cwd.to_path_buf()));
++            app.chat_widget.restore_thread_input_state(
++                None,
++                ThreadInputStateRestoreMode {
++                    preserve_in_flight_turn: true,
++                },
++            );
++            app.chat_widget.apply_external_edit("other draft".into());
++            if switch_back_before_reply {
++                app.active_thread_id = Some(owner);
++                app.chat_widget.handle_thread_session(test_thread_session(
++                    owner,
++                    app.config.cwd.to_path_buf(),
++                ));
++                app.chat_widget.restore_thread_input_state(
++                    Some(input),
++                    ThreadInputStateRestoreMode {
++                        preserve_in_flight_turn: true,
++                    },
++                );
++            }
++            reply_tx
++                .send(result.clone())
++                .expect("pending recall receiver");
++            task.await?;
++            let event = std::iter::from_fn(|| events.try_recv().ok())
++                .find(|event| matches!(event, AppEvent::SteerRecallResolved { .. }))
++                .expect("keyed completion");
++            let AppEvent::SteerRecallResolved {
++                thread_id,
++                client_user_message_id,
++                result: received,
++            } = event
++            else {
++                unreachable!()
++            };
++            assert_eq!((thread_id, &client_user_message_id), (owner, &client_id));
++            assert_eq!(received, result);
++            app.resolve_steer_recall(thread_id, client_user_message_id, received)
++                .await;
++            let saved = app.thread_event_channels[&owner]
++                .store
++                .lock()
++                .await
++                .input_state
++                .clone()
++                .unwrap();
++            assert_eq!(saved, app.agents_overview.input_states[&owner]);
++            if !switch_back_before_reply {
++                assert_eq!(app.chat_widget.composer_text_with_pending(), "other draft");
++                app.active_thread_id = Some(owner);
++                app.chat_widget.handle_thread_session(test_thread_session(
++                    owner,
++                    app.config.cwd.to_path_buf(),
++                ));
++                app.chat_widget.restore_thread_input_state(
++                    Some(saved),
++                    ThreadInputStateRestoreMode {
++                        preserve_in_flight_turn: true,
++                    },
++                );
++            }
++            let recalled = matches!(
++                result,
++                Ok(TurnSteerRecallStatus::Recalled | TurnSteerRecallStatus::AlreadyRecalled)
++            );
++            assert_eq!(
++                app.chat_widget.composer_text_with_pending(),
++                if recalled {
++                    "recall me\nsaved draft"
++                } else {
++                    "saved draft"
++                }
++            );
++            let pending = app
++                .chat_widget
++                .capture_thread_input_state()
++                .unwrap()
++                .pending_steers;
++            assert_eq!(
++                pending.len(),
++                usize::from(
++                    result.is_err() || result == Ok(TurnSteerRecallStatus::AlreadyConsumed)
++                )
++            );
++            while events.try_recv().is_ok() {}
++            app.chat_widget
++                .handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::ALT));
++            let can_retry = std::iter::from_fn(|| events.try_recv().ok())
++                .any(|event| matches!(event, AppEvent::RecallPendingSteer { .. }));
++            assert_eq!(
++                can_retry,
++                result.is_err(),
++                "only failed recall becomes editable again"
++            );
++        }
++    }
++    Ok(())
++}
++
++#[tokio::test(start_paused = true)]
++async fn recall_timeout_and_cancellation_post_recoverable_keyed_completion() {
++    for cancel in [false, true] {
++        let (mut app, mut events, _ops) = make_test_app_with_channels().await;
++        let owner = ThreadId::new();
++        prepare_recall_test_thread(&mut app, owner).await;
++        let client_id = app
++            .chat_widget
++            .capture_thread_input_state()
++            .unwrap()
++            .pending_steers[0]
++            .client_id
++            .clone();
++        while events.try_recv().is_ok() {}
++        let task = crate::app_server_session::spawn_steer_recall(
++            owner,
++            client_id.clone(),
++            app.app_event_tx.clone(),
++            std::future::pending(),
++        );
++        if cancel {
++            task.abort(); // Also exercises cancellation before the first poll.
++        } else {
++            tokio::task::yield_now().await;
++            tokio::time::advance(crate::app_server_session::STEER_RECALL_TIMEOUT).await;
++        }
++        let _ = task.await;
++        let AppEvent::SteerRecallResolved {
++            thread_id,
++            client_user_message_id,
++            result,
++        } = events.try_recv().expect("completion on every exit")
++        else {
++            panic!("expected recall completion")
++        };
++        assert_eq!((thread_id, &client_user_message_id), (owner, &client_id));
++        assert_eq!(
++            result,
++            Err(if cancel {
++                "request cancelled"
++            } else {
++                "request timed out"
++            }
++            .to_string())
++        );
++        app.resolve_steer_recall(thread_id, client_user_message_id, result)
++            .await;
++        while events.try_recv().is_ok() {}
++        app.chat_widget
++            .handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::ALT));
++        assert!(matches!(
++            events.try_recv(),
++            Ok(AppEvent::RecallPendingSteer { .. })
++        ));
++    }
++}
++
++#[tokio::test]
++async fn inactive_committed_steer_is_removed_out_of_order_before_recall_reply() -> Result<()> {
++    let (mut app, _events, _ops) = make_test_app_with_channels().await;
++    let owner = ThreadId::new();
++    prepare_recall_test_thread(&mut app, owner).await;
++    let mut input = app.chat_widget.capture_thread_input_state().unwrap();
++    let target_id = input.pending_steers[0].client_id.clone();
++    let mut first = input.pending_steers[0].clone();
++    first.client_id = "different-id-same-text".into();
++    input.pending_steers.push_front(first.clone());
++    app.thread_event_channels[&owner]
++        .store
++        .lock()
++        .await
++        .input_state = Some(input.clone());
++    app.agents_overview.input_states.insert(owner, input);
++    app.active_thread_id = Some(ThreadId::new());
++    let mut server = crate::start_embedded_app_server_for_picker(&app.config).await?;
++    for id in ["unknown-id", target_id.as_str(), target_id.as_str()] {
++        app.handle_app_server_event(
++            &server,
++            codex_app_server_client::AppServerEvent::ServerNotification(Box::new(
++                ServerNotification::ItemCompleted(
++                    codex_app_server_protocol::ItemCompletedNotification {
++                        thread_id: owner.to_string(),
++                        turn_id: "turn-1".into(),
++                        completed_at_ms: 0,
++                        item: ThreadItem::UserMessage {
++                            id: "committed".into(),
++                            client_id: Some(id.into()),
++                            content: vec![],
++                        },
++                    },
++                ),
++            )),
++        )
++        .await;
++        let saved = app.thread_event_channels[&owner]
++            .store
++            .lock()
++            .await
++            .input_state
++            .clone()
++            .unwrap();
++        assert_eq!(saved, app.agents_overview.input_states[&owner]);
++        assert_eq!(
++            saved.pending_steers.len(),
++            if id == "unknown-id" { 2 } else { 1 }
++        );
++        assert_eq!(saved.pending_steers[0], first);
++    }
++    let before_reply = app.agents_overview.input_states[&owner].clone();
++    app.resolve_steer_recall(
++        owner,
++        target_id,
++        Ok(codex_app_server_protocol::TurnSteerRecallStatus::AlreadyConsumed),
++    )
++    .await;
++    assert_eq!(app.agents_overview.input_states[&owner], before_reply);
++    server.shutdown().await?;
++    Ok(())
++}
++
+ fn test_absolute_path(path: &str) -> AbsolutePathBuf {
+     AbsolutePathBuf::try_from(PathBuf::from(path)).expect("absolute test path")
+ }
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
 index edca3298f4..d9c5d6472a 100644
 --- a/codex-rs/tui/src/app_event.rs
@@ -1132,10 +1493,18 @@ index edca3298f4..d9c5d6472a 100644
      RetrySafetyBufferedTurn {
          thread_id: ThreadId,
 diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index 9583524099..14f3aa331f 100644
+index 9583524099..65f558c0fe 100644
 --- a/codex-rs/tui/src/app_server_session.rs
 +++ b/codex-rs/tui/src/app_server_session.rs
-@@ -125,6 +125,8 @@ use codex_app_server_protocol::TurnInterruptResponse;
+@@ -18,6 +18,7 @@ pub(crate) use history::HISTORY_ITEM_SCAN_LIMIT;
+ pub(crate) use history::HistoryHydrationScope;
+ pub(crate) use history::thread_items_page_params;
+ 
++use crate::app_event::AppEvent;
+ use crate::app_event::PermissionProfileSelection;
+ use crate::app_event_sender::AppEventSender;
+ use crate::bottom_pane::FeedbackAudience;
+@@ -125,6 +126,8 @@ use codex_app_server_protocol::TurnInterruptResponse;
  use codex_app_server_protocol::TurnStartParams;
  use codex_app_server_protocol::TurnStartResponse;
  use codex_app_server_protocol::TurnSteerParams;
@@ -1144,27 +1513,92 @@ index 9583524099..14f3aa331f 100644
  use codex_app_server_protocol::TurnSteerResponse;
  use codex_app_server_protocol::UserInput;
  use codex_config::ConfigLayerSource;
-@@ -1407,6 +1409,25 @@ impl AppServerSession {
+@@ -163,6 +166,52 @@ const JSONRPC_METHOD_NOT_FOUND: i64 = -32601;
+ const JSONRPC_INVALID_PARAMS: i64 = -32602;
+ pub(crate) const EXTERNAL_AGENT_CONFIG_IMPORT_IN_PROGRESS_MESSAGE: &str = "A previous external agent import is still running. Wait for it to finish before importing again.";
+ const THREAD_SETTINGS_UPDATE_METHOD: &str = "thread/settings/update";
++pub(crate) const STEER_RECALL_TIMEOUT: Duration = Duration::from_secs(10);
++
++// Construct the guard before spawning: cancellation before the first poll must also resolve
++// the keyed request. Dropping the request future on timeout never blocks the TUI event loop.
++pub(crate) fn spawn_steer_recall(
++    thread_id: ThreadId,
++    client_user_message_id: String,
++    app_event_tx: AppEventSender,
++    request: impl std::future::Future<
++        Output = std::result::Result<codex_app_server_protocol::TurnSteerRecallStatus, String>,
++    > + Send
++    + 'static,
++) -> tokio::task::JoinHandle<()> {
++    struct Completion {
++        thread_id: ThreadId,
++        client_user_message_id: String,
++        app_event_tx: AppEventSender,
++        result:
++            Option<std::result::Result<codex_app_server_protocol::TurnSteerRecallStatus, String>>,
++    }
++    impl Drop for Completion {
++        fn drop(&mut self) {
++            self.app_event_tx.send(AppEvent::SteerRecallResolved {
++                thread_id: self.thread_id,
++                client_user_message_id: self.client_user_message_id.clone(),
++                result: self
++                    .result
++                    .take()
++                    .unwrap_or_else(|| Err("request cancelled".to_string())),
++            });
++        }
++    }
++    let mut completion = Completion {
++        thread_id,
++        client_user_message_id,
++        app_event_tx,
++        result: None,
++    };
++    tokio::spawn(async move {
++        completion.result = Some(
++            tokio::time::timeout(STEER_RECALL_TIMEOUT, request)
++                .await
++                .unwrap_or_else(|_| Err("request timed out".to_string())),
++        );
++    })
++}
+ 
+ #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+ pub(crate) enum ForkGoalContinuation {
+@@ -1407,6 +1456,37 @@ impl AppServerSession {
              .await
      }
  
-+    pub(crate) async fn turn_steer_recall(
++    pub(crate) fn recall_pending_steer(
 +        &mut self,
 +        thread_id: ThreadId,
 +        expected_turn_id: String,
 +        client_user_message_id: String,
-+    ) -> std::result::Result<TurnSteerRecallResponse, TypedRequestError> {
++        app_event_tx: AppEventSender,
++    ) {
 +        let request_id = self.next_request_id();
-+        self.client
-+            .request_typed(ClientRequest::TurnSteerRecall {
-+                request_id,
-+                params: TurnSteerRecallParams {
-+                    thread_id: thread_id.to_string(),
-+                    expected_turn_id,
-+                    client_user_message_id,
-+                },
-+            })
-+            .await
++        let request_handle = self.request_handle();
++        let params = TurnSteerRecallParams {
++            thread_id: thread_id.to_string(),
++            expected_turn_id,
++            client_user_message_id: client_user_message_id.clone(),
++        };
++        spawn_steer_recall(
++            thread_id,
++            client_user_message_id,
++            app_event_tx,
++            async move {
++                request_handle
++                    .request_typed::<TurnSteerRecallResponse>(ClientRequest::TurnSteerRecall {
++                        request_id,
++                        params,
++                    })
++                    .await
++                    .map(|response| response.status)
++                    .map_err(|error| error.to_string())
++            },
++        );
 +    }
 +
      pub(crate) async fn thread_set_name(
@@ -1368,10 +1802,10 @@ index 1d608f7229..ded688c7aa 100644
              history_record: UserMessageHistoryRecord::UserMessageText,
              compare_key: crate::chatwidget::user_messages::PendingSteerCompareKey {
 diff --git a/codex-rs/tui/src/chatwidget/input_restore.rs b/codex-rs/tui/src/chatwidget/input_restore.rs
-index e1faa1dff0..9953a3bfe8 100644
+index e1faa1dff0..e35e86833c 100644
 --- a/codex-rs/tui/src/chatwidget/input_restore.rs
 +++ b/codex-rs/tui/src/chatwidget/input_restore.rs
-@@ -1,6 +1,7 @@
+@@ -1,13 +1,138 @@
  //! Input queue restore and thread-input snapshot behavior for `ChatWidget`.
  
  use std::collections::HashSet;
@@ -1379,9 +1813,61 @@ index e1faa1dff0..9953a3bfe8 100644
  
  use crate::bottom_pane::ComposerDraftSnapshot;
  
-@@ -8,6 +9,78 @@ use super::user_messages::remap_colliding_paste_placeholders;
+ use super::user_messages::remap_colliding_paste_placeholders;
  use super::*;
  
++impl ThreadInputState {
++    /// Resolve against the saved draft rather than the currently visible thread.
++    pub(crate) fn on_steer_recall_resolved(
++        &mut self,
++        client_id: &str,
++        result: &Result<codex_app_server_protocol::TurnSteerRecallStatus, String>,
++    ) {
++        use codex_app_server_protocol::TurnSteerRecallStatus;
++        let Some(index) = self.pending_steers.iter().position(|pending| {
++            pending.client_id == client_id && pending.state == PendingSteerState::Recalling
++        }) else {
++            return;
++        };
++        match result {
++            Ok(TurnSteerRecallStatus::Recalled | TurnSteerRecallStatus::AlreadyRecalled) => {
++                let pending = self
++                    .pending_steers
++                    .remove(index)
++                    .expect("matched pending steer");
++                let composer = self.composer.take().unwrap_or_default();
++                let mut messages = vec![user_message_for_restore(
++                    pending.user_message,
++                    &pending.history_record,
++                )];
++                if !composer.text.is_empty()
++                    || !composer.local_images.is_empty()
++                    || !composer.remote_image_urls.is_empty()
++                {
++                    messages.push(UserMessage {
++                        text: composer.text,
++                        text_elements: composer.text_elements,
++                        local_images: composer.local_images,
++                        remote_image_urls: composer.remote_image_urls,
++                        mention_bindings: composer.mention_bindings,
++                    });
++                }
++                self.composer = Some(ChatWidget::composer_state_from_user_message(
++                    merge_user_messages(messages),
++                    composer.pending_pastes,
++                ));
++            }
++            Ok(TurnSteerRecallStatus::AlreadyConsumed) => {
++                self.pending_steers[index].state = PendingSteerState::Claimed;
++            }
++            Ok(TurnSteerRecallStatus::NotFound) => {
++                self.pending_steers.remove(index);
++            }
++            Err(_) => self.pending_steers[index].state = PendingSteerState::Submitted,
++        }
++    }
++}
++
  impl ChatWidget {
 +    pub(super) fn request_pending_steer_recall(&mut self, index: usize) {
 +        let Some(thread_id) = self.thread_id else {
@@ -1458,7 +1944,7 @@ index e1faa1dff0..9953a3bfe8 100644
      /// Restore the exact draft entered before the fully initialized composer became available.
      pub(crate) fn restore_startup_draft(&mut self, draft: ComposerDraftSnapshot) {
          let existing_draft = self.bottom_pane.composer_draft_snapshot();
-@@ -173,37 +246,93 @@ impl ChatWidget {
+@@ -173,37 +298,93 @@ impl ChatWidget {
      }
  
      pub(super) fn pop_latest_queued_composer_state(&mut self) -> Option<ThreadComposerState> {
@@ -1583,7 +2069,7 @@ index e1faa1dff0..9953a3bfe8 100644
      }
  
      pub(crate) fn enqueue_rejected_steer(&mut self) -> bool {
-@@ -216,6 +345,9 @@ impl ChatWidget {
+@@ -216,6 +397,9 @@ impl ChatWidget {
          self.input_queue
              .rejected_steers_queue
              .push_back(pending_steer.user_message);
@@ -1593,7 +2079,7 @@ index e1faa1dff0..9953a3bfe8 100644
          self.input_queue
              .rejected_steer_history_records
              .push_back(pending_steer.history_record);
-@@ -448,6 +580,7 @@ impl ChatWidget {
+@@ -448,6 +632,7 @@ impl ChatWidget {
              safety_buffering_prompt: self.safety_buffering_prompt.clone(),
              pending_steers: self.input_queue.pending_steers.clone(),
              rejected_steers_queue: self.input_queue.rejected_steers_queue.clone(),
@@ -1601,7 +2087,7 @@ index e1faa1dff0..9953a3bfe8 100644
              rejected_steer_history_records: self.input_queue.rejected_steer_history_records.clone(),
              queued_user_messages: self.input_queue.queued_user_messages.clone(),
              queued_user_message_history_records: self
-@@ -455,6 +588,7 @@ impl ChatWidget {
+@@ -455,6 +640,7 @@ impl ChatWidget {
                  .queued_user_message_history_records
                  .clone(),
              recovered_queue: self.input_queue.recovered_queue,
@@ -1609,7 +2095,7 @@ index e1faa1dff0..9953a3bfe8 100644
              user_turn_pending_start: self.input_queue.user_turn_pending_start,
              submit_pending_steers_after_interrupt: self
                  .input_queue
-@@ -488,6 +622,7 @@ impl ChatWidget {
+@@ -488,6 +674,7 @@ impl ChatWidget {
                  preserve_in_flight_turn && input_state.user_turn_pending_start;
              self.input_queue.submit_pending_steers_after_interrupt =
                  preserve_in_flight_turn && input_state.submit_pending_steers_after_interrupt;
@@ -1617,7 +2103,7 @@ index e1faa1dff0..9953a3bfe8 100644
              self.update_collaboration_mode_indicator();
              self.refresh_model_dependent_surfaces();
              self.restore_composer_state(input_state.composer.unwrap_or_default());
-@@ -499,12 +634,27 @@ impl ChatWidget {
+@@ -499,12 +686,27 @@ impl ChatWidget {
                  self.input_queue.pending_steers = pending_steers;
              } else {
                  self.input_queue.pending_steers.clear();
@@ -1648,7 +2134,7 @@ index e1faa1dff0..9953a3bfe8 100644
              self.input_queue.rejected_steer_history_records =
                  input_state.rejected_steer_history_records;
              self.input_queue.rejected_steer_history_records.resize(
-@@ -518,6 +668,25 @@ impl ChatWidget {
+@@ -518,6 +720,25 @@ impl ChatWidget {
                  self.input_queue.queued_user_messages.len(),
                  UserMessageHistoryRecord::UserMessageText,
              );
