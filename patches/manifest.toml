@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.3"
+patch_suffix = "patch.4"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
@@ -102,4 +102,4 @@ upstream_issue = "local-request"
 status = "carried"
 risk = "high"
 owner = "local"
-notes = "Add an opt-in external credential-helper authority for personal ChatGPT accounts. Request admission acquires an account-bound access snapshot; retries and spawned tool handlers retain that account, including plugin installation approval and completion; quota exhaustion selects only known-headroom alternatives; WebSocket continuation is invalidated across account epochs; browser/device login enrolls directly through the helper; logout clears helper-owned selection without reviving the native auth store. Explicit API key or Bedrock login deactivates the helper before reloading saved credentials. Bedrock transitions have local RPC coverage only; real AWS authentication and inference are untested."
+notes = "Add an opt-in external credential-helper authority for personal ChatGPT accounts. Request admission acquires an account-bound access snapshot; retries and spawned tool handlers retain that account, including plugin installation approval and completion; quota exhaustion selects only known-headroom alternatives; WebSocket continuation is invalidated across account epochs; browser/device login enrolls directly through the helper; logout clears helper-owned selection without reviving the native auth store. Explicit API key or Bedrock login deactivates the helper before reloading saved credentials. Bedrock transitions have local RPC coverage only; real AWS authentication and inference are untested. patch.4: fixed a busy loop that kept every app-server idle at ~110% CPU, spawning the helper process ~20x/sec. Passive `auth()` reads now reuse the last published rotate snapshot without contacting the helper; explicit request admission still reacquires from the helper, so helper-side account switches remain immediate. A byte-identical snapshot also reuses its prior `last_refresh`/HTTP client instead of minting fresh ones on every reload; a genuinely rotated credential_revision or selection_epoch still publishes an auth change."
