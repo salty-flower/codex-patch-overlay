@@ -1,17 +1,5 @@
-diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 45fca1b150..b21090b3c7 100644
---- a/codex-rs/Cargo.lock
-+++ b/codex-rs/Cargo.lock
-@@ -3793,6 +3793,7 @@ dependencies = [
-  "http 1.4.0",
-  "jsonwebtoken",
-  "keyring",
-+ "libc",
-  "once_cell",
-  "os_info",
-  "pretty_assertions",
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
-index c4ec80c9bf..66d3e46420 100644
+index c4ec80c..66d3e46 100644
 --- a/codex-rs/app-server/src/lib.rs
 +++ b/codex-rs/app-server/src/lib.rs
 @@ -1375,9 +1375,12 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
@@ -29,7 +17,7 @@ index c4ec80c9bf..66d3e46420 100644
      if let Some(path) = test_user_config_file {
          let path = AbsolutePathBuf::from_absolute_path(path).map_err(|err| {
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 21ac6c850d..02eafc0a0f 100644
+index 21ac6c8..02eafc0 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
 @@ -1080,7 +1080,7 @@ impl MessageProcessor {
@@ -60,7 +48,7 @@ index 21ac6c850d..02eafc0a0f 100644
              }
              ClientRequest::ReviewStart { params, .. } => {
 diff --git a/codex-rs/app-server/src/request_processors/account_processor.rs b/codex-rs/app-server/src/request_processors/account_processor.rs
-index ede9820baa..978692b771 100644
+index ede9820..978692b 100644
 --- a/codex-rs/app-server/src/request_processors/account_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/account_processor.rs
 @@ -14,6 +14,7 @@ use codex_model_provider::is_supported_amazon_bedrock_region;
@@ -179,7 +167,7 @@ index ede9820baa..978692b771 100644
                  return Err(internal_error(format!("logout failed: {err}")));
 diff --git a/codex-rs/app-server/src/request_processors/account_processor/rotate_transition.rs b/codex-rs/app-server/src/request_processors/account_processor/rotate_transition.rs
 new file mode 100644
-index 0000000000..166c9f113a
+index 0000000..166c9f1
 --- /dev/null
 +++ b/codex-rs/app-server/src/request_processors/account_processor/rotate_transition.rs
 @@ -0,0 +1,48 @@
@@ -233,7 +221,7 @@ index 0000000000..166c9f113a
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/account_rotate.rs b/codex-rs/app-server/tests/suite/v2/account_rotate.rs
 new file mode 100644
-index 0000000000..5bd8bfefc7
+index 0000000..5bd8bfe
 --- /dev/null
 +++ b/codex-rs/app-server/tests/suite/v2/account_rotate.rs
 @@ -0,0 +1,498 @@
@@ -736,7 +724,7 @@ index 0000000000..5bd8bfefc7
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/mod.rs b/codex-rs/app-server/tests/suite/v2/mod.rs
-index 281c3814f8..f0ec67d184 100644
+index 281c381..f0ec67d 100644
 --- a/codex-rs/app-server/tests/suite/v2/mod.rs
 +++ b/codex-rs/app-server/tests/suite/v2/mod.rs
 @@ -1,4 +1,6 @@
@@ -747,7 +735,7 @@ index 281c3814f8..f0ec67d184 100644
  mod analytics;
  mod app_installed;
 diff --git a/codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs b/codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs
-index 863ccb901b..88fe990ddb 100644
+index 863ccb9..88fe990 100644
 --- a/codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs
 +++ b/codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs
 @@ -542,7 +542,7 @@ async fn turn_start_shell_zsh_fork_subcommand_decline_marks_parent_declined_v2()
@@ -760,7 +748,7 @@ index 863ccb901b..88fe990ddb 100644
          let server_req = timeout(
              DEFAULT_READ_TIMEOUT,
 diff --git a/codex-rs/cli/src/login.rs b/codex-rs/cli/src/login.rs
-index 22e607c6e6..f094082e5c 100644
+index 22e607c..f094082 100644
 --- a/codex-rs/cli/src/login.rs
 +++ b/codex-rs/cli/src/login.rs
 @@ -138,21 +138,24 @@ async fn clear_existing_auth_before_login(
@@ -937,7 +925,7 @@ index 22e607c6e6..f094082e5c 100644
      };
  
 diff --git a/codex-rs/cloud-tasks/src/lib.rs b/codex-rs/cloud-tasks/src/lib.rs
-index 6643684166..1c3dea772f 100644
+index 6643684..1c3dea7 100644
 --- a/codex-rs/cloud-tasks/src/lib.rs
 +++ b/codex-rs/cloud-tasks/src/lib.rs
 @@ -13,7 +13,9 @@ use codex_cloud_tasks_client::TaskStatus;
@@ -951,7 +939,7 @@ index 6643684166..1c3dea772f 100644
  use codex_http_client::RouteAwareClientPool;
  use codex_login::default_client::get_codex_user_agent;
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 7bf981482f..35757c3e2e 100644
+index 7bf9814..35757c3 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
 @@ -263,6 +263,9 @@ pub struct ConfigToml {
@@ -965,7 +953,7 @@ index 7bf981482f..35757c3e2e 100644
      /// file (default): Use a file in the Codex home directory.
      /// keyring: Use an OS-specific keyring service.
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 653f2cf71b..f2a0cdc18e 100644
+index 653f2cf..f2a0cdc 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -6015,6 +6015,13 @@
@@ -983,7 +971,7 @@ index 653f2cf71b..f2a0cdc18e 100644
        "description": "Compact prompt used for history compaction.",
        "type": "string"
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index 0d1bb5f87c..cfee2a19de 100644
+index 0d1bb5f..cfee2a1 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
 @@ -71,8 +71,11 @@ use codex_login::AuthManager;
@@ -1301,7 +1289,7 @@ index 0d1bb5f87c..cfee2a19de 100644
      if !*provider_auth_recovery_attempted {
          *provider_auth_recovery_attempted = true;
 diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
-index 348d169c69..4de10a77ec 100644
+index 348d169..4de10a7 100644
 --- a/codex-rs/core/src/client_tests.rs
 +++ b/codex-rs/core/src/client_tests.rs
 @@ -96,6 +96,61 @@ use wiremock::matchers::path;
@@ -1518,7 +1506,7 @@ index 348d169c69..4de10a77ec 100644
                  &mut provider_auth_recovery_attempted,
                  &telemetry,
 diff --git a/codex-rs/core/src/compact_remote_request.rs b/codex-rs/core/src/compact_remote_request.rs
-index b6b418c7d0..daba22676a 100644
+index b6b418c..daba226 100644
 --- a/codex-rs/core/src/compact_remote_request.rs
 +++ b/codex-rs/core/src/compact_remote_request.rs
 @@ -79,13 +79,21 @@ pub(super) async fn run_remote_compact_attempt(
@@ -1545,7 +1533,7 @@ index b6b418c7d0..daba22676a 100644
                  } else {
                      step_context.settings.service_tier.clone()
 diff --git a/codex-rs/core/src/config/auth_keyring.rs b/codex-rs/core/src/config/auth_keyring.rs
-index e3445010d8..a8ad8cf079 100644
+index e344501..a8ad8cf 100644
 --- a/codex-rs/core/src/config/auth_keyring.rs
 +++ b/codex-rs/core/src/config/auth_keyring.rs
 @@ -19,6 +19,7 @@ impl Config {
@@ -1565,7 +1553,7 @@ index e3445010d8..a8ad8cf079 100644
          auth_credentials_store_mode: config.cli_auth_credentials_store.unwrap_or_default(),
          keyring_backend_kind: resolve_bootstrap_auth_keyring_backend_kind(bootstrap_config)?,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 4c21c06c53..c93f05f80a 100644
+index 4c21c06..c93f05f 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
 @@ -1031,6 +1031,9 @@ pub struct Config {
@@ -1597,7 +1585,7 @@ index 4c21c06c53..c93f05f80a 100644
              web_search_config,
              experimental_request_user_input_enabled,
 diff --git a/codex-rs/core/src/session/mcp.rs b/codex-rs/core/src/session/mcp.rs
-index d4505eace2..7ace671a1e 100644
+index d4505ea..7ace671 100644
 --- a/codex-rs/core/src/session/mcp.rs
 +++ b/codex-rs/core/src/session/mcp.rs
 @@ -179,6 +179,16 @@ impl Session {
@@ -1750,7 +1738,7 @@ index d4505eace2..7ace671a1e 100644
  
      pub(crate) fn ready_selected_capability_roots(
 diff --git a/codex-rs/core/src/session/mcp_refresh.rs b/codex-rs/core/src/session/mcp_refresh.rs
-index 9afd414bf6..5a76562398 100644
+index 9afd414..5a76562 100644
 --- a/codex-rs/core/src/session/mcp_refresh.rs
 +++ b/codex-rs/core/src/session/mcp_refresh.rs
 @@ -22,11 +22,26 @@ impl McpRefresh {
@@ -1810,7 +1798,7 @@ index 9afd414bf6..5a76562398 100644
 +    }
 +}
 diff --git a/codex-rs/core/src/session/mcp_runtime.rs b/codex-rs/core/src/session/mcp_runtime.rs
-index c3c329e89c..277ac62caf 100644
+index c3c329e..277ac62 100644
 --- a/codex-rs/core/src/session/mcp_runtime.rs
 +++ b/codex-rs/core/src/session/mcp_runtime.rs
 @@ -135,7 +135,7 @@ impl Session {
@@ -1885,7 +1873,7 @@ index c3c329e89c..277ac62caf 100644
      }
  }
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 1d2f71747f..f17a20598b 100644
+index 1d2f717..f17a205 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
 @@ -236,6 +236,7 @@ mod retained_context;
@@ -1934,7 +1922,7 @@ index 1d2f71747f..f17a20598b 100644
              session_telemetry,
 diff --git a/codex-rs/core/src/session/rotate_step.rs b/codex-rs/core/src/session/rotate_step.rs
 new file mode 100644
-index 0000000000..71797b69a2
+index 0000000..71797b6
 --- /dev/null
 +++ b/codex-rs/core/src/session/rotate_step.rs
 @@ -0,0 +1,276 @@
@@ -2216,7 +2204,7 @@ index 0000000000..71797b69a2
 +mod tests;
 diff --git a/codex-rs/core/src/session/rotate_step_tests.rs b/codex-rs/core/src/session/rotate_step_tests.rs
 new file mode 100644
-index 0000000000..dfe23ad9c5
+index 0000000..dfe23ad
 --- /dev/null
 +++ b/codex-rs/core/src/session/rotate_step_tests.rs
 @@ -0,0 +1,38 @@
@@ -2259,7 +2247,7 @@ index 0000000000..dfe23ad9c5
 +    assert_eq!(has_cloud_requirements(&requirements), true);
 +}
 diff --git a/codex-rs/core/src/session/step_context.rs b/codex-rs/core/src/session/step_context.rs
-index ff91aad3c9..cfe0f7c113 100644
+index ff91aad..cfe0f7c 100644
 --- a/codex-rs/core/src/session/step_context.rs
 +++ b/codex-rs/core/src/session/step_context.rs
 @@ -8,12 +8,15 @@ use crate::session::turn_context::TurnContext;
@@ -2279,7 +2267,7 @@ index ff91aad3c9..cfe0f7c113 100644
      pub(crate) settings: Arc<ResolvedStepSettings>,
      /// Frozen turn preferences resolved against this step's captured model.
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 116e450033..93d91db868 100644
+index 116e450..93d91db 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
 @@ -254,6 +254,7 @@ impl StepContext {
@@ -2301,7 +2289,7 @@ index 116e450033..93d91db868 100644
      let configured_servers = codex_mcp::configured_mcp_servers(new_step.mcp.config());
      assert_eq!(
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index 4719e1d891..5e0e560420 100644
+index 4719e1d..5e0e560 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
 @@ -1487,6 +1487,18 @@ async fn run_sampling_request(
@@ -2374,7 +2362,7 @@ index 4719e1d891..5e0e560420 100644
          None
      } else {
 diff --git a/codex-rs/core/src/tools/registry.rs b/codex-rs/core/src/tools/registry.rs
-index e73711f8e6..58be42727f 100644
+index e73711f..58be427 100644
 --- a/codex-rs/core/src/tools/registry.rs
 +++ b/codex-rs/core/src/tools/registry.rs
 @@ -775,7 +775,21 @@ async fn handle_any_tool(
@@ -2401,7 +2389,7 @@ index e73711f8e6..58be42727f 100644
          && invocation.turn.config.memories.disable_on_external_context
      {
 diff --git a/codex-rs/core/tests/suite/mod.rs b/codex-rs/core/tests/suite/mod.rs
-index 1c6a629926..7284b8ee00 100644
+index 1c6a629..7284b8e 100644
 --- a/codex-rs/core/tests/suite/mod.rs
 +++ b/codex-rs/core/tests/suite/mod.rs
 @@ -152,6 +152,10 @@ mod rmcp_client;
@@ -2416,7 +2404,7 @@ index 1c6a629926..7284b8ee00 100644
  mod safety_check_downgrade;
  mod search_tool;
 diff --git a/codex-rs/core/tests/suite/request_plugin_install.rs b/codex-rs/core/tests/suite/request_plugin_install.rs
-index 5325a5fbcd..fe5cbac3cd 100644
+index 5325a5f..fe5cbac 100644
 --- a/codex-rs/core/tests/suite/request_plugin_install.rs
 +++ b/codex-rs/core/tests/suite/request_plugin_install.rs
 @@ -120,7 +120,7 @@ fn tool_names(body: &Value) -> Vec<String> {
@@ -2451,7 +2439,7 @@ index 5325a5fbcd..fe5cbac3cd 100644
      decision: ElicitationAction,
 diff --git a/codex-rs/core/tests/suite/rotate_plugin_install.rs b/codex-rs/core/tests/suite/rotate_plugin_install.rs
 new file mode 100644
-index 0000000000..65d16fcbdb
+index 0000000..65d16fc
 --- /dev/null
 +++ b/codex-rs/core/tests/suite/rotate_plugin_install.rs
 @@ -0,0 +1,194 @@
@@ -2651,7 +2639,7 @@ index 0000000000..65d16fcbdb
 +}
 diff --git a/codex-rs/core/tests/suite/rotate_step.rs b/codex-rs/core/tests/suite/rotate_step.rs
 new file mode 100644
-index 0000000000..952fed45f3
+index 0000000..952fed4
 --- /dev/null
 +++ b/codex-rs/core/tests/suite/rotate_step.rs
 @@ -0,0 +1,322 @@
@@ -2978,7 +2966,7 @@ index 0000000000..952fed45f3
 +    Ok(())
 +}
 diff --git a/codex-rs/core/tests/suite/tools.rs b/codex-rs/core/tests/suite/tools.rs
-index 5ff41881cf..c1718b5d3a 100644
+index 5ff4188..c1718b5 100644
 --- a/codex-rs/core/tests/suite/tools.rs
 +++ b/codex-rs/core/tests/suite/tools.rs
 @@ -665,7 +665,7 @@ async fn sandbox_denied_exec_command_returns_original_output() -> Result<()> {
@@ -2990,22 +2978,8 @@ index 5ff41881cf..c1718b5d3a 100644
      );
      let args = json!({
          "cmd": command,
-diff --git a/codex-rs/login/Cargo.toml b/codex-rs/login/Cargo.toml
-index 2971dec6c1..2691f06649 100644
---- a/codex-rs/login/Cargo.toml
-+++ b/codex-rs/login/Cargo.toml
-@@ -42,6 +42,9 @@ url = { workspace = true }
- urlencoding = { workspace = true }
- webbrowser = { workspace = true }
- 
-+[target.'cfg(unix)'.dependencies]
-+libc = { workspace = true }
-+
- [dev-dependencies]
- anyhow = { workspace = true }
- core_test_support = { workspace = true }
 diff --git a/codex-rs/login/src/auth/auth_tests.rs b/codex-rs/login/src/auth/auth_tests.rs
-index 9927a604a1..590c0ae676 100644
+index 9927a60..590c0ae 100644
 --- a/codex-rs/login/src/auth/auth_tests.rs
 +++ b/codex-rs/login/src/auth/auth_tests.rs
 @@ -33,6 +33,55 @@ const WORKSPACE_ID_ALLOWED: &str = "123e4567-e89b-42d3-a456-426614174000";
@@ -3097,7 +3071,7 @@ index 9927a604a1..590c0ae676 100644
          auth_credentials_store_mode: AuthCredentialsStoreMode::File,
          keyring_backend_kind: AuthKeyringBackendKind::Direct,
 diff --git a/codex-rs/login/src/auth/default_client.rs b/codex-rs/login/src/auth/default_client.rs
-index cd4cbd5431..bb1535c629 100644
+index cd4cbd5..bb1535c 100644
 --- a/codex-rs/login/src/auth/default_client.rs
 +++ b/codex-rs/login/src/auth/default_client.rs
 @@ -253,24 +253,49 @@ pub fn create_client_for_route(
@@ -3175,7 +3149,7 @@ index cd4cbd5431..bb1535c629 100644
      std::env::var("CODEX_SANDBOX").as_deref() == Ok("seatbelt")
  }
 diff --git a/codex-rs/login/src/auth/manager.rs b/codex-rs/login/src/auth/manager.rs
-index 18b94ef930..2d3217b1fd 100644
+index 18b94ef..2d3217b 100644
 --- a/codex-rs/login/src/auth/manager.rs
 +++ b/codex-rs/login/src/auth/manager.rs
 @@ -40,6 +40,11 @@ use super::change_state::AuthChangeState;
@@ -3890,7 +3864,7 @@ index 18b94ef930..2d3217b1fd 100644
          auth_credentials_store_mode: config.cli_auth_credentials_store_mode(),
          keyring_backend_kind: config.auth_keyring_backend_kind(),
 diff --git a/codex-rs/login/src/auth/mod.rs b/codex-rs/login/src/auth/mod.rs
-index 226255f39e..68619b1f55 100644
+index 226255f..68619b1 100644
 --- a/codex-rs/login/src/auth/mod.rs
 +++ b/codex-rs/login/src/auth/mod.rs
 @@ -14,6 +14,7 @@ mod workload_identity;
@@ -3910,10 +3884,10 @@ index 226255f39e..68619b1f55 100644
  pub use workload_identity::is_workload_identity_selected;
 diff --git a/codex-rs/login/src/auth/rotate.rs b/codex-rs/login/src/auth/rotate.rs
 new file mode 100644
-index 0000000000..064d41abc2
+index 0000000..45b6aa5
 --- /dev/null
 +++ b/codex-rs/login/src/auth/rotate.rs
-@@ -0,0 +1,445 @@
+@@ -0,0 +1,466 @@
 +//! Personal, opt-in credential authority. No refresh credential enters this adapter.
 +
 +use super::manager::CodexAuth;
@@ -3942,6 +3916,27 @@ index 0000000000..064d41abc2
 +const HELPER_TIMEOUT: Duration = Duration::from_secs(50);
 +const OBSERVATION_TIMEOUT: Duration = Duration::from_secs(1);
 +
++#[cfg(unix)]
++mod unix_process {
++    const SIGKILL: i32 = 9;
++
++    unsafe extern "C" {
++        fn kill(pid: i32, signal: i32) -> i32;
++    }
++
++    pub(super) fn kill_group(pid: i32) {
++        // SAFETY: the caller created a process group whose positive PGID is
++        // `pid`; negating it targets that group and can never target ours.
++        let _ = unsafe { kill(-pid, SIGKILL) };
++    }
++
++    #[cfg(test)]
++    pub(super) fn process_exists(pid: i32) -> bool {
++        // SAFETY: signal zero checks existence/permission without sending a signal.
++        unsafe { kill(pid, /*signal*/ 0) } == 0
++    }
++}
++
 +// Keep this guard alive until after wait(), including when the RPC future is
 +// cancelled by either timeout. kill_on_drop alone only kills the direct child.
 +#[cfg(unix)]
@@ -3953,7 +3948,7 @@ index 0000000000..064d41abc2
 +        if let Ok(pid) = i32::try_from(self.0) {
 +            // SAFETY: process_group(0) makes the spawned child's PID its PGID;
 +            // a positive PID targets only that helper's group, never our own.
-+            unsafe { libc::kill(-pid, libc::SIGKILL) };
++            unix_process::kill_group(pid);
 +        }
 +    }
 +}
@@ -4361,10 +4356,10 @@ index 0000000000..064d41abc2
 +mod tests;
 diff --git a/codex-rs/login/src/auth/rotate_tests.rs b/codex-rs/login/src/auth/rotate_tests.rs
 new file mode 100644
-index 0000000000..e74ef02469
+index 0000000..ffa00b5
 --- /dev/null
 +++ b/codex-rs/login/src/auth/rotate_tests.rs
-@@ -0,0 +1,552 @@
+@@ -0,0 +1,551 @@
 +use super::*;
 +use base64::Engine;
 +use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -4879,8 +4874,7 @@ index 0000000000..e74ef02469
 +            }) {
 +                break;
 +            }
-+            // SAFETY: signal zero only checks whether this test child exists.
-+            if unsafe { libc::kill(pid, 0) } == -1 {
++            if !unix_process::process_exists(pid) {
 +                break;
 +            }
 +            tokio::time::sleep(Duration::from_millis(10)).await;
@@ -4918,7 +4912,7 @@ index 0000000000..e74ef02469
 +    );
 +}
 diff --git a/codex-rs/login/src/device_code_auth.rs b/codex-rs/login/src/device_code_auth.rs
-index a909da40f2..378201496d 100644
+index a909da4..3782014 100644
 --- a/codex-rs/login/src/device_code_auth.rs
 +++ b/codex-rs/login/src/device_code_auth.rs
 @@ -220,13 +220,11 @@ pub async fn complete_device_code_login(
@@ -4937,7 +4931,7 @@ index a909da40f2..378201496d 100644
      .await
  }
 diff --git a/codex-rs/login/src/server.rs b/codex-rs/login/src/server.rs
-index 677c740da2..d4555ee540 100644
+index 677c740..d4555ee 100644
 --- a/codex-rs/login/src/server.rs
 +++ b/codex-rs/login/src/server.rs
 @@ -17,7 +17,6 @@ use std::io::Write;
@@ -5042,7 +5036,7 @@ index 677c740da2..d4555ee540 100644
      let codex_home = codex_home.to_path_buf();
      tokio::task::spawn_blocking(move || {
 diff --git a/codex-rs/login/tests/suite/login_server_e2e.rs b/codex-rs/login/tests/suite/login_server_e2e.rs
-index fc1b4e65bf..692d8e0c2e 100644
+index fc1b4e6..692d8e0 100644
 --- a/codex-rs/login/tests/suite/login_server_e2e.rs
 +++ b/codex-rs/login/tests/suite/login_server_e2e.rs
 @@ -125,6 +125,7 @@ async fn end_to_end_login_flow_persists_auth_json() -> Result<()> {
@@ -5118,7 +5112,7 @@ index fc1b4e65bf..692d8e0c2e 100644
          cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
          auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
 diff --git a/codex-rs/model-provider/src/auth.rs b/codex-rs/model-provider/src/auth.rs
-index f4d276465d..9e7d24d8ae 100644
+index f4d2764..9e7d24d 100644
 --- a/codex-rs/model-provider/src/auth.rs
 +++ b/codex-rs/model-provider/src/auth.rs
 @@ -244,12 +244,12 @@ pub(crate) async fn resolve_provider_auth_for_scope(
@@ -5137,7 +5131,7 @@ index f4d276465d..9e7d24d8ae 100644
      {
          Ok(Some(agent_identity_auth)) => Ok(ResolvedProviderAuth::for_agent_identity(
 diff --git a/codex-rs/model-provider/src/provider.rs b/codex-rs/model-provider/src/provider.rs
-index 027850b788..1491077e30 100644
+index 027850b..1491077 100644
 --- a/codex-rs/model-provider/src/provider.rs
 +++ b/codex-rs/model-provider/src/provider.rs
 @@ -214,6 +214,42 @@ pub trait ModelProvider: fmt::Debug + Send + Sync {
