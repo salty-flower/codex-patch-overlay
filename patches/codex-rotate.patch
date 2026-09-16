@@ -3884,7 +3884,7 @@ index 226255f..68619b1 100644
  pub use workload_identity::is_workload_identity_selected;
 diff --git a/codex-rs/login/src/auth/rotate.rs b/codex-rs/login/src/auth/rotate.rs
 new file mode 100644
-index 0000000..2fcb8d1
+index 0000000..ba52a8e
 --- /dev/null
 +++ b/codex-rs/login/src/auth/rotate.rs
 @@ -0,0 +1,490 @@
@@ -3966,8 +3966,8 @@ index 0000000..2fcb8d1
 +            return;
 +        }
 +        if let Ok(pid) = i32::try_from(self.pid) {
-+            // SAFETY: process_group(0) makes the spawned child's PID its PGID;
-+            // a positive PID targets only that helper's group, never our own.
++            // The guard is armed only while `process_group(0)` makes this
++            // helper's PID its own PGID, and `kill_group` negates it.
 +            unix_process::kill_group(pid);
 +        }
 +    }

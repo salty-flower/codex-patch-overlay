@@ -216,10 +216,10 @@ index ee6694b..fdafce9 100644
          for name in [
 diff --git a/codex-rs/tui/src/notifications/sound.rs b/codex-rs/tui/src/notifications/sound.rs
 new file mode 100644
-index 0000000..e7bd11b
+index 0000000..63392c8
 --- /dev/null
 +++ b/codex-rs/tui/src/notifications/sound.rs
-@@ -0,0 +1,479 @@
+@@ -0,0 +1,481 @@
 +use codex_config::types::TuiNotificationSoundConfig;
 +use std::path::Path;
 +use std::sync::Arc;
@@ -475,9 +475,11 @@ index 0000000..e7bd11b
 +        path
 +    }
 +
++    /// The helper records its pid next to the log it was given, so the caller
++    /// must name that log rather than assuming a shared one.
 +    #[cfg(unix)]
-+    fn assert_reaped(temp: &tempfile::TempDir, mode: &str) {
-+        let pid: libc::pid_t = std::fs::read_to_string(temp.path().join(format!("log.{mode}.pid")))
++    fn assert_reaped(log: &std::path::Path, mode: &str) {
++        let pid: libc::pid_t = std::fs::read_to_string(format!("{}.{mode}.pid", log.display()))
 +            .unwrap()
 +            .trim()
 +            .parse()
@@ -530,7 +532,7 @@ index 0000000..e7bd11b
 +            std::fs::read_to_string(log).unwrap(),
 +            "argv\na sound file; with spaces\n$(printf expanded) $HOME *\n\n"
 +        );
-+        assert_reaped(&temp, "argv");
++        assert_reaped(&log, "argv");
 +
 +        let fallback_log = temp.path().join("fallback-log");
 +        run_sound_commands(
@@ -548,7 +550,7 @@ index 0000000..e7bd11b
 +        )
 +        .await;
 +        assert_eq!(std::fs::read_to_string(fallback_log).unwrap(), "fail\n");
-+        assert_reaped(&temp, "fail");
++        assert_reaped(&fallback_log, "fail");
 +    }
 +
 +    #[cfg(unix)]
@@ -570,7 +572,7 @@ index 0000000..e7bd11b
 +        .await;
 +
 +        assert_eq!(std::fs::read_to_string(log).unwrap(), "fallback\n");
-+        assert_reaped(&temp, "fallback");
++        assert_reaped(&log, "fallback");
 +    }
 +
 +    #[cfg(unix)]
@@ -593,7 +595,7 @@ index 0000000..e7bd11b
 +        .expect("sound command exceeded its bound");
 +
 +        assert_eq!(std::fs::read_to_string(log).unwrap(), "hang\n");
-+        assert_reaped(&temp, "hang");
++        assert_reaped(&log, "hang");
 +    }
 +
 +    #[cfg(unix)]
@@ -628,7 +630,7 @@ index 0000000..e7bd11b
 +            .is_none()
 +        );
 +        first.await.unwrap();
-+        assert_reaped(&temp, "hang");
++        assert_reaped(&log, "hang");
 +
 +        let next = super::spawn_sound_commands(
 +            &handle,
@@ -642,7 +644,7 @@ index 0000000..e7bd11b
 +        .expect("reaping must release the sound slot");
 +        next.await.unwrap();
 +        assert_eq!(std::fs::read_to_string(log).unwrap(), "hang\nnext\n");
-+        assert_reaped(&temp, "next");
++        assert_reaped(&log, "next");
 +    }
 +
 +    #[cfg(target_os = "macos")]

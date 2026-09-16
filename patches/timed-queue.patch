@@ -481,10 +481,10 @@ index e3a35cf..2e75f77 100644
                  .input_queue
 diff --git a/codex-rs/tui/src/chatwidget/scheduled_input.rs b/codex-rs/tui/src/chatwidget/scheduled_input.rs
 new file mode 100644
-index 0000000..e7eaad5
+index 0000000..ad99fcd
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/scheduled_input.rs
-@@ -0,0 +1,560 @@
+@@ -0,0 +1,566 @@
 +use std::time::Duration;
 +use std::time::Instant;
 +
@@ -1002,17 +1002,20 @@ index 0000000..e7eaad5
 +    }
 +
 +    #[tokio::test(start_paused = true)]
-+    async fn cancelled_generation_emits_no_due_event() {
++    async fn replacing_the_schedule_emits_no_due_event_for_the_cancelled_entry() {
 +        let (command_tx, command_rx) = unbounded_channel();
 +        let (event_tx, mut event_rx) = unbounded_channel();
 +        let task = tokio::spawn(run_scheduler(command_rx, event_tx));
 +        let thread_id = ThreadId::default();
-+        let generation = Uuid::now_v7();
++        // Due in a minute, so the replacement lands first.
 +        command_tx
 +            .send(SchedulerCommand::Sync {
 +                thread_id,
-+                generation,
-+                entries: vec![entry(Local::now(), Instant::now())],
++                generation: Uuid::now_v7(),
++                entries: vec![entry(
++                    Local::now() + chrono::Duration::seconds(60),
++                    Instant::now() + Duration::from_secs(60),
++                )],
 +            })
 +            .unwrap();
 +        command_tx
@@ -1023,6 +1026,9 @@ index 0000000..e7eaad5
 +            })
 +            .unwrap();
 +        tokio::task::yield_now().await;
++        assert!(event_rx.try_recv().is_err());
++        // Past the cancelled deadline the scheduler must still stay silent.
++        tokio::time::advance(Duration::from_secs(120)).await;
 +        assert!(event_rx.try_recv().is_err());
 +        drop(command_tx);
 +        task.await.unwrap();

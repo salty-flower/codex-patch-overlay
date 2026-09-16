@@ -11,7 +11,7 @@ index 01cacbe..b249355 100644
  wiremock = { workspace = true }
  
 diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-index 95d41e0..8ce4c41 100644
+index 95d41e0..9b804f7 100644
 --- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 +++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 @@ -27,7 +27,10 @@ use serde_json::Value;
@@ -278,7 +278,7 @@ index 95d41e0..8ce4c41 100644
                  }
              }
          });
-@@ -141,11 +300,124 @@ impl WsStream {
+@@ -141,11 +300,125 @@ impl WsStream {
              .await
      }
  
@@ -328,9 +328,10 @@ index 95d41e0..8ce4c41 100644
 +    }
 +
 +    match tokio::time::timeout_at(deadline, rx_result).await {
-+        Ok(Ok(_)) if Instant::now() >= deadline => Err(ApiError::Stream(
-+            WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE.to_string(),
-+        )),
++        // A probe that answered inside the budget carries real information even
++        // if this task happens to be polled at the boundary; reporting it as a
++        // timeout would tear down a healthy socket and hide a resumed-session
++        // rejection. The pump keeps authority over the connection state.
 +        Ok(Ok(result)) => result.map_err(ApiError::Stream),
 +        Ok(Err(_)) => Err(ApiError::Stream(
 +            "websocket connection closed during liveness probe".to_string(),
@@ -403,7 +404,7 @@ index 95d41e0..8ce4c41 100644
  impl Drop for WsStream {
      fn drop(&mut self) {
          self.pump_task.abort();
-@@ -223,7 +495,22 @@ impl ResponsesWebsocketConnection {
+@@ -223,7 +496,22 @@ impl ResponsesWebsocketConnection {
      }
  
      pub async fn is_closed(&self) -> bool {
@@ -427,7 +428,7 @@ index 95d41e0..8ce4c41 100644
      }
  
      #[instrument(
-@@ -927,6 +1214,7 @@ mod tests {
+@@ -927,6 +1215,7 @@ mod tests {
      use super::*;
      use crate::common::ResponseCreateWsRequest;
      use crate::common::ResponsesApiRequest;
@@ -435,7 +436,7 @@ index 95d41e0..8ce4c41 100644
      use codex_protocol::ResponseItemId;
      use codex_protocol::models::ContentItem;
      use codex_protocol::models::ResponseItem;
-@@ -936,6 +1224,61 @@ mod tests {
+@@ -936,6 +1225,61 @@ mod tests {
      use serde_json::value::to_raw_value;
      use std::collections::HashMap;
      use std::sync::Arc;
@@ -497,7 +498,7 @@ index 95d41e0..8ce4c41 100644
  
      #[test]
      fn direct_serialization_preserves_websocket_request_payload() {
-@@ -1005,6 +1348,382 @@ mod tests {
+@@ -1005,6 +1349,389 @@ mod tests {
          assert!(config.extensions.permessage_deflate.is_some());
      }
  
@@ -623,8 +624,13 @@ index 95d41e0..8ce4c41 100644
 +        let (socket, mut server) = memory_websocket_pair(1).await;
 +        let mut liveness = test_liveness_config();
 +        liveness.heartbeat_interval = Duration::from_secs(15);
-+        let mut client = WsStream::new_with_liveness_and_clock(socket, liveness, SystemTime::now);
++        // Paused time freezes `Instant` but not `SystemTime`; derive the wall
++        // clock from the same virtual instant so a loaded runner cannot inject
++        // a spurious suspend/resume.
 +        let started = Instant::now();
++        let mut client = WsStream::new_with_liveness_and_clock(socket, liveness, move || {
++            SystemTime::UNIX_EPOCH + started.elapsed()
++        });
 +        let (tx_result, rx_result) = oneshot::channel();
 +        client
 +            .tx_command
@@ -649,12 +655,11 @@ index 95d41e0..8ce4c41 100644
 +    #[tokio::test(start_paused = true)]
 +    async fn liveness_probe_bounds_a_blocked_ping_write() {
 +        let (socket, _server) = memory_websocket_pair(1).await;
-+        let client = WsStream::new_with_liveness_and_clock(
-+            socket,
-+            WsLivenessConfig::default(),
-+            SystemTime::now,
-+        );
 +        let started = Instant::now();
++        let client =
++            WsStream::new_with_liveness_and_clock(socket, WsLivenessConfig::default(), move || {
++                SystemTime::UNIX_EPOCH + started.elapsed()
++            });
 +        let error = probe_liveness_with_timeout(&client.tx_command, Duration::from_millis(80))
 +            .await
 +            .expect_err("blocked Ping write must time out");
@@ -724,7 +729,10 @@ index 95d41e0..8ce4c41 100644
 +        let mut liveness = test_liveness_config();
 +        liveness.heartbeat_interval = Duration::from_millis(100);
 +        let (socket, mut server) = memory_websocket_pair(1024).await;
-+        let client = WsStream::new_with_liveness_and_clock(socket, liveness, SystemTime::now);
++        let started = Instant::now();
++        let client = WsStream::new_with_liveness_and_clock(socket, liveness, move || {
++            SystemTime::UNIX_EPOCH + started.elapsed()
++        });
 +        tokio::time::sleep(Duration::from_millis(90)).await;
 +        let (tx_result, rx_result) = oneshot::channel();
 +        client
