@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.3"
+patch_suffix = "patch.4"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
@@ -18,7 +18,7 @@ upstream_pr = "https://github.com/openai/codex/pull/8417"
 status = "carried"
 risk = "low"
 owner = "local"
-notes = "Play a configurable best-effort desktop notification sound alongside OSC9 notifications; `[tui].notification_sound.command` can override the argv and `enabled = false` disables it. Defaults remain afplay/osascript on macOS and canberra/paplay/pw-play/aplay on Linux; skipped for the Bel backend, which already rings. Preserves the existing unfocused-only notification gate."
+notes = "Play a configurable best-effort desktop notification sound alongside OSC9 notifications; `[tui].notification_sound.command` can override the argv and `enabled = false` disables it. Defaults remain afplay/osascript on macOS and canberra/paplay/pw-play/aplay on Linux; skipped for the Bel backend, which already rings. Preserves the existing unfocused-only notification gate. Sound commands run single-flight under a bounded asynchronous supervisor that kills and reaps hung children."
 
 [[patches]]
 name = "plan-mode-default"
@@ -46,7 +46,7 @@ upstream_issue = "local-request"
 status = "carried"
 risk = "medium"
 owner = "local"
-notes = "Add `/later <delay> <prompt>` to queue a follow-up prompt for a strict future time. The time spec accepts a relative delay (`10m`, `1h30m`, `90s`, bare number = minutes), a clock time `HH:MM[:SS]` (today, or tomorrow if already past), or an absolute `YYYY-MM-DD HH:MM[:SS]`. Due prompts drain immediately when idle, or wait for the current turn to finish if Codex is still running. The pending-input preview shows both the target wall-clock time (HH:MM:SS) and a live countdown refreshed every 10 seconds. Carries the default command-popup snapshot so the new `/later` entry does not fail `just test -p codex-tui`."
+notes = "Add `/later <delay> <prompt>` to queue a follow-up prompt for a strict future time. The time spec accepts a relative delay (`10m`, `1h30m`, `90s`, bare number = minutes), a clock time `HH:MM[:SS]` (today, or tomorrow if already past), or an absolute `YYYY-MM-DD HH:MM[:SS]`. Due prompts drain immediately when idle, or wait for the current turn to finish if Codex is still running. One owned scheduler cancels removed/replaced entries, rejects overflow, reconciles wall-clock deadlines after resume, and filters stale tick/due events by item generation. The pending-input preview shows both the target wall-clock time (HH:MM:SS) and a live countdown refreshed every 10 seconds. Carries the default command-popup snapshot so the new `/later` entry does not fail `just test -p codex-tui`."
 
 [[patches]]
 name = "tui-status-line-command"
@@ -60,7 +60,7 @@ upstream_issue = "https://github.com/openai/codex/issues/17827"
 status = "carried"
 risk = "high"
 owner = "local"
-notes = "Add opt-in `[tui.status_line_command]` direct-argv rendering with a versioned JSON stdin contract, COLUMNS/LINES, single-flight coalescing, bounded timeout/output, built-in fallback before first success, retained same-thread last success after later failures, SGR-only ANSI parsing, and a maximum of two safely clipped passive footer rows. Successful command output takes priority over the configured built-in status line in every passive footer layout. Periodic refresh deadlines survive unrelated immediate redraws, and current input usage is split into non-cached and cache-read tokens. Snapshot `approval_mode` mirrors the built-in approval-mode item so the on-request reviewer toggle is distinguishable (approve-for-me / ask-for-approval). A first valid terminal resize retries once after the constructor's zero-sized startup refresh, while identical resize notifications remain single-flight."
+notes = "Add opt-in `[tui.status_line_command]` direct-argv rendering with a versioned JSON stdin contract, COLUMNS/LINES, single-flight coalescing, bounded timeout/output, built-in fallback before first success, retained same-thread last success after later failures, SGR-only ANSI parsing, and a maximum of two safely clipped passive footer rows. Successful command output takes priority over the configured built-in status line in every passive footer layout. Periodic refresh deadlines survive unrelated immediate redraws; ordinary and guaranteed deadlines are consumed independently so an early guaranteed draw neither double-emits nor drops a later refresh. Current input usage is split into non-cached and cache-read tokens. Snapshot `approval_mode` mirrors the built-in approval-mode item so the on-request reviewer toggle is distinguishable (approve-for-me / ask-for-approval). A first valid terminal resize retries once after the constructor's zero-sized startup refresh, while identical resize notifications remain single-flight."
 
 [[patches]]
 name = "editable-enter-queue"
@@ -74,7 +74,7 @@ upstream_issue = "local-request"
 status = "carried"
 risk = "high"
 owner = "local"
-notes = "Preserve vanilla same-turn Enter steering while adding an experimental, core-arbitrated recall window before atomic input consumption. TUI-generated UUIDv7 client message IDs flow through turn/start or turn/steer and committed user-item notifications; Alt+Up recalls the globally latest editable Enter/Tab input, restores it only on recalled/alreadyRecalled, and keeps claimed inputs hidden until their exact committed item arrives. Shell escapes, Plan streaming, and Tab next-turn semantics remain unchanged. This patch must not be retired merely because upstream exposes a queued-message editor: retirement requires equivalent core arbitration and an exact pending-steer recall protocol. Generated compressed app-server schema exports are carried as binary payloads and installed by the overlay because Nix's patch hook does not apply Git binary diffs."
+notes = "Preserve vanilla same-turn Enter steering while adding an experimental, core-arbitrated recall window before atomic input consumption. TUI-generated UUIDv7 client message IDs flow through turn/start or turn/steer and committed user-item notifications; Alt+Up recalls the globally latest editable Enter/Tab input, restores it only on recalled/alreadyRecalled, and keeps claimed inputs hidden until their exact committed item arrives. Recall RPCs run out of the main event loop under a deadline, and keyed completions update active or inactive thread state so thread switches cannot strand an input in `Recalling`; inactive commits remove the exact matching ID regardless of deque order. Shell escapes, Plan streaming, and Tab next-turn semantics remain unchanged. This patch must not be retired merely because upstream exposes a queued-message editor: retirement requires equivalent core arbitration and an exact pending-steer recall protocol. Generated compressed app-server schema exports are carried as binary payloads and installed by the overlay because Nix's patch hook does not apply Git binary diffs."
 
 [[patches]]
 name = "websocket-reconnect"
@@ -88,7 +88,7 @@ upstream_issue = "local-request"
 status = "carried"
 risk = "high"
 owner = "local"
-notes = "Detect silent Responses WebSocket loss with correlated protocol Ping/Pong probes: a 15-second heartbeat, five-second reply budget, an immediate probe before reuse, and a sleep-aware wall/monotonic clock comparison that probes promptly after resume. Mismatched or late Pong frames cannot satisfy another probe, and data frames received during a probe retain their order. Failed pumps are treated as closed; core invalidation clears socket-bound incremental continuation state before reconnecting with full local context. In-flight liveness recovery is surfaced on the first retry without logging credentials or request headers."
+notes = "Detect silent Responses WebSocket loss with correlated protocol Ping/Pong probes: a 15-second heartbeat, one end-to-end five-second budget covering queueing, Ping write and Pong response, an immediate probe before reuse, and a sleep-aware wall/monotonic clock comparison that requires fresh post-resume evidence. Mismatched, late, or pre-suspend Pong frames cannot satisfy another probe; explicit successful probes advance the heartbeat schedule, and data frames received during a probe retain their order. Failed pumps are treated as closed; core invalidation clears socket-bound incremental continuation state before reconnecting with full local context. In-flight liveness recovery is surfaced on the first retry without logging credentials or request headers."
 
 [[patches]]
 name = "codex-rotate"
@@ -102,4 +102,4 @@ upstream_issue = "local-request"
 status = "carried"
 risk = "high"
 owner = "local"
-notes = "Add an opt-in external credential-helper authority for personal ChatGPT accounts. Request admission acquires an account-bound access snapshot; retries and spawned tool handlers retain that account, including plugin installation approval and completion; quota exhaustion selects only known-headroom alternatives; WebSocket continuation is invalidated across account epochs; browser/device login enrolls directly through the helper; logout clears helper-owned selection without reviving the native auth store. Explicit API key or Bedrock login deactivates the helper before reloading saved credentials. Bedrock transitions have local RPC coverage only; real AWS authentication and inference are untested."
+notes = "Add an opt-in external credential-helper authority for personal ChatGPT accounts. Request admission acquires an account-bound access snapshot; retries and spawned tool handlers retain that account, including plugin installation approval and completion; quota exhaustion selects only known-headroom alternatives; WebSocket continuation is invalidated across account epochs; browser/device login enrolls directly through the helper; logout clears helper-owned selection without reviving the native auth store. Explicit API key or Bedrock login deactivates the helper before reloading saved credentials. Bedrock transitions have local RPC coverage only; real AWS authentication and inference are untested. patch.4: fixed a busy loop that kept every app-server idle at ~110% CPU, spawning the helper process ~20x/sec. Passive `auth()` reads now reuse the last published rotate snapshot without contacting the helper; explicit request admission still reacquires from the helper, so helper-side account switches remain immediate. A byte-identical snapshot reuses its prior `last_refresh`/HTTP client; genuine epoch, revision, or token changes still publish. Helper cancellation kills/reaps its Unix process group, startup acquires once, and compaction/tool work retains the refreshed same-owner request credential. A self-invalidating MCP publication now gets bounded rounds separated by a short pause before the refresh reports that it did not stabilize."

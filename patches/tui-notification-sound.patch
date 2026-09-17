@@ -1,5 +1,5 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 821824f52e..20968d4b4c 100644
+index 821824f..20968d4 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
 @@ -706,6 +706,40 @@ pub struct TuiNotificationSettings {
@@ -44,7 +44,7 @@ index 821824f52e..20968d4b4c 100644
  
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index a093aaf28f..606f97bf2d 100644
+index a093aaf..606f97b 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
 @@ -12947,3 +12947,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
@@ -86,7 +86,7 @@ index a093aaf28f..606f97bf2d 100644
 +    assert_eq!(sound.command, None);
 +}
 diff --git a/codex-rs/tui/src/app/agents_overview.rs b/codex-rs/tui/src/app/agents_overview.rs
-index 79668e61eb..c53a56ee40 100644
+index 79668e6..c53a56e 100644
 --- a/codex-rs/tui/src/app/agents_overview.rs
 +++ b/codex-rs/tui/src/app/agents_overview.rs
 @@ -498,6 +498,7 @@ impl App {
@@ -98,7 +98,7 @@ index 79668e61eb..c53a56ee40 100644
              self.file_search
                  .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 8f2a0d804f..4d7c454ede 100644
+index 8f2a0d8..4d7c454 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
 @@ -1231,6 +1231,7 @@ impl App {
@@ -110,7 +110,7 @@ index 8f2a0d804f..4d7c454ede 100644
          self.file_search
              .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index 2bb22a51df..d5d712592f 100644
+index 2bb22a5..d5d7125 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
 @@ -187,6 +187,7 @@ impl App {
@@ -122,7 +122,7 @@ index 2bb22a51df..d5d712592f 100644
  
          let harness_overrides =
 diff --git a/codex-rs/tui/src/app/working_directory.rs b/codex-rs/tui/src/app/working_directory.rs
-index b0906f858d..f8bccef3d4 100644
+index b0906f8..f8bccef 100644
 --- a/codex-rs/tui/src/app/working_directory.rs
 +++ b/codex-rs/tui/src/app/working_directory.rs
 @@ -453,7 +453,7 @@ impl App {
@@ -135,7 +135,7 @@ index b0906f858d..f8bccef3d4 100644
              tracing::warn!(%error, "failed to clear ambient pet image");
          }
 diff --git a/codex-rs/tui/src/notifications/mod.rs b/codex-rs/tui/src/notifications/mod.rs
-index ee6694b357..fdafce9857 100644
+index ee6694b..fdafce9 100644
 --- a/codex-rs/tui/src/notifications/mod.rs
 +++ b/codex-rs/tui/src/notifications/mod.rs
 @@ -1,14 +1,17 @@
@@ -216,14 +216,21 @@ index ee6694b357..fdafce9857 100644
          for name in [
 diff --git a/codex-rs/tui/src/notifications/sound.rs b/codex-rs/tui/src/notifications/sound.rs
 new file mode 100644
-index 0000000000..cec4ee7444
+index 0000000..07f2b8e
 --- /dev/null
 +++ b/codex-rs/tui/src/notifications/sound.rs
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,481 @@
 +use codex_config::types::TuiNotificationSoundConfig;
 +use std::path::Path;
-+use std::process::Command;
-+use std::process::Stdio;
++use std::sync::Arc;
++use std::sync::OnceLock;
++use std::time::Duration;
++use tokio::process::Child;
++use tokio::process::Command;
++use tokio::runtime::Handle;
++use tokio::sync::Semaphore;
++
++const SOUND_COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 +
 +#[derive(Clone, Debug, PartialEq, Eq)]
 +struct SoundCommand {
@@ -231,22 +238,85 @@ index 0000000000..cec4ee7444
 +    args: Vec<String>,
 +}
 +
++static SOUND_SLOT: OnceLock<Arc<Semaphore>> = OnceLock::new();
++
 +pub fn play_notification_sound(config: &TuiNotificationSoundConfig) {
-+    for command in sound_commands(config, |path| Path::new(path).exists()) {
-+        if spawn_sound_command(command) {
-+            return;
-+        }
++    let commands = sound_commands(config, |path| Path::new(path).exists());
++    if commands.is_empty() {
++        return;
++    }
++
++    let Ok(handle) = Handle::try_current() else {
++        tracing::debug!("skipping notification sound without a Tokio runtime");
++        return;
++    };
++    let slot = SOUND_SLOT
++        .get_or_init(|| Arc::new(Semaphore::new(1)))
++        .clone();
++    drop(spawn_sound_commands(
++        &handle,
++        commands,
++        slot,
++        SOUND_COMMAND_TIMEOUT,
++    ));
++}
++
++fn spawn_sound_commands(
++    handle: &Handle,
++    commands: Vec<SoundCommand>,
++    slot: Arc<Semaphore>,
++    timeout: Duration,
++) -> Option<tokio::task::JoinHandle<()>> {
++    // Drop overlapping notifications instead of queueing stale sounds.
++    let permit = slot.try_acquire_owned().ok()?;
++    Some(handle.spawn(async move {
++        let _permit = permit;
++        run_sound_commands(commands, timeout).await;
++    }))
++}
++
++async fn run_sound_commands(commands: Vec<SoundCommand>, timeout: Duration) {
++    for command in commands {
++        let mut process = Command::new(command.program);
++        process
++            .args(command.args)
++            .stdin(std::process::Stdio::null())
++            .stdout(std::process::Stdio::null())
++            .stderr(std::process::Stdio::null())
++            .kill_on_drop(true);
++
++        let mut child = match process.spawn() {
++            Ok(child) => child,
++            Err(error) => {
++                tracing::debug!(%error, "failed to spawn notification sound command");
++                continue;
++            }
++        };
++
++        wait_for_sound_command(&mut child, timeout).await;
++        // Preserve the fallback contract: only a spawn failure tries the next command.
++        return;
 +    }
 +}
 +
-+fn spawn_sound_command(command: SoundCommand) -> bool {
-+    Command::new(command.program)
-+        .args(command.args)
-+        .stdin(Stdio::null())
-+        .stdout(Stdio::null())
-+        .stderr(Stdio::null())
-+        .spawn()
-+        .is_ok()
++async fn wait_for_sound_command(child: &mut Child, timeout: Duration) {
++    match tokio::time::timeout(timeout, child.wait()).await {
++        Ok(Ok(_)) => {}
++        Ok(Err(error)) => {
++            tracing::debug!(%error, "failed to wait for notification sound command");
++            kill_and_reap(child).await;
++        }
++        Err(_) => kill_and_reap(child).await,
++    }
++}
++
++async fn kill_and_reap(child: &mut Child) {
++    if let Err(error) = child.start_kill() {
++        tracing::debug!(%error, "failed to kill notification sound command");
++    }
++    if let Err(error) = child.wait().await {
++        tracing::debug!(%error, "failed to reap notification sound command");
++    }
 +}
 +
 +fn sound_commands(
@@ -272,6 +342,7 @@ index 0000000000..cec4ee7444
 +    })
 +}
 +
++#[cfg(any(target_os = "macos", target_os = "linux"))]
 +fn sound_commands_for_platform(path_exists: impl Fn(&str) -> bool) -> Vec<SoundCommand> {
 +    let mut commands = Vec::new();
 +
@@ -323,10 +394,18 @@ index 0000000000..cec4ee7444
 +    commands
 +}
 +
++#[cfg(not(any(target_os = "macos", target_os = "linux")))]
++fn sound_commands_for_platform(_path_exists: impl Fn(&str) -> bool) -> Vec<SoundCommand> {
++    Vec::new()
++}
++
 +#[cfg(test)]
 +mod tests {
 +    use super::SoundCommand;
++    #[cfg(unix)]
++    use super::run_sound_commands;
 +    use super::sound_commands;
++    #[cfg(any(target_os = "macos", target_os = "linux"))]
 +    use super::sound_commands_for_platform;
 +    use codex_config::types::TuiNotificationSoundConfig;
 +
@@ -361,6 +440,211 @@ index 0000000000..cec4ee7444
 +        };
 +
 +        assert_eq!(sound_commands(&config, |_| true), Vec::new());
++    }
++
++    #[test]
++    fn empty_custom_command_does_not_use_platform_defaults() {
++        let config = TuiNotificationSoundConfig {
++            enabled: true,
++            command: Some(Vec::new()),
++        };
++
++        assert!(sound_commands(&config, |_| true).is_empty());
++    }
++
++    #[cfg(unix)]
++    fn helper(temp: &tempfile::TempDir) -> std::path::PathBuf {
++        use std::fs;
++        use std::os::unix::fs::PermissionsExt;
++
++        let path = temp.path().join("sound-helper");
++        fs::write(
++            &path,
++            r#"#!/bin/sh
++printf '%s\n' "$$" > "$2.$1.pid"
++printf '%s\n' "$1" >> "$2"
++case "$1" in
++  fail) exit 7 ;;
++  hang) exec sleep 30 ;;
++  argv) printf '%s\n' "$3" "$4" "$5" >> "$2" ;;
++esac
++"#,
++        )
++        .unwrap();
++        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
++        path
++    }
++
++    /// The helper records its pid next to the log it was given, so the caller
++    /// must name that log rather than assuming a shared one.
++    #[cfg(unix)]
++    fn assert_reaped(log: &std::path::Path, mode: &str) {
++        let pid: libc::pid_t = std::fs::read_to_string(format!("{}.{mode}.pid", log.display()))
++            .unwrap()
++            .trim()
++            .parse()
++            .unwrap();
++        let mut status = 0;
++        assert_eq!(
++            unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) },
++            -1
++        );
++        assert_eq!(
++            std::io::Error::last_os_error().raw_os_error(),
++            Some(libc::ECHILD)
++        );
++    }
++
++    #[cfg(unix)]
++    async fn wait_for_helper(log: &std::path::Path) {
++        tokio::time::timeout(std::time::Duration::from_secs(5), async {
++            while !log.exists() {
++                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
++            }
++        })
++        .await
++        .expect("sound helper did not start");
++    }
++
++    #[cfg(unix)]
++    #[tokio::test]
++    async fn direct_argv_is_literal_and_spawned_failure_suppresses_fallback() {
++        let temp = tempfile::tempdir().unwrap();
++        let helper = helper(&temp);
++        let log = temp.path().join("log");
++        let config = TuiNotificationSoundConfig {
++            enabled: true,
++            command: Some(vec![
++                helper.to_str().unwrap().to_string(),
++                "argv".to_string(),
++                log.to_str().unwrap().to_string(),
++                "a sound file; with spaces".to_string(),
++                "$(printf expanded) $HOME *".to_string(),
++                String::new(),
++            ]),
++        };
++        run_sound_commands(
++            sound_commands(&config, |_| true),
++            std::time::Duration::from_secs(1),
++        )
++        .await;
++        assert_eq!(
++            std::fs::read_to_string(&log).unwrap(),
++            "argv\na sound file; with spaces\n$(printf expanded) $HOME *\n\n"
++        );
++        assert_reaped(&log, "argv");
++
++        let fallback_log = temp.path().join("fallback-log");
++        run_sound_commands(
++            vec![
++                command(
++                    helper.to_str().unwrap(),
++                    &["fail", fallback_log.to_str().unwrap()],
++                ),
++                command(
++                    helper.to_str().unwrap(),
++                    &["argv", fallback_log.to_str().unwrap(), "unexpected"],
++                ),
++            ],
++            std::time::Duration::from_secs(1),
++        )
++        .await;
++        assert_eq!(std::fs::read_to_string(&fallback_log).unwrap(), "fail\n");
++        assert_reaped(&fallback_log, "fail");
++    }
++
++    #[cfg(unix)]
++    #[tokio::test]
++    async fn missing_command_uses_fallback() {
++        let temp = tempfile::tempdir().unwrap();
++        let helper = helper(&temp);
++        let log = temp.path().join("log");
++        run_sound_commands(
++            vec![
++                command(temp.path().join("missing").to_str().unwrap(), &[]),
++                command(
++                    helper.to_str().unwrap(),
++                    &["fallback", log.to_str().unwrap()],
++                ),
++            ],
++            std::time::Duration::from_secs(1),
++        )
++        .await;
++
++        assert_eq!(std::fs::read_to_string(&log).unwrap(), "fallback\n");
++        assert_reaped(&log, "fallback");
++    }
++
++    #[cfg(unix)]
++    #[tokio::test]
++    async fn hanging_command_is_killed_and_reaped() {
++        let temp = tempfile::tempdir().unwrap();
++        let helper = helper(&temp);
++        let log = temp.path().join("log");
++        tokio::time::timeout(
++            std::time::Duration::from_secs(5),
++            run_sound_commands(
++                vec![command(
++                    helper.to_str().unwrap(),
++                    &["hang", log.to_str().unwrap()],
++                )],
++                std::time::Duration::from_millis(250),
++            ),
++        )
++        .await
++        .expect("sound command exceeded its bound");
++
++        assert_eq!(std::fs::read_to_string(&log).unwrap(), "hang\n");
++        assert_reaped(&log, "hang");
++    }
++
++    #[cfg(unix)]
++    #[tokio::test]
++    async fn overlap_is_dropped_until_the_first_command_is_reaped() {
++        let temp = tempfile::tempdir().unwrap();
++        let helper = helper(&temp);
++        let log = temp.path().join("log");
++        let slot = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
++        let handle = tokio::runtime::Handle::current();
++        let first = super::spawn_sound_commands(
++            &handle,
++            vec![command(
++                helper.to_str().unwrap(),
++                &["hang", log.to_str().unwrap()],
++            )],
++            slot.clone(),
++            std::time::Duration::from_secs(1),
++        )
++        .unwrap();
++        wait_for_helper(&log).await;
++        assert!(
++            super::spawn_sound_commands(
++                &handle,
++                vec![command(
++                    helper.to_str().unwrap(),
++                    &["overlap", log.to_str().unwrap()]
++                )],
++                slot.clone(),
++                std::time::Duration::from_secs(1),
++            )
++            .is_none()
++        );
++        first.await.unwrap();
++        assert_reaped(&log, "hang");
++
++        let next = super::spawn_sound_commands(
++            &handle,
++            vec![command(
++                helper.to_str().unwrap(),
++                &["next", log.to_str().unwrap()],
++            )],
++            slot,
++            std::time::Duration::from_secs(1),
++        )
++        .expect("reaping must release the sound slot");
++        next.await.unwrap();
++        assert_eq!(std::fs::read_to_string(&log).unwrap(), "hang\nnext\n");
++        assert_reaped(&log, "next");
 +    }
 +
 +    #[cfg(target_os = "macos")]
@@ -418,7 +702,7 @@ index 0000000000..cec4ee7444
 +    }
 +}
 diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
-index 96b3fbcbb9..59a5b97246 100644
+index 96b3fbc..59a5b97 100644
 --- a/codex-rs/tui/src/tui.rs
 +++ b/codex-rs/tui/src/tui.rs
 @@ -50,6 +50,7 @@ use crate::custom_terminal::Terminal as CustomTerminal;

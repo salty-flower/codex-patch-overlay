@@ -1,5 +1,17 @@
+diff --git a/codex-rs/codex-api/Cargo.toml b/codex-rs/codex-api/Cargo.toml
+index 01cacbe..b249355 100644
+--- a/codex-rs/codex-api/Cargo.toml
++++ b/codex-rs/codex-api/Cargo.toml
+@@ -34,6 +34,7 @@ uuid = { workspace = true }
+ anyhow = { workspace = true }
+ assert_matches = { workspace = true }
+ pretty_assertions = { workspace = true }
++tokio = { workspace = true, features = ["test-util"] }
+ tokio-test = { workspace = true }
+ wiremock = { workspace = true }
+ 
 diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-index 95d41e0d9..a57a57ee5 100644
+index 95d41e0..9b804f7 100644
 --- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 +++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 @@ -27,7 +27,10 @@ use serde_json::Value;
@@ -13,13 +25,21 @@ index 95d41e0d9..a57a57ee5 100644
  use tokio::sync::Mutex;
  use tokio::sync::mpsc;
  use tokio::sync::oneshot;
-@@ -58,16 +61,61 @@ enum WsCommand {
+@@ -58,62 +61,218 @@ enum WsCommand {
          message: Message,
          tx_result: oneshot::Sender<Result<(), WsError>>,
      },
 +    Probe {
++        deadline: Instant,
 +        tx_result: oneshot::Sender<Result<(), String>>,
 +    },
++}
++
++enum WsPumpEvent {
++    Command(Option<WsCommand>),
++    Message(Option<Result<Message, WsError>>),
++    ProbeTimeout,
++    ClockTick,
 +}
 +
 +#[derive(Clone, Copy)]
@@ -28,13 +48,13 @@ index 95d41e0d9..a57a57ee5 100644
 +    probe_timeout: Duration,
 +    clock_check_interval: Duration,
 +    resume_gap: Duration,
- }
- 
++}
++
 +impl Default for WsLivenessConfig {
 +    fn default() -> Self {
 +        Self {
 +            heartbeat_interval: Duration::from_secs(15),
-+            probe_timeout: Duration::from_secs(5),
++            probe_timeout: DEFAULT_LIVENESS_PROBE_TIMEOUT,
 +            clock_check_interval: Duration::from_secs(1),
 +            resume_gap: Duration::from_secs(2),
 +        }
@@ -45,9 +65,12 @@ index 95d41e0d9..a57a57ee5 100644
 +    payload: Vec<u8>,
 +    deadline: Instant,
 +    waiters: Vec<oneshot::Sender<Result<(), String>>>,
-+}
-+
+ }
+ 
++const DEFAULT_LIVENESS_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 +const WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE: &str = "websocket liveness probe timed out";
++const WEBSOCKET_LIVENESS_RESUMED_MESSAGE: &str =
++    "websocket liveness probe invalidated after suspend/resume";
 +static NEXT_PROBE_ID: AtomicU64 = AtomicU64::new(1);
 +
  impl WsStream {
@@ -56,6 +79,21 @@ index 95d41e0d9..a57a57ee5 100644
 +    }
 +
 +    fn new_with_liveness(inner: WebSocketConnection, liveness: WsLivenessConfig) -> Self {
++        Self::new_with_liveness_and_clock(inner, liveness, SystemTime::now)
++    }
++
++    fn new_with_liveness_and_clock<S>(
++        inner: S,
++        liveness: WsLivenessConfig,
++        wall_clock: impl Fn() -> SystemTime + Send + 'static,
++    ) -> Self
++    where
++        S: futures::Stream<Item = Result<Message, WsError>>
++            + futures::Sink<Message, Error = WsError>
++            + Unpin
++            + Send
++            + 'static,
++    {
          let (tx_command, mut rx_command) = mpsc::channel::<WsCommand>(32);
          let (tx_message, rx_message) = mpsc::unbounded_channel::<Result<Message, WsError>>();
  
@@ -66,92 +104,181 @@ index 95d41e0d9..a57a57ee5 100644
 +            let mut clock_check = tokio::time::interval(liveness.clock_check_interval);
 +            clock_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 +            clock_check.tick().await;
-+            let mut last_clock_sample = (Instant::now(), SystemTime::now());
++            let mut last_clock_sample = (Instant::now(), wall_clock());
              loop {
+-                tokio::select! {
+-                    command = rx_command.recv() => {
+-                        let Some(command) = command else {
 +                let probe_deadline = pending_probe
 +                    .as_ref()
 +                    .map(|probe| probe.deadline)
-+                    .unwrap_or_else(|| Instant::now() + Duration::from_secs(24 * 60 * 60));
-                 tokio::select! {
-                     command = rx_command.recv() => {
-                         let Some(command) = command else {
-@@ -82,6 +130,24 @@ impl WsStream {
-                                     break;
-                                 }
-                             }
-+                            WsCommand::Probe { tx_result } => {
-+                                if let Some(probe) = pending_probe.as_mut() {
-+                                    probe.waiters.push(tx_result);
-+                                    continue;
-+                                }
-+                                match begin_liveness_probe(&mut inner, liveness.probe_timeout).await {
-+                                    Ok(mut probe) => {
-+                                        probe.waiters.push(tx_result);
-+                                        pending_probe = Some(probe);
-+                                    }
-+                                    Err(err) => {
-+                                        let message = err.to_string();
-+                                        let _ = tx_result.send(Err(message));
-+                                        let _ = tx_message.send(Err(err));
-+                                        break;
-+                                    }
-+                                }
-+                            }
-                         }
-                     }
-                     message = inner.next() => {
-@@ -95,7 +161,17 @@ impl WsStream {
-                                     break;
-                                 }
-                             }
--                            Ok(Message::Pong(_)) => {}
-+                            Ok(Message::Pong(payload)) => {
-+                                if pending_probe
-+                                    .as_ref()
-+                                    .is_some_and(|probe| probe.payload.as_slice() == payload.as_ref())
-+                                    && let Some(probe) = pending_probe.take()
-+                                {
-+                                    for waiter in probe.waiters {
-+                                        let _ = waiter.send(Ok(()));
-+                                    }
-+                                }
-+                            }
-                             Ok(message @ (Message::Text(_)
-                             | Message::Binary(_)
-                             | Message::Close(_)
-@@ -114,6 +190,31 @@ impl WsStream {
-                             }
-                         }
-                     }
++                    .unwrap_or_else(|| Instant::now() + liveness.heartbeat_interval);
++                let event = tokio::select! {
++                    command = rx_command.recv() => WsPumpEvent::Command(command),
++                    message = inner.next() => WsPumpEvent::Message(message),
 +                    _ = tokio::time::sleep_until(probe_deadline), if pending_probe.is_some() => {
-+                        let error_message = WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE.to_string();
-+                        if let Some(probe) = pending_probe.take() {
-+                            for waiter in probe.waiters {
-+                                let _ = waiter.send(Err(error_message.clone()));
-+                            }
++                        WsPumpEvent::ProbeTimeout
++                    }
++                    _ = clock_check.tick() => WsPumpEvent::ClockTick,
++                };
++
++                // Check before handling *any* ready event, especially a buffered Pong.
++                // A pre-suspend Ping cannot prove the post-resume connection is usable.
++                let now = (Instant::now(), wall_clock());
++                let resumed = sample_clock(&mut last_clock_sample, now, liveness.resume_gap);
++                if resumed {
++                    invalidate_pending_probe(&mut pending_probe);
++                }
++                if resumed
++                    || (matches!(event, WsPumpEvent::ClockTick)
++                        && pending_probe.is_none()
++                        && now.0 >= next_heartbeat)
++                {
++                    match begin_liveness_probe(&mut inner, now.0 + liveness.probe_timeout).await {
++                        Ok(probe) => pending_probe = Some(probe),
++                        Err(err) => {
++                            let _ = tx_message.send(Err(err));
+                             break;
 +                        }
-+                        let _ = tx_message.send(Err(liveness_timeout_error()));
++                    }
++                    next_heartbeat = Instant::now() + liveness.heartbeat_interval;
++                }
++
++                // select! may choose a ready Pong over the timer. Never accept late evidence.
++                if pending_probe
++                    .as_ref()
++                    .is_some_and(|probe| probe.deadline <= Instant::now())
++                {
++                    if let Some(probe) = pending_probe.take() {
++                        for waiter in probe.waiters {
++                            let _ =
++                                waiter.send(Err(WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE.to_string()));
++                        }
++                    }
++                    let _ = tx_message.send(Err(liveness_timeout_error()));
++                    break;
++                }
++
++                match event {
++                    WsPumpEvent::Command(Some(WsCommand::Send { message, tx_result })) => {
++                        let result = if let Some(probe) = pending_probe.as_ref() {
++                            tokio::time::timeout_at(probe.deadline, inner.send(message))
++                                .await
++                                .unwrap_or_else(|_| Err(liveness_timeout_error()))
++                        } else {
++                            inner.send(message).await
+                         };
+-                        match command {
+-                            WsCommand::Send { message, tx_result } => {
+-                                let result = inner.send(message).await;
+-                                let should_break = result.is_err();
+-                                let _ = tx_result.send(result);
+-                                if should_break {
+-                                    break;
+-                                }
+-                            }
++                        let should_break = result.is_err();
++                        let _ = tx_result.send(result);
++                        if should_break {
++                            break;
+                         }
+                     }
+-                    message = inner.next() => {
+-                        let Some(message) = message else {
++                    WsPumpEvent::Command(Some(WsCommand::Probe {
++                        deadline,
++                        tx_result,
++                    })) => {
++                        if deadline <= Instant::now() {
++                            let _ =
++                                tx_result.send(Err(WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE.to_string()));
++                            let _ = tx_message.send(Err(liveness_timeout_error()));
+                             break;
+-                        };
+-                        match message {
+-                            Ok(Message::Ping(payload)) => {
+-                                if let Err(err) = inner.send(Message::Pong(payload)).await {
+-                                    let _ = tx_message.send(Err(err));
+-                                    break;
+-                                }
+-                            }
+-                            Ok(Message::Pong(_)) => {}
+-                            Ok(message @ (Message::Text(_)
+-                            | Message::Binary(_)
+-                            | Message::Close(_)
+-                            | Message::Frame(_))) => {
+-                                let is_close = matches!(message, Message::Close(_));
+-                                if tx_message.send(Ok(message)).is_err() {
+-                                    break;
+-                                }
+-                                if is_close {
+-                                    break;
+-                                }
++                        }
++                        if let Some(probe) = pending_probe.as_mut() {
++                            // A joining caller cannot extend an existing probe's budget.
++                            probe.deadline = probe.deadline.min(deadline);
++                            probe.waiters.push(tx_result);
++                            continue;
++                        }
++                        let deadline = deadline.min(Instant::now() + liveness.probe_timeout);
++                        match begin_liveness_probe(&mut inner, deadline).await {
++                            Ok(mut probe) => {
++                                probe.waiters.push(tx_result);
++                                pending_probe = Some(probe);
++                                next_heartbeat = Instant::now() + liveness.heartbeat_interval;
+                             }
+                             Err(err) => {
++                                let _ = tx_result.send(Err(err.to_string()));
+                                 let _ = tx_message.send(Err(err));
+                                 break;
+                             }
+                         }
+                     }
++                    WsPumpEvent::Message(Some(Ok(Message::Ping(payload)))) => {
++                        let pong_deadline = pending_probe
++                            .as_ref()
++                            .map(|probe| probe.deadline)
++                            .unwrap_or_else(|| Instant::now() + liveness.probe_timeout);
++                        if let Err(err) = tokio::time::timeout_at(
++                            pong_deadline,
++                            inner.send(Message::Pong(payload)),
++                        )
++                        .await
++                        .unwrap_or_else(|_| Err(liveness_timeout_error()))
++                        {
++                            let _ = tx_message.send(Err(err));
++                            break;
++                        }
++                    }
++                    WsPumpEvent::Message(Some(Ok(Message::Pong(payload)))) => {
++                        if pending_probe
++                            .as_ref()
++                            .is_some_and(|probe| probe.payload.as_slice() == payload.as_ref())
++                            && let Some(probe) = pending_probe.take()
++                        {
++                            for waiter in probe.waiters {
++                                let _ = waiter.send(Ok(()));
++                            }
++                            next_heartbeat = Instant::now() + liveness.heartbeat_interval;
++                        }
++                    }
++                    WsPumpEvent::Message(Some(Ok(message))) => {
++                        let is_close = matches!(message, Message::Close(_));
++                        if tx_message.send(Ok(message)).is_err() || is_close {
++                            break;
++                        }
++                    }
++                    WsPumpEvent::Message(Some(Err(err))) => {
++                        let _ = tx_message.send(Err(err));
 +                        break;
 +                    }
-+                    _ = clock_check.tick() => {
-+                        let now = (Instant::now(), SystemTime::now());
-+                        let resumed = sleep_gap_detected(last_clock_sample, now, liveness.resume_gap);
-+                        last_clock_sample = now;
-+                        if pending_probe.is_none() && (resumed || now.0 >= next_heartbeat) {
-+                            match begin_liveness_probe(&mut inner, liveness.probe_timeout).await {
-+                                Ok(probe) => pending_probe = Some(probe),
-+                                Err(err) => {
-+                                    let _ = tx_message.send(Err(err));
-+                                    break;
-+                                }
-+                            }
-+                            next_heartbeat = now.0 + liveness.heartbeat_interval;
-+                        }
-+                    }
++                    WsPumpEvent::Command(None) | WsPumpEvent::Message(None) => break,
++                    WsPumpEvent::ProbeTimeout | WsPumpEvent::ClockTick => {}
                  }
              }
          });
-@@ -141,11 +242,77 @@ impl WsStream {
+@@ -141,11 +300,125 @@ impl WsStream {
              .await
      }
  
@@ -169,39 +296,69 @@ index 95d41e0d9..a57a57ee5 100644
  }
  
 +async fn probe_liveness(tx_command: &mpsc::Sender<WsCommand>) -> Result<(), ApiError> {
-+    let (tx_result, rx_result) = oneshot::channel();
-+    if tx_command
-+        .send(WsCommand::Probe { tx_result })
-+        .await
-+        .is_err()
-+    {
-+        return Err(ApiError::Stream(
-+            "websocket connection closed before liveness probe".to_string(),
-+        ));
-+    }
-+    rx_result
-+        .await
-+        .unwrap_or_else(|_| Err("websocket connection closed during liveness probe".to_string()))
-+        .map_err(ApiError::Stream)
++    probe_liveness_with_timeout(tx_command, DEFAULT_LIVENESS_PROBE_TIMEOUT).await
 +}
 +
-+async fn begin_liveness_probe(
-+    inner: &mut WebSocketConnection,
-+    probe_timeout: Duration,
-+) -> Result<PendingProbe, WsError> {
++async fn probe_liveness_with_timeout(
++    tx_command: &mpsc::Sender<WsCommand>,
++    timeout: Duration,
++) -> Result<(), ApiError> {
++    let deadline = Instant::now() + timeout;
++    let (tx_result, rx_result) = oneshot::channel();
++    match tokio::time::timeout_at(
++        deadline,
++        tx_command.send(WsCommand::Probe {
++            deadline,
++            tx_result,
++        }),
++    )
++    .await
++    {
++        Ok(Ok(())) => {}
++        Ok(Err(_)) => {
++            return Err(ApiError::Stream(
++                "websocket connection closed before liveness probe".to_string(),
++            ));
++        }
++        Err(_) => {
++            return Err(ApiError::Stream(
++                WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE.to_string(),
++            ));
++        }
++    }
++
++    match tokio::time::timeout_at(deadline, rx_result).await {
++        // A probe that answered inside the budget carries real information even
++        // if this task happens to be polled at the boundary; reporting it as a
++        // timeout would tear down a healthy socket and hide a resumed-session
++        // rejection. The pump keeps authority over the connection state.
++        Ok(Ok(result)) => result.map_err(ApiError::Stream),
++        Ok(Err(_)) => Err(ApiError::Stream(
++            "websocket connection closed during liveness probe".to_string(),
++        )),
++        Err(_) => Err(ApiError::Stream(
++            WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE.to_string(),
++        )),
++    }
++}
++
++async fn begin_liveness_probe<S>(inner: &mut S, deadline: Instant) -> Result<PendingProbe, WsError>
++where
++    S: futures::Sink<Message, Error = WsError> + Unpin,
++{
++    if deadline <= Instant::now() {
++        return Err(liveness_timeout_error());
++    }
 +    let payload = NEXT_PROBE_ID
 +        .fetch_add(1, Ordering::Relaxed)
 +        .to_be_bytes()
 +        .to_vec();
-+    tokio::time::timeout(
-+        probe_timeout,
-+        inner.send(Message::Ping(payload.clone().into())),
-+    )
-+    .await
-+    .map_err(|_| liveness_timeout_error())??;
++    tokio::time::timeout_at(deadline, inner.send(Message::Ping(payload.clone().into())))
++        .await
++        .map_err(|_| liveness_timeout_error())??;
 +    Ok(PendingProbe {
 +        payload,
-+        deadline: Instant::now() + probe_timeout,
++        deadline,
 +        waiters: Vec::new(),
 +    })
 +}
@@ -211,6 +368,24 @@ index 95d41e0d9..a57a57ee5 100644
 +        std::io::ErrorKind::TimedOut,
 +        WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE,
 +    ))
++}
++
++fn sample_clock(
++    last_clock_sample: &mut (Instant, SystemTime),
++    now: (Instant, SystemTime),
++    resume_gap: Duration,
++) -> bool {
++    let resumed = sleep_gap_detected(*last_clock_sample, now, resume_gap);
++    *last_clock_sample = now;
++    resumed
++}
++
++fn invalidate_pending_probe(pending_probe: &mut Option<PendingProbe>) {
++    if let Some(probe) = pending_probe.take() {
++        for waiter in probe.waiters {
++            let _ = waiter.send(Err(WEBSOCKET_LIVENESS_RESUMED_MESSAGE.to_string()));
++        }
++    }
 +}
 +
 +fn sleep_gap_detected(
@@ -229,7 +404,7 @@ index 95d41e0d9..a57a57ee5 100644
  impl Drop for WsStream {
      fn drop(&mut self) {
          self.pump_task.abort();
-@@ -223,7 +390,22 @@ impl ResponsesWebsocketConnection {
+@@ -223,7 +496,22 @@ impl ResponsesWebsocketConnection {
      }
  
      pub async fn is_closed(&self) -> bool {
@@ -253,7 +428,7 @@ index 95d41e0d9..a57a57ee5 100644
      }
  
      #[instrument(
-@@ -927,6 +1109,7 @@ mod tests {
+@@ -927,6 +1215,7 @@ mod tests {
      use super::*;
      use crate::common::ResponseCreateWsRequest;
      use crate::common::ResponsesApiRequest;
@@ -261,7 +436,7 @@ index 95d41e0d9..a57a57ee5 100644
      use codex_protocol::ResponseItemId;
      use codex_protocol::models::ContentItem;
      use codex_protocol::models::ResponseItem;
-@@ -936,6 +1119,45 @@ mod tests {
+@@ -936,6 +1225,61 @@ mod tests {
      use serde_json::value::to_raw_value;
      use std::collections::HashMap;
      use std::sync::Arc;
@@ -296,6 +471,22 @@ index 95d41e0d9..a57a57ee5 100644
 +        (WsStream::new_with_liveness(client, liveness), server)
 +    }
 +
++    async fn memory_websocket_pair(
++        capacity: usize,
++    ) -> (
++        WebSocketStream<tokio::io::DuplexStream>,
++        WebSocketStream<tokio::io::DuplexStream>,
++    ) {
++        let (client, server) = tokio::io::duplex(capacity);
++        let client =
++            WebSocketStream::from_raw_socket(client, tungstenite::protocol::Role::Client, None)
++                .await;
++        let server =
++            WebSocketStream::from_raw_socket(server, tungstenite::protocol::Role::Server, None)
++                .await;
++        (client, server)
++    }
++
 +    fn test_liveness_config() -> WsLivenessConfig {
 +        WsLivenessConfig {
 +            heartbeat_interval: Duration::from_millis(20),
@@ -307,7 +498,7 @@ index 95d41e0d9..a57a57ee5 100644
  
      #[test]
      fn direct_serialization_preserves_websocket_request_payload() {
-@@ -1005,6 +1227,122 @@ mod tests {
+@@ -1005,6 +1349,389 @@ mod tests {
          assert!(config.extensions.permessage_deflate.is_some());
      }
  
@@ -345,6 +536,139 @@ index 95d41e0d9..a57a57ee5 100644
 +            .expect("queued data frame is valid");
 +        assert_eq!(message, Message::Text("event-during-probe".into()));
 +        server_task.await.expect("join server task");
++    }
++
++    #[tokio::test]
++    async fn liveness_probe_times_out_when_command_queue_stalls() {
++        let (tx_command, _rx_command) = mpsc::channel(1);
++        let (tx_result, _rx_result) = oneshot::channel();
++        tx_command
++            .send(WsCommand::Probe {
++                deadline: Instant::now() + Duration::from_secs(1),
++                tx_result,
++            })
++            .await
++            .expect("fill command queue");
++
++        let error = probe_liveness_with_timeout(&tx_command, Duration::from_millis(20))
++            .await
++            .expect_err("a full command queue should time out");
++        assert!(
++            error
++                .to_string()
++                .contains(WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE)
++        );
++    }
++
++    #[tokio::test(start_paused = true)]
++    async fn enqueue_and_reply_wait_share_one_deadline() {
++        let (tx_command, mut rx_command) = mpsc::channel(1);
++        let (tx_result, _rx_result) = oneshot::channel();
++        let started = Instant::now();
++        tx_command
++            .send(WsCommand::Probe {
++                deadline: started + Duration::from_secs(1),
++                tx_result,
++            })
++            .await
++            .expect("fill command queue");
++        let pump = tokio::spawn(async move {
++            tokio::time::sleep(Duration::from_millis(60)).await;
++            let _ = rx_command.recv().await;
++            let Some(WsCommand::Probe {
++                deadline,
++                tx_result,
++            }) = rx_command.recv().await
++            else {
++                panic!("expected caller probe");
++            };
++            assert_eq!(deadline, started + Duration::from_millis(80));
++            tokio::time::sleep(Duration::from_millis(40)).await;
++            let _ = tx_result.send(Ok(()));
++        });
++        let error = probe_liveness_with_timeout(&tx_command, Duration::from_millis(80))
++            .await
++            .expect_err("queue time counts against reply budget");
++        assert!(
++            error
++                .to_string()
++                .contains(WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE)
++        );
++        assert_eq!(started.elapsed(), Duration::from_millis(80));
++        pump.await.expect("join delayed pump");
++    }
++
++    #[tokio::test(start_paused = true)]
++    async fn liveness_probe_times_out_while_pump_is_stalled() {
++        let (tx_command, mut rx_command) = mpsc::channel(1);
++        let probe = probe_liveness_with_timeout(&tx_command, Duration::from_millis(80));
++        let stalled_pump = async {
++            let _command = rx_command.recv().await.expect("probe was enqueued");
++            tokio::time::sleep(Duration::from_secs(1)).await;
++        };
++        tokio::pin!(probe, stalled_pump);
++        let started = Instant::now();
++        tokio::select! {
++            result = &mut probe => {
++                assert!(result.expect_err("pump must not stall caller").to_string()
++                    .contains(WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE));
++            }
++            _ = &mut stalled_pump => panic!("probe exceeded its end-to-end deadline"),
++        }
++        assert_eq!(started.elapsed(), Duration::from_millis(80));
++    }
++
++    #[tokio::test(start_paused = true)]
++    async fn ping_write_and_pong_share_one_deadline() {
++        // One byte of capacity keeps the Ping write blocked until the server reads it.
++        let (socket, mut server) = memory_websocket_pair(1).await;
++        let mut liveness = test_liveness_config();
++        liveness.heartbeat_interval = Duration::from_secs(15);
++        // Paused time freezes `Instant` but not `SystemTime`; derive the wall
++        // clock from the same virtual instant so a loaded runner cannot inject
++        // a spurious suspend/resume.
++        let started = Instant::now();
++        let mut client = WsStream::new_with_liveness_and_clock(socket, liveness, move || {
++            SystemTime::UNIX_EPOCH + started.elapsed()
++        });
++        let (tx_result, rx_result) = oneshot::channel();
++        client
++            .tx_command
++            .send(WsCommand::Probe {
++                deadline: started + Duration::from_millis(80),
++                tx_result,
++            })
++            .await
++            .expect("enqueue probe");
++        tokio::time::sleep(Duration::from_millis(60)).await;
++        assert!(matches!(server.next().await, Some(Ok(Message::Ping(_)))));
++        // Do not flush the automatic Pong. Writing consumed 60 ms of the 80 ms budget.
++        let error = rx_result
++            .await
++            .expect("probe result")
++            .expect_err("Pong timed out");
++        assert!(error.contains(WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE));
++        assert_eq!(started.elapsed(), Duration::from_millis(80));
++        assert!(client.next().await.expect("pump error").is_err());
++    }
++
++    #[tokio::test(start_paused = true)]
++    async fn liveness_probe_bounds_a_blocked_ping_write() {
++        let (socket, _server) = memory_websocket_pair(1).await;
++        let started = Instant::now();
++        let client =
++            WsStream::new_with_liveness_and_clock(socket, WsLivenessConfig::default(), move || {
++                SystemTime::UNIX_EPOCH + started.elapsed()
++            });
++        let error = probe_liveness_with_timeout(&client.tx_command, Duration::from_millis(80))
++            .await
++            .expect_err("blocked Ping write must time out");
++        assert!(
++            error
++                .to_string()
++                .contains(WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE)
++        );
++        assert_eq!(started.elapsed(), Duration::from_millis(80));
 +    }
 +
 +    #[tokio::test]
@@ -400,6 +724,99 @@ index 95d41e0d9..a57a57ee5 100644
 +        server_task.abort();
 +    }
 +
++    #[tokio::test(start_paused = true)]
++    async fn explicit_probe_resets_heartbeat_schedule() {
++        let mut liveness = test_liveness_config();
++        liveness.heartbeat_interval = Duration::from_millis(100);
++        let (socket, mut server) = memory_websocket_pair(1024).await;
++        let started = Instant::now();
++        let client = WsStream::new_with_liveness_and_clock(socket, liveness, move || {
++            SystemTime::UNIX_EPOCH + started.elapsed()
++        });
++        tokio::time::sleep(Duration::from_millis(90)).await;
++        let (tx_result, rx_result) = oneshot::channel();
++        client
++            .tx_command
++            .send(WsCommand::Probe {
++                deadline: Instant::now() + liveness.probe_timeout,
++                tx_result,
++            })
++            .await
++            .expect("enqueue explicit probe");
++        assert!(matches!(server.next().await, Some(Ok(Message::Ping(_)))));
++        server.flush().await.expect("flush automatic explicit Pong");
++        rx_result
++            .await
++            .expect("probe result")
++            .expect("probe succeeds");
++
++        // The original heartbeat was due in 10 ms; the explicit probe postpones it.
++        assert!(
++            tokio::time::timeout(Duration::from_millis(50), server.next())
++                .await
++                .is_err()
++        );
++        assert!(matches!(
++            tokio::time::timeout(Duration::from_millis(60), server.next()).await,
++            Ok(Some(Ok(Message::Ping(_))))
++        ));
++    }
++
++    #[tokio::test(start_paused = true)]
++    async fn resume_reprobes_before_accepting_a_buffered_pre_suspend_pong() {
++        let (socket, mut server) = memory_websocket_pair(1024).await;
++        let offset = Arc::new(AtomicU64::new(0));
++        let clock_offset = Arc::clone(&offset);
++        let started = Instant::now();
++        let mut liveness = test_liveness_config();
++        liveness.heartbeat_interval = Duration::from_secs(15);
++        let mut client = WsStream::new_with_liveness_and_clock(socket, liveness, move || {
++            SystemTime::UNIX_EPOCH
++                + started.elapsed()
++                + Duration::from_secs(clock_offset.load(Ordering::Relaxed))
++        });
++        let (tx_result, rx_result) = oneshot::channel();
++        client
++            .tx_command
++            .send(WsCommand::Probe {
++                deadline: started + liveness.probe_timeout,
++                tx_result,
++            })
++            .await
++            .expect("enqueue pre-suspend probe");
++        let Some(Ok(Message::Ping(old_payload))) = server.next().await else {
++            panic!("expected pre-suspend Ping");
++        };
++
++        // Suspend advances wall time but not Tokio's monotonic clock. A buffered old
++        // Pong and the clock tick can race; neither may preserve pre-suspend evidence.
++        offset.store(10, Ordering::Relaxed);
++        server.flush().await.expect("flush pre-suspend Pong");
++        let Some(Ok(Message::Ping(new_payload))) = server.next().await else {
++            panic!("expected fresh post-resume Ping");
++        };
++        assert_ne!(old_payload, new_payload);
++        assert_eq!(
++            rx_result
++                .await
++                .expect("old probe result")
++                .expect_err("invalidated probe"),
++            WEBSOCKET_LIVENESS_RESUMED_MESSAGE
++        );
++        // Do not flush the fresh Pong: the old Pong must not satisfy the fresh probe.
++        let error = client
++            .next()
++            .await
++            .expect("fresh probe must time out")
++            .expect_err("timeout");
++        assert!(
++            error
++                .to_string()
++                .contains(WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE)
++        );
++        assert_eq!(started.elapsed(), liveness.probe_timeout);
++    }
++
 +    #[test]
 +    fn sleep_gap_detection_does_not_assume_monotonic_clock_advances_during_suspend() {
 +        let previous = (
@@ -427,11 +844,52 @@ index 95d41e0d9..a57a57ee5 100644
 +        ));
 +    }
 +
++    #[test]
++    fn suspend_invalidates_pending_probe_before_stale_pong_matching() {
++        let previous = (
++            Instant::now(),
++            SystemTime::UNIX_EPOCH + Duration::from_secs(100),
++        );
++        let after_resume = (
++            previous.0 + Duration::from_secs(1),
++            previous.1 + Duration::from_secs(11),
++        );
++        let (tx_result, mut rx_result) = oneshot::channel();
++        let stale_payload = vec![1, 2, 3, 4];
++        let mut pending_probe = Some(PendingProbe {
++            payload: stale_payload.clone(),
++            deadline: previous.0 + Duration::from_secs(5),
++            waiters: vec![tx_result],
++        });
++        let mut last_clock_sample = previous;
++
++        assert!(sample_clock(
++            &mut last_clock_sample,
++            after_resume,
++            Duration::from_secs(2)
++        ));
++        invalidate_pending_probe(&mut pending_probe);
++
++        assert!(pending_probe.is_none());
++        assert_eq!(
++            rx_result
++                .try_recv()
++                .expect("resume should notify the pending probe")
++                .expect_err("pre-resume probe must not succeed"),
++            WEBSOCKET_LIVENESS_RESUMED_MESSAGE
++        );
++        assert!(
++            !pending_probe
++                .as_ref()
++                .is_some_and(|probe| probe.payload == stale_payload)
++        );
++    }
++
      #[test]
      fn parse_wrapped_websocket_error_event_maps_to_transport_http() {
          let payload = json!({
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index a81302254..0d1bb5f87 100644
+index a813022..0d1bb5f 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
 @@ -1486,7 +1486,14 @@ impl ModelClientSession {
@@ -451,7 +909,7 @@ index a81302254..0d1bb5f87 100644
              None => true,
          };
 diff --git a/codex-rs/core/src/responses_retry.rs b/codex-rs/core/src/responses_retry.rs
-index fb0505411..c00ec6fe4 100644
+index fb05054..c00ec6f 100644
 --- a/codex-rs/core/src/responses_retry.rs
 +++ b/codex-rs/core/src/responses_retry.rs
 @@ -16,6 +16,7 @@ use tracing::warn;
@@ -477,7 +935,7 @@ index fb0505411..c00ec6fe4 100644
              // Surface retry information to any UI/front-end so the user understands what is
              // happening instead of staring at a seemingly frozen screen.
 diff --git a/codex-rs/core/tests/common/responses.rs b/codex-rs/core/tests/common/responses.rs
-index 9c4fdb07f..3cd840dac 100644
+index 9c4fdb0..3cd840d 100644
 --- a/codex-rs/core/tests/common/responses.rs
 +++ b/codex-rs/core/tests/common/responses.rs
 @@ -1408,10 +1408,18 @@ pub async fn start_websocket_server_with_headers(
@@ -608,7 +1066,7 @@ index 9c4fdb07f..3cd840dac 100644
      match message {
          Message::Text(text) => serde_json::from_str(&text).ok(),
 diff --git a/codex-rs/core/tests/suite/client_websockets.rs b/codex-rs/core/tests/suite/client_websockets.rs
-index 3263b9e4c..3e50d4134 100755
+index 3263b9e..3e50d41 100755
 --- a/codex-rs/core/tests/suite/client_websockets.rs
 +++ b/codex-rs/core/tests/suite/client_websockets.rs
 @@ -49,6 +49,7 @@ use core_test_support::responses::WebSocketTestServer;
@@ -670,15 +1128,3 @@ index 3263b9e4c..3e50d4134 100755
  #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
  async fn responses_websocket_creates_on_non_prefix() {
      skip_if_no_network!();
-diff --git a/codex-rs/core/tests/suite/openai_file_mcp.rs b/codex-rs/core/tests/suite/openai_file_mcp.rs
-index 9ae4b3121..c56891986 100644
---- a/codex-rs/core/tests/suite/openai_file_mcp.rs
-+++ b/codex-rs/core/tests/suite/openai_file_mcp.rs
-@@ -44,7 +44,6 @@ use serde_json::json;
- use wiremock::Mock;
- use wiremock::MockServer;
- use wiremock::ResponseTemplate;
--use wiremock::matchers::body_json;
- use wiremock::matchers::body_partial_json;
- use wiremock::matchers::header;
- use wiremock::matchers::method;
