@@ -216,7 +216,7 @@ index ee6694b..fdafce9 100644
          for name in [
 diff --git a/codex-rs/tui/src/notifications/sound.rs b/codex-rs/tui/src/notifications/sound.rs
 new file mode 100644
-index 0000000..63392c8
+index 0000000..07f2b8e
 --- /dev/null
 +++ b/codex-rs/tui/src/notifications/sound.rs
 @@ -0,0 +1,481 @@
@@ -529,7 +529,7 @@ index 0000000..63392c8
 +        )
 +        .await;
 +        assert_eq!(
-+            std::fs::read_to_string(log).unwrap(),
++            std::fs::read_to_string(&log).unwrap(),
 +            "argv\na sound file; with spaces\n$(printf expanded) $HOME *\n\n"
 +        );
 +        assert_reaped(&log, "argv");
@@ -549,7 +549,7 @@ index 0000000..63392c8
 +            std::time::Duration::from_secs(1),
 +        )
 +        .await;
-+        assert_eq!(std::fs::read_to_string(fallback_log).unwrap(), "fail\n");
++        assert_eq!(std::fs::read_to_string(&fallback_log).unwrap(), "fail\n");
 +        assert_reaped(&fallback_log, "fail");
 +    }
 +
@@ -571,7 +571,7 @@ index 0000000..63392c8
 +        )
 +        .await;
 +
-+        assert_eq!(std::fs::read_to_string(log).unwrap(), "fallback\n");
++        assert_eq!(std::fs::read_to_string(&log).unwrap(), "fallback\n");
 +        assert_reaped(&log, "fallback");
 +    }
 +
@@ -594,7 +594,7 @@ index 0000000..63392c8
 +        .await
 +        .expect("sound command exceeded its bound");
 +
-+        assert_eq!(std::fs::read_to_string(log).unwrap(), "hang\n");
++        assert_eq!(std::fs::read_to_string(&log).unwrap(), "hang\n");
 +        assert_reaped(&log, "hang");
 +    }
 +
@@ -643,7 +643,7 @@ index 0000000..63392c8
 +        )
 +        .expect("reaping must release the sound slot");
 +        next.await.unwrap();
-+        assert_eq!(std::fs::read_to_string(log).unwrap(), "hang\nnext\n");
++        assert_eq!(std::fs::read_to_string(&log).unwrap(), "hang\nnext\n");
 +        assert_reaped(&log, "next");
 +    }
 +

@@ -4498,10 +4498,10 @@ index 0000000..ba52a8e
 +mod tests;
 diff --git a/codex-rs/login/src/auth/rotate_tests.rs b/codex-rs/login/src/auth/rotate_tests.rs
 new file mode 100644
-index 0000000..852ff98
+index 0000000..cd3f287
 --- /dev/null
 +++ b/codex-rs/login/src/auth/rotate_tests.rs
-@@ -0,0 +1,563 @@
+@@ -0,0 +1,588 @@
 +use super::*;
 +use base64::Engine;
 +use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -4876,20 +4876,45 @@ index 0000000..852ff98
 +    );
 +}
 +
++/// Returns `first` on its first RPC and `second` on every later one. A single
++/// static response cannot exercise "the account rotates" -- the helper's own
++/// snapshot cache would recognize the second identical fetch as unchanged.
++#[cfg(unix)]
++fn helper_then(dir: &tempfile::TempDir, first: Value, second: Value) -> RotateHelper {
++    let flag = dir.path().join("called-once").display().to_string();
++    let first = serde_json::to_string(&first).unwrap().replace('\'', "'\\''");
++    let second = serde_json::to_string(&second)
++        .unwrap()
++        .replace('\'', "'\\''");
++    RotateHelper::new(vec![
++        "/bin/sh".into(),
++        "-c".into(),
++        format!(
++            "IFS= read -r request; if [ -e '{flag}' ]; then printf '%s' '{second}'; else touch '{flag}'; printf '%s' '{first}'; fi"
++        ),
++    ])
++    .unwrap()
++}
++
 +#[cfg(unix)]
 +#[tokio::test]
 +async fn reload_of_a_rotated_rotate_snapshot_publishes_an_auth_change() {
++    let dir = tempfile::tempdir().unwrap();
 +    let mut rotated = snapshot("account-a", 2);
 +    rotated["access_token"] = json!("rotated-access");
 +    let manager = super::super::manager::AuthManager::from_auth_for_testing(auth("account-a", 1));
 +    manager
-+        .set_external_auth(Arc::new(helper(json!({
-+            "version": 1, "ok": true, "snapshot": rotated
-+        }))))
++        .set_external_auth(Arc::new(helper_then(
++            &dir,
++            json!({"version": 1, "ok": true, "snapshot": snapshot("account-a", 1)}),
++            json!({"version": 1, "ok": true, "snapshot": rotated}),
++        )))
 +        .await
 +        .unwrap();
 +    let mut changes = manager.auth_change_receiver();
 +    changes.borrow_and_update();
++    // The helper now answers with the rotated snapshot: a real account
++    // rotation, not a repeated fetch of the same one.
 +    manager.reload().await;
 +    assert!(
 +        changes.has_changed().unwrap(),
