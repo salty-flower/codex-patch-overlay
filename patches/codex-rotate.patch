@@ -4498,10 +4498,10 @@ index 0000000..ba52a8e
 +mod tests;
 diff --git a/codex-rs/login/src/auth/rotate_tests.rs b/codex-rs/login/src/auth/rotate_tests.rs
 new file mode 100644
-index 0000000..ffa00b5
+index 0000000..852ff98
 --- /dev/null
 +++ b/codex-rs/login/src/auth/rotate_tests.rs
-@@ -0,0 +1,551 @@
+@@ -0,0 +1,563 @@
 +use super::*;
 +use base64::Engine;
 +use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -4855,33 +4855,45 @@ index 0000000..ffa00b5
 +    }
 +}
 +
-+#[test]
-+fn identical_rotate_snapshot_reload_keeps_last_refresh_and_client_unchanged() {
-+    let previous = auth("account-a", 1);
-+    let reloaded = CodexAuth::from_rotate_snapshot(
-+        serde_json::from_value(snapshot("account-a", 1)).unwrap(),
-+        Some(&previous),
-+    )
-+    .unwrap();
-+    // Same identity, same access token: auths_equal_for_refresh must see no
-+    // change, or every idle poll would spuriously publish an auth change.
-+    assert_eq!(
-+        previous.get_current_auth_json(),
-+        reloaded.get_current_auth_json()
++#[cfg(unix)]
++#[tokio::test]
++async fn reload_of_an_unchanged_rotate_snapshot_publishes_no_auth_change() {
++    let manager = super::super::manager::AuthManager::from_auth_for_testing(auth("account-a", 1));
++    manager
++        .set_external_auth(Arc::new(helper(json!({
++            "version": 1, "ok": true, "snapshot": snapshot("account-a", 1)
++        }))))
++        .await
++        .unwrap();
++    let mut changes = manager.auth_change_receiver();
++    changes.borrow_and_update();
++    manager.reload().await;
++    // Same identity and token: refresh equality must see no change, or every
++    // reload publishes and its consumers rebuild for nothing.
++    assert!(
++        !changes.has_changed().unwrap(),
++        "a byte-identical snapshot must not publish an auth change"
 +    );
 +}
 +
-+#[test]
-+fn genuinely_rotated_credential_revision_still_changes_last_refresh() {
-+    let previous = auth("account-a", 1);
-+    let rotated = CodexAuth::from_rotate_snapshot(
-+        serde_json::from_value(snapshot("account-a", 2)).unwrap(),
-+        Some(&previous),
-+    )
-+    .unwrap();
-+    assert_ne!(
-+        previous.get_current_auth_json(),
-+        rotated.get_current_auth_json()
++#[cfg(unix)]
++#[tokio::test]
++async fn reload_of_a_rotated_rotate_snapshot_publishes_an_auth_change() {
++    let mut rotated = snapshot("account-a", 2);
++    rotated["access_token"] = json!("rotated-access");
++    let manager = super::super::manager::AuthManager::from_auth_for_testing(auth("account-a", 1));
++    manager
++        .set_external_auth(Arc::new(helper(json!({
++            "version": 1, "ok": true, "snapshot": rotated
++        }))))
++        .await
++        .unwrap();
++    let mut changes = manager.auth_change_receiver();
++    changes.borrow_and_update();
++    manager.reload().await;
++    assert!(
++        changes.has_changed().unwrap(),
++        "a rotated credential must publish so websocket, MCP and otel consumers rebuild"
 +    );
 +}
 +
