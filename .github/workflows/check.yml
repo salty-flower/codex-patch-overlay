@@ -187,10 +187,19 @@ jobs:
           # checkout of this exact tagged commit on non-CI Linux -- these 3
           # fail only on this runner, most likely from shell/process-timing
           # sensitivity under a shared, resource-constrained CI VM rather than
-          # anything code-level. Re-check all ten skips here on the next
-          # upstream bump rather than carrying them forward blindly.
+          # anything code-level.
+          #
+          # shell_snapshot::tests::snapshot_discovers_and_redacts_shell_
+          # initialized_credentials times out on this runner on both nextest
+          # attempts (confirmed on an actual run of this exact patch stack,
+          # not just local reproduction) despite no enabled patch touching
+          # shell_snapshot.rs, shell_snapshot_tests.rs, or the sandbox helper
+          # it spawns; same class of shell/process-timing sensitivity as the
+          # three above, on the same shared CI VM. Re-check all eleven skips
+          # here on the next upstream bump rather than carrying them forward
+          # blindly.
           cargo nextest run --no-fail-fast \
-            -E 'kind(lib) and not (test(active_turn_interrupt_is_nonblocking_and_coalesces_repeated_requests) or test(agents_overview_acknowledges_inactive_steer_before_interrupt) or test(kitty_local_file_pet_image_uses_file_reference_without_inline_payload) or test(stable_precomputed_exports_match_schema_fixtures) or test(experimental_precomputed_exports_match_generated) or test(guardian_ephemeral_retry_preserves_parallel_trunk_and_fork_history) or test(selected_and_resumed_threads_use_server_capability_for_v1_and_v2_children) or test(snapshot_failure_omits_credentials_and_stops_descendants::network_denial) or test(snapshot_failure_omits_credentials_and_stops_descendants::startup_exit) or test(snapshot_failure_omits_credentials_and_stops_descendants::timeout))' \
+            -E 'kind(lib) and not (test(active_turn_interrupt_is_nonblocking_and_coalesces_repeated_requests) or test(agents_overview_acknowledges_inactive_steer_before_interrupt) or test(kitty_local_file_pet_image_uses_file_reference_without_inline_payload) or test(stable_precomputed_exports_match_schema_fixtures) or test(experimental_precomputed_exports_match_generated) or test(guardian_ephemeral_retry_preserves_parallel_trunk_and_fork_history) or test(selected_and_resumed_threads_use_server_capability_for_v1_and_v2_children) or test(snapshot_failure_omits_credentials_and_stops_descendants::network_denial) or test(snapshot_failure_omits_credentials_and_stops_descendants::startup_exit) or test(snapshot_failure_omits_credentials_and_stops_descendants::timeout) or test(shell_snapshot::tests::snapshot_discovers_and_redacts_shell_initialized_credentials))' \
             -p codex-tui \
             -p codex-api \
             -p codex-login \
