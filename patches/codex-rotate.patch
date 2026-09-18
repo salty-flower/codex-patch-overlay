@@ -1282,7 +1282,7 @@ index d46a98ed31..06711bf7b9 100644
      if !*provider_auth_recovery_attempted {
          *provider_auth_recovery_attempted = true;
 diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
-index 7f1fa2ef4e..6ec0d4c050 100644
+index 7f1fa2ef4e..39a64867fe 100644
 --- a/codex-rs/core/src/client_tests.rs
 +++ b/codex-rs/core/src/client_tests.rs
 @@ -95,8 +95,64 @@ use wiremock::ResponseTemplate;
@@ -1366,6 +1366,14 @@ index 7f1fa2ef4e..6ec0d4c050 100644
              &mut auth_recovery,
              &mut provider_auth_recovery_attempted,
              &telemetry,
+@@ -1010,6 +1068,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
+             );
+             super::handle_unauthorized(
+                 unauthorized(),
++                /*request_auth*/ &mut None,
+                 &mut auth_recovery,
+                 &mut provider_auth_recovery_attempted,
+                 &telemetry,
 diff --git a/codex-rs/core/src/compact_remote_v2.rs b/codex-rs/core/src/compact_remote_v2.rs
 index 376ad06c99..3c695de75f 100644
 --- a/codex-rs/core/src/compact_remote_v2.rs

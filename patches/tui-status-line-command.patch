@@ -789,6 +789,20 @@ index 6c5223a650..d9afe57547 100644
              thread_usage: thread_usage::ThreadUsageState::default(),
              current_goal_status_indicator: None,
              current_goal_status: None,
+diff --git a/codex-rs/tui/src/chatwidget/realtime/recording_controls_tests.rs b/codex-rs/tui/src/chatwidget/realtime/recording_controls_tests.rs
+index 21e6ca942b..5a0e9c7409 100644
+--- a/codex-rs/tui/src/chatwidget/realtime/recording_controls_tests.rs
++++ b/codex-rs/tui/src/chatwidget/realtime/recording_controls_tests.rs
+@@ -229,7 +229,8 @@ async fn voice_meters_do_not_sample_again_on_early_redraws() {
+         let deadline = frame_requests
+             .try_recv()
+             .expect("early redraw re-arms sampling");
+-        assert!((before_redraw + remaining..=after_redraw + remaining).contains(&deadline));
++        assert!(deadline >= before_redraw + remaining);
++        assert!(deadline <= after_redraw + remaining);
+         assert!(frame_requests.try_recv().is_err());
+     }
+     assert_eq!(
 diff --git a/codex-rs/tui/src/chatwidget/status_line_command.rs b/codex-rs/tui/src/chatwidget/status_line_command.rs
 new file mode 100644
 index 0000000000..98ba068613
