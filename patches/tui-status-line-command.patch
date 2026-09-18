@@ -2843,7 +2843,7 @@ index 0000000000..3ca160bcb1
 +    }
 +}
 diff --git a/codex-rs/tui/src/tui/frame_requester.rs b/codex-rs/tui/src/tui/frame_requester.rs
-index 9dc117bd48..90f5dcfdc1 100644
+index 9dc117bd48..516efb539a 100644
 --- a/codex-rs/tui/src/tui/frame_requester.rs
 +++ b/codex-rs/tui/src/tui/frame_requester.rs
 @@ -12,6 +12,7 @@
@@ -2942,7 +2942,7 @@ index 9dc117bd48..90f5dcfdc1 100644
          Self {
              receiver,
              draw_tx,
-@@ -96,19 +144,33 @@ impl FrameScheduler {
+@@ -96,19 +144,43 @@ impl FrameScheduler {
      async fn run(mut self) {
          const ONE_YEAR: Duration = Duration::from_secs(60 * 60 * 24 * 365);
          let mut next_deadline: Option<Instant> = None;
@@ -2965,24 +2965,34 @@ index 9dc117bd48..90f5dcfdc1 100644
 -                draw_at = self.receiver.recv() => {
 -                    let Some(draw_at) = draw_at else {
 +                request = self.receiver.recv() => {
-+                    let Some(request) = request else {
++                    let Some(mut request) = request else {
                          // All senders dropped; exit the scheduler.
                          break
                      };
 -                    let draw_at = self.rate_limiter.clamp_deadline(draw_at);
 -                    next_deadline = Some(next_deadline.map_or(draw_at, |cur| cur.min(draw_at)));
-+                    let draw_at = self.rate_limiter.clamp_deadline(request.draw_at);
-+                    if request.preserve_after_earlier_draw {
-+                        // An earlier refresh cannot satisfy a newer deadline: the
-+                        // status command may not be due again until that later time.
-+                        guaranteed_deadlines.insert(draw_at);
-+                    } else {
-+                        next_deadline = Some(next_deadline.map_or(draw_at, |cur| cur.min(draw_at)));
++                    // Drain every request already queued behind this one so a
++                    // burst of near-simultaneous requests coalesces into a
++                    // single deadline recomputation instead of racing the
++                    // sleep future across separate loop iterations.
++                    loop {
++                        let draw_at = self.rate_limiter.clamp_deadline(request.draw_at);
++                        if request.preserve_after_earlier_draw {
++                            // An earlier refresh cannot satisfy a newer deadline: the
++                            // status command may not be due again until that later time.
++                            guaranteed_deadlines.insert(draw_at);
++                        } else {
++                            next_deadline = Some(next_deadline.map_or(draw_at, |cur| cur.min(draw_at)));
++                        }
++                        request = match self.receiver.try_recv() {
++                            Ok(next_request) => next_request,
++                            Err(_) => break,
++                        };
 +                    }
  
                      // Do not send a draw immediately here. By continuing the loop,
                      // we recompute the sleep target so the draw fires once via the
-@@ -116,9 +178,22 @@ impl FrameScheduler {
+@@ -116,9 +188,22 @@ impl FrameScheduler {
                      continue;
                  }
                  _ = &mut deadline => {
@@ -3007,7 +3017,7 @@ index 9dc117bd48..90f5dcfdc1 100644
                          let _ = self.draw_tx.send(());
                      }
                  }
-@@ -135,7 +210,7 @@ mod tests {
+@@ -135,7 +220,7 @@ mod tests {
  
      impl FrameRequester {
          /// Create a frame requester and expose its request channel for deterministic tests.
@@ -3016,7 +3026,7 @@ index 9dc117bd48..90f5dcfdc1 100644
              let (tx, rx) = mpsc::unbounded_channel();
              (
                  FrameRequester {
-@@ -244,6 +319,196 @@ mod tests {
+@@ -244,6 +329,196 @@ mod tests {
          assert!(second.is_err(), "unexpected extra draw received");
      }
  
@@ -3213,7 +3223,7 @@ index 9dc117bd48..90f5dcfdc1 100644
      #[tokio::test(flavor = "current_thread", start_paused = true)]
      async fn test_limits_draw_notifications_to_120fps() {
          let (draw_tx, mut draw_rx) = broadcast::channel(16);
-@@ -279,10 +544,14 @@ mod tests {
+@@ -279,10 +554,14 @@ mod tests {
      async fn test_late_draw_still_limits_the_next_frame() {
          let (draw_tx, mut draw_rx) = broadcast::channel(16);
          let requester = FrameRequester::new(draw_tx);
