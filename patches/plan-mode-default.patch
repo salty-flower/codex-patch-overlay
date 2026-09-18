@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 20968d4b4c..e8c3ddb071 100644
+index 123c595a6c..df2cc5f55d 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -800,6 +800,19 @@ pub struct Tui {
+@@ -817,6 +817,19 @@ pub struct Tui {
      #[serde(default)]
      pub raw_output_mode: bool,
  
@@ -23,12 +23,12 @@ index 20968d4b4c..e8c3ddb071 100644
      ///
      /// - `auto` (default): Use alternate screen.
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 2d5d268a67..367267d160 100644
+index 350723936d..4ccbbeb650 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -2132,6 +2132,14 @@
-       },
-       "type": "object"
+@@ -2242,6 +2242,14 @@
+       ],
+       "type": "string"
      },
 +    "ModeKind": {
 +      "description": "Initial collaboration mode to use when the TUI starts.",
@@ -41,7 +41,7 @@ index 2d5d268a67..367267d160 100644
      "ModelAvailabilityNuxConfig": {
        "additionalProperties": {
          "format": "uint32",
-@@ -3857,6 +3865,15 @@
+@@ -3981,6 +3989,15 @@
            "description": "Generate automatic conversation recaps when the terminal is unfocused. Defaults to `true`. Disabling this leaves `/recap` available on demand.",
            "type": "boolean"
          },
@@ -57,7 +57,7 @@ index 2d5d268a67..367267d160 100644
          "disable_paste_burst": {
            "description": "When true, disables burst-paste detection for typed input entirely. All characters are inserted as they are received, and no buffering or placeholder replacement will occur for fast keypress bursts. Overrides the legacy top-level `disable_paste_burst` setting. Defaults to `false`.",
            "type": "boolean"
-@@ -4068,6 +4085,18 @@
+@@ -4195,6 +4212,18 @@
            "default": "auto",
            "description": "Notification method to use for terminal notifications. Defaults to `auto`."
          },
@@ -76,7 +76,7 @@ index 2d5d268a67..367267d160 100644
          "notifications": {
            "allOf": [
              {
-@@ -5016,6 +5045,25 @@
+@@ -5175,6 +5204,25 @@
        },
        "type": "object"
      },
@@ -103,10 +103,10 @@ index 2d5d268a67..367267d160 100644
        "additionalProperties": false,
        "description": "Pager context keybindings for transcript and static overlays.",
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 606f97bf2d..6c0bfb7142 100644
+index 3f5de2d149..3fde504bab 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -1254,6 +1254,7 @@ fn config_toml_deserializes_model_availability_nux() {
+@@ -1258,6 +1258,7 @@ fn config_toml_deserializes_model_availability_nux() {
      assert_eq!(
          cfg.tui.expect("tui config should deserialize"),
          Tui {
@@ -114,7 +114,7 @@ index 606f97bf2d..6c0bfb7142 100644
              notification_settings: TuiNotificationSettings::default(),
              animations: true,
              whimsy: true,
-@@ -4269,6 +4270,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+@@ -4274,6 +4275,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
      assert_eq!(
          tui,
          Tui {
@@ -123,10 +123,10 @@ index 606f97bf2d..6c0bfb7142 100644
              animations: true,
              whimsy: true,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index ebda9778b1..74e8b9f59b 100644
+index ffbda1e8e4..ed26295eb1 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -98,6 +98,7 @@ use codex_models_manager::ModelsManagerConfig;
+@@ -97,6 +97,7 @@ use codex_models_manager::ModelsManagerConfig;
  use codex_protocol::config_types::AltScreenMode;
  use codex_protocol::config_types::AutoCompactTokenLimitScope;
  use codex_protocol::config_types::ForcedLoginMethod;
@@ -134,7 +134,7 @@ index ebda9778b1..74e8b9f59b 100644
  use codex_protocol::config_types::Personality;
  use codex_protocol::config_types::ReasoningSummary;
  use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
-@@ -762,6 +763,8 @@ pub struct Config {
+@@ -770,6 +771,8 @@ pub struct Config {
      pub tui_raw_output_mode: bool,
  
      /// Start the TUI in the specified collaboration mode (plan/default).
@@ -143,7 +143,7 @@ index ebda9778b1..74e8b9f59b 100644
  
      /// Controls whether the TUI uses the terminal's alternate screen buffer.
      ///
-@@ -4371,6 +4374,10 @@ impl Config {
+@@ -4406,6 +4409,10 @@ impl Config {
                  .as_ref()
                  .map(|t| t.raw_output_mode)
                  .unwrap_or(false),
@@ -155,10 +155,10 @@ index ebda9778b1..74e8b9f59b 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/tui/src/chatwidget/settings.rs b/codex-rs/tui/src/chatwidget/settings.rs
-index 224feab67a..5029c06c40 100644
+index c630d43f41..ed02481fa3 100644
 --- a/codex-rs/tui/src/chatwidget/settings.rs
 +++ b/codex-rs/tui/src/chatwidget/settings.rs
-@@ -410,11 +410,14 @@ impl ChatWidget {
+@@ -425,11 +425,14 @@ impl ChatWidget {
      }
  
      pub(super) fn initial_collaboration_mask(
@@ -176,7 +176,7 @@ index 224feab67a..5029c06c40 100644
              mask.model = Some(model_override.to_string());
          }
 diff --git a/codex-rs/tui/src/local_settings.rs b/codex-rs/tui/src/local_settings.rs
-index db12daa6f1..68424135b7 100644
+index 6a588f4502..b771f24ca1 100644
 --- a/codex-rs/tui/src/local_settings.rs
 +++ b/codex-rs/tui/src/local_settings.rs
 @@ -25,6 +25,7 @@ impl From<&Config> for LocalSettings {
