@@ -36,11 +36,11 @@ index 92a852c04f..c94380ffda 100644
      ///
      /// When set to `"plan"`, the TUI launches in Plan mode instead of the
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index ac71596534..f1a3c6fd39 100644
+index ac71596534..45ec0b99a6 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -4286,6 +4286,15 @@
-           "description": "Escape returns from async questions to the composer, preserving the answer draft.",
+@@ -4291,6 +4291,15 @@
+           "description": "Start the TUI in raw scrollback mode for copy-friendly transcript output. Defaults to `false`.",
            "type": "boolean"
          },
 +        "reasoning_display": {
@@ -52,9 +52,9 @@ index ac71596534..f1a3c6fd39 100644
 +          "default": "status-only",
 +          "description": "Controls how reasoning summaries are displayed. Defaults to `status-only`; use `persistent` to keep every received summary in the transcript, or `hidden` to suppress summaries and show only generic working status."
 +        },
-         "raw_output_mode": {
-           "default": false,
-           "description": "Start the TUI in raw scrollback mode for copy-friendly transcript output. Defaults to `false`.",
+         "resume_cwd": {
+           "allOf": [
+             {
 @@ -5371,6 +5380,32 @@
          }
        ]
