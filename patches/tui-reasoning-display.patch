@@ -333,7 +333,7 @@ index 18b421661e..73b881a146 100644
          // Start a new reasoning block for header extraction and accumulate transcript.
          if !self.reasoning_buffer.is_empty() {
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index d44f9da6a2..f36915f008 100644
+index d44f9da6a2..7b1764d005 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 @@ -2,6 +2,7 @@ use super::*;
@@ -439,7 +439,7 @@ index d44f9da6a2..f36915f008 100644
 +
 +    let rendered = drain_insert_history(&mut rx)
 +        .into_iter()
-+        .map(|cell| lines_to_single_string(&cell.display_lines(/*width*/ 80)))
++        .map(|lines| lines_to_single_string(&lines))
 +        .collect::<String>();
 +    assert!(rendered.contains("First line"), "{rendered:?}");
 +    assert!(rendered.contains("Second summary line"), "{rendered:?}");
