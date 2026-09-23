@@ -333,7 +333,7 @@ index 18b421661e..73b881a146 100644
          // Start a new reasoning block for header extraction and accumulate transcript.
          if !self.reasoning_buffer.is_empty() {
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index d44f9da6a2..1975e587c1 100644
+index d44f9da6a2..f36915f008 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 @@ -2,6 +2,7 @@ use super::*;
@@ -344,7 +344,7 @@ index d44f9da6a2..1975e587c1 100644
  use codex_protocol::models::FunctionCallOutputBody;
  use codex_protocol::models::ManagedFileSystemPermissions;
  use codex_protocol::permissions::FileSystemAccessMode;
-@@ -1422,6 +1423,97 @@ async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
+@@ -1422,6 +1423,108 @@ async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
      assert_eq!(rendered.matches("Summary only").count(), 1);
  }
  
@@ -399,7 +399,18 @@ index d44f9da6a2..1975e587c1 100644
 +                handle_agent_reasoning_delta(&mut chat, delta);
 +            }
 +        } else {
-+            handle_agent_reasoning_delta(&mut chat, summary.clone());
++            chat.handle_server_notification(
++                ServerNotification::ReasoningSummaryTextDelta(
++                    ReasoningSummaryTextDeltaNotification {
++                        thread_id: "thread-1".to_string(),
++                        turn_id: "turn-1".to_string(),
++                        item_id: item_id.to_string(),
++                        delta: summary.clone(),
++                        summary_index: 0,
++                    },
++                ),
++                /*replay_kind*/ None,
++            );
 +        }
 +
 +        let live = active_blob(&chat);
@@ -443,21 +454,21 @@ index d44f9da6a2..1975e587c1 100644
  async fn live_reasoning_summary_drops_empty_parts_without_losing_content() {
      let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/history_cell/messages.rs b/codex-rs/tui/src/history_cell/messages.rs
-index 084c4fffac..37a0310a78 100644
+index 084c4fffac..d4abec7727 100644
 --- a/codex-rs/tui/src/history_cell/messages.rs
 +++ b/codex-rs/tui/src/history_cell/messages.rs
-@@ -676,6 +676,42 @@ pub(crate) fn new_reasoning_summary_block(
+@@ -676,6 +676,29 @@ pub(crate) fn new_reasoning_summary_block(
      ))
  }
  
 +/// Build a visible reasoning-summary cell for live streaming and persistent transcript display.
-+/// Returns `None` for summaries that contain only an activity heading or an empty placeholder.
++/// Returns `None` for summaries that contain only an empty placeholder.
 +pub(crate) fn new_visible_reasoning_summary_block(
 +    reasoning_parts: Vec<String>,
 +    cwd: &Path,
 +) -> Option<Box<dyn HistoryCell>> {
 +    let (header, content) = split_reasoning_summary_parts(&reasoning_parts);
-+    if !reasoning_summary_has_visible_body(&content) {
++    if header.trim().is_empty() && content.trim().is_empty() {
 +        return None;
 +    }
 +    let visible_content = if header.is_empty() {
@@ -473,27 +484,14 @@ index 084c4fffac..37a0310a78 100644
 +    )))
 +}
 +
-+/// Check that a streamed summary has body text after any leading bold activity heading.
-+fn reasoning_summary_has_visible_body(content: &str) -> bool {
-+    let trimmed = content.trim();
-+    let body = match trimmed.strip_prefix("**") {
-+        Some(after_open) => match after_open.split_once("**") {
-+            Some((_, rest)) => rest,
-+            None => "",
-+        },
-+        None => trimmed,
-+    };
-+    !body.trim().is_empty()
-+}
-+
  /// Split structured reasoning-summary parts into the status header and renderable content.
  pub(crate) fn split_reasoning_summary_parts(reasoning_parts: &[String]) -> (String, String) {
      let mut leading_empty_part_header = None;
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 138c9b5b94..3af7c2b793 100644
+index 138c9b5b94..cd5440f0d0 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -2676,6 +2676,29 @@ fn reasoning_summary_block() {
+@@ -2676,6 +2676,43 @@ fn reasoning_summary_block() {
      assert_eq!(rendered_transcript, vec!["• Detailed reasoning goes here."]);
  }
  
@@ -517,6 +515,20 @@ index 138c9b5b94..3af7c2b793 100644
 +        rendered.matches('x').count(),
 +        long_word.len(),
 +        "{rendered:?}"
++    );
++}
++
++#[test]
++fn visible_reasoning_summary_keeps_heading_only_summaries() {
++    for summary in ["**Step one**", "**Step one**\n\n<!-- -->"] {
++        let cell = new_visible_reasoning_summary_block(vec![summary.to_string()], &test_cwd())
++            .expect("a received heading should remain visible");
++        let rendered = render_lines(&cell.display_lines(/*width*/ 80)).join("\n");
++        assert!(rendered.contains("Step one"), "{rendered:?}");
++    }
++
++    assert!(
++        new_visible_reasoning_summary_block(vec!["<!-- -->".to_string()], &test_cwd()).is_none()
 +    );
 +}
 +
