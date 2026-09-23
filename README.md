@@ -11,6 +11,7 @@ binaries plus a Nix overlay,
 refreshed on every upstream Codex release.
 See `patches/manifest.toml` for the
 exact patch stack.
+An opt-in TUI mode can render streamed reasoning summaries live and keep each completed summary in the transcript.
 
 ## Install a patched build
 
@@ -109,11 +110,14 @@ cargo run -p codex-cli --bin codex -- --no-alt-screen -c model_reasoning_summary
 ```
 
 Use `/later <delay> <prompt>` to queue a prompt for a future time.
-The default collaboration mode and status-line command are opt-in TUI settings:
+The default collaboration mode, reasoning display, and status-line command are TUI settings:
+
+`reasoning_display` accepts `status-only` (the default), `persistent` (show and retain each received summary), or `hidden`.
 
 ```toml
 [tui]
 default_collaboration_mode = "plan"
+reasoning_display = "persistent"
 
 [tui.status_line_command]
 command = ["/path/to/status-line-helper"]

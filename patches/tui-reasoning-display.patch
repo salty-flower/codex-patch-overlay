@@ -1,0 +1,537 @@
+diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
+index 92a852c04f..c94380ffda 100644
+--- a/codex-rs/config/src/types.rs
++++ b/codex-rs/config/src/types.rs
+@@ -797,6 +797,19 @@ pub struct StatusLineCommandConfig {
+     pub refresh_interval_ms: u64,
+ }
+ 
++/// Controls how reasoning summaries are presented in the TUI.
++#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, Default)]
++#[serde(rename_all = "kebab-case")]
++pub enum TuiReasoningDisplay {
++    /// Show only the current summary in the status row.
++    #[default]
++    StatusOnly,
++    /// Show each summary as it streams, then keep it in the transcript.
++    Persistent,
++    /// Hide summary text and use the generic working status.
++    Hidden,
++}
++
+ /// Collection of settings that are specific to the TUI.
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
+ #[schemars(deny_unknown_fields)]
+@@ -849,6 +862,12 @@ pub struct Tui {
+     #[serde(default)]
+     pub raw_output_mode: bool,
+ 
++    /// Controls how reasoning summaries are displayed.
++    /// Defaults to `status-only`; use `persistent` to keep every received summary in the
++    /// transcript, or `hidden` to suppress summaries and show only generic working status.
++    #[serde(default)]
++    pub reasoning_display: TuiReasoningDisplay,
++
+     /// Start the TUI in the specified collaboration mode (plan/default).
+     ///
+     /// When set to `"plan"`, the TUI launches in Plan mode instead of the
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index ac71596534..f1a3c6fd39 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -4286,6 +4286,15 @@
+           "description": "Escape returns from async questions to the composer, preserving the answer draft.",
+           "type": "boolean"
+         },
++        "reasoning_display": {
++          "allOf": [
++            {
++              "$ref": "#/definitions/TuiReasoningDisplay"
++            }
++          ],
++          "default": "status-only",
++          "description": "Controls how reasoning summaries are displayed. Defaults to `status-only`; use `persistent` to keep every received summary in the transcript, or `hidden` to suppress summaries and show only generic working status."
++        },
+         "raw_output_mode": {
+           "default": false,
+           "description": "Start the TUI in raw scrollback mode for copy-friendly transcript output. Defaults to `false`.",
+@@ -5371,6 +5380,32 @@
+         }
+       ]
+     },
++    "TuiReasoningDisplay": {
++      "description": "Controls how reasoning summaries are presented in the TUI.",
++      "oneOf": [
++        {
++          "description": "Show only the current summary in the status row.",
++          "enum": [
++            "status-only"
++          ],
++          "type": "string"
++        },
++        {
++          "description": "Show each summary as it streams, then keep it in the transcript.",
++          "enum": [
++            "persistent"
++          ],
++          "type": "string"
++        },
++        {
++          "description": "Hide summary text and use the generic working status.",
++          "enum": [
++            "hidden"
++          ],
++          "type": "string"
++        }
++      ]
++    },
+     "TuiVimNormalKeymap": {
+       "additionalProperties": false,
+       "description": "Vim normal-mode keybindings for modal editing inside text areas.\n\nActions that use uppercase letters (like `A` for append-line-end) should be specified as `shift-a` in config; the runtime matcher handles cross-terminal shift-reporting differences automatically.",
+diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
+index 54a4746667..5af7182bb4 100644
+--- a/codex-rs/core/src/config/config_tests.rs
++++ b/codex-rs/core/src/config/config_tests.rs
+@@ -69,6 +69,7 @@ use codex_config::types::Tui;
+ use codex_config::types::TuiKeymap;
+ use codex_config::types::TuiNotificationSettings;
+ use codex_config::types::TuiPetAnchor;
++use codex_config::types::TuiReasoningDisplay;
+ use codex_config::types::WindowsSandboxModeToml;
+ use codex_config::types::WindowsToml;
+ use codex_exec_server::LOCAL_FS;
+@@ -1270,6 +1271,7 @@ fn config_toml_deserializes_model_availability_nux() {
+             vim_mode_default: false,
+             question_esc_back: true,
+             raw_output_mode: false,
++            reasoning_display: TuiReasoningDisplay::StatusOnly,
+             alternate_screen: AltScreenMode::default(),
+             status_line: None,
+             status_line_command: None,
+@@ -4368,6 +4370,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+             vim_mode_default: false,
+             question_esc_back: true,
+             raw_output_mode: false,
++            reasoning_display: TuiReasoningDisplay::StatusOnly,
+             alternate_screen: AltScreenMode::Auto,
+             status_line: None,
+             status_line_command: None,
+@@ -4385,6 +4388,23 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+     );
+ }
+ 
++#[test]
++fn tui_reasoning_display_config_parses_all_modes() {
++    for (value, expected) in [
++        ("status-only", TuiReasoningDisplay::StatusOnly),
++        ("persistent", TuiReasoningDisplay::Persistent),
++        ("hidden", TuiReasoningDisplay::Hidden),
++    ] {
++        let config = format!("[tui]\nreasoning_display = {value:?}");
++        let parsed = toml::from_str::<ConfigToml>(&config).expect("reasoning display config");
++        assert_eq!(
++            parsed.tui.expect("tui config").reasoning_display,
++            expected,
++            "unexpected mode for {value:?}"
++        );
++    }
++}
++
+ #[tokio::test]
+ async fn runtime_config_resolves_disable_paste_burst() -> anyhow::Result<()> {
+     for (toml, expected) in [
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index 30ede8d013..2f26b3d568 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -58,6 +58,7 @@ use codex_config::types::ToolSuggestDiscoverable;
+ use codex_config::types::TuiKeymap;
+ use codex_config::types::TuiNotificationSettings;
+ use codex_config::types::TuiPetAnchor;
++use codex_config::types::TuiReasoningDisplay;
+ use codex_config::types::UriBasedFileOpener;
+ use codex_config::types::WindowsSandboxModeToml;
+ use codex_core_plugins::PluginLoadOutcome;
+@@ -774,6 +775,10 @@ pub struct Config {
+     /// Start the TUI in raw scrollback mode for copy-friendly transcript output.
+     pub tui_raw_output_mode: bool,
+ 
++    /// Controls whether reasoning summaries appear only in the status row, persist in the
++    /// transcript, or stay hidden.
++    pub tui_reasoning_display: TuiReasoningDisplay,
++
+     /// Start the TUI in the specified collaboration mode (plan/default).
+     /// When `Some(ModeKind::Plan)`, the TUI launches in Plan mode.
+     pub tui_default_collaboration_mode: Option<ModeKind>,
+@@ -4465,6 +4470,11 @@ impl Config {
+                 .as_ref()
+                 .map(|t| t.raw_output_mode)
+                 .unwrap_or(false),
++            tui_reasoning_display: cfg
++                .tui
++                .as_ref()
++                .map(|t| t.reasoning_display)
++                .unwrap_or_default(),
+             tui_default_collaboration_mode: cfg
+                 .tui
+                 .as_ref()
+diff --git a/codex-rs/tui/src/chatwidget/streaming.rs b/codex-rs/tui/src/chatwidget/streaming.rs
+index 18b421661e..73b881a146 100644
+--- a/codex-rs/tui/src/chatwidget/streaming.rs
++++ b/codex-rs/tui/src/chatwidget/streaming.rs
+@@ -4,6 +4,7 @@
+ //! cells, commit ticks, and interrupt deferral.
+ 
+ use super::*;
++use codex_config::types::TuiReasoningDisplay;
+ 
+ fn latest_summary_line(text: &str) -> Option<String> {
+     text.lines().rev().find_map(|line| {
+@@ -36,11 +37,22 @@ impl ChatWidget {
+         self.status_state.reasoning_recovered_after_refresh = false;
+         self.reasoning_buffer.clear();
+         self.reasoning_summary_parts.clear();
+-        self.restore_reasoning_status_header();
++        if self.local_settings.tui.reasoning_display == TuiReasoningDisplay::Hidden {
++            self.reasoning_header = None;
++            if !self.safety_buffering_is_waiting() {
++                self.status_state.terminal_title_status_kind = TerminalTitleStatusKind::Working;
++                if !self.set_status_header(String::from("Working")) {
++                    self.request_redraw();
++                }
++            }
++        } else {
++            self.restore_reasoning_status_header();
++        }
+     }
+ 
+     pub(super) fn restore_reasoning_status_header(&mut self) {
+-        if self.safety_buffering_is_waiting()
++        if self.local_settings.tui.reasoning_display == TuiReasoningDisplay::Hidden
++            || self.safety_buffering_is_waiting()
+             || self.unified_exec_wait_streak.is_some()
+             || self.status_state.compaction.is_some()
+             || !self.status_state.pending_guardian_review_status.is_empty()
+@@ -271,13 +283,25 @@ impl ChatWidget {
+     }
+ 
+     pub(super) fn on_agent_reasoning_delta(&mut self, delta: String) {
++        if Self::is_invisible_reasoning_delta(&delta) {
++            return;
++        }
++
+         // Accumulate the current reasoning block for history and activity text.
+         self.reasoning_buffer.push_str(&delta);
+ 
++        if self.local_settings.tui.reasoning_display == TuiReasoningDisplay::Hidden {
++            return;
++        }
++
+         if self.safety_buffering_is_waiting() {
+             return;
+         }
+ 
++        if self.local_settings.tui.reasoning_display == TuiReasoningDisplay::Persistent {
++            self.sync_live_reasoning_summary_cell();
++        }
++
+         if self.unified_exec_wait_streak.is_some() {
+             // Unified exec waiting should take precedence over reasoning-derived status headers.
+             return;
+@@ -316,18 +340,48 @@ impl ChatWidget {
+     }
+ 
+     pub(super) fn on_agent_reasoning_final(&mut self) {
+-        // At the end of a reasoning block, record transcript-only content.
++        // At the end of a reasoning block, either commit its visible live cell or record
++        // transcript-only content according to the configured display mode.
+         if !self.reasoning_buffer.is_empty() {
+             self.reasoning_summary_parts
+                 .push(std::mem::take(&mut self.reasoning_buffer));
+         }
+-        self.reasoning_header = self
+-            .reasoning_summary_parts
+-            .iter()
+-            .rev()
+-            .find_map(|part| latest_summary_line(part))
+-            .or(self.reasoning_header.take());
+-        if !self.reasoning_summary_parts.is_empty() {
++        let display = self.local_settings.tui.reasoning_display;
++        if display == TuiReasoningDisplay::Hidden {
++            self.reasoning_header = None;
++        } else {
++            self.reasoning_header = self
++                .reasoning_summary_parts
++                .iter()
++                .rev()
++                .find_map(|part| latest_summary_line(part))
++                .or(self.reasoning_header.take());
++        }
++        let show_persistent_summary =
++            display == TuiReasoningDisplay::Persistent && !self.safety_buffering_is_waiting();
++        if display == TuiReasoningDisplay::Persistent
++            && !show_persistent_summary
++            && self.active_cell_is_reasoning_summary()
++        {
++            self.transcript.active_cell = None;
++            self.bump_active_cell_revision();
++        }
++        if show_persistent_summary {
++            if self.active_cell_is_reasoning_summary() {
++                self.flush_active_cell();
++            } else if let Some(cell) = history_cell::new_visible_reasoning_summary_block(
++                self.reasoning_summary_parts.clone(),
++                &self.config.cwd,
++            ) {
++                self.add_boxed_history(cell);
++            } else if !self.reasoning_summary_parts.is_empty() {
++                let parts = std::mem::take(&mut self.reasoning_summary_parts);
++                self.add_boxed_history(history_cell::new_reasoning_summary_block(
++                    parts,
++                    &self.config.cwd,
++                ));
++            }
++        } else if !self.reasoning_summary_parts.is_empty() {
+             let reasoning_parts = std::mem::take(&mut self.reasoning_summary_parts);
+             let cell = history_cell::new_reasoning_summary_block(reasoning_parts, &self.config.cwd);
+             self.add_boxed_history(cell);
+@@ -341,6 +395,36 @@ impl ChatWidget {
+         self.request_redraw();
+     }
+ 
++    fn active_cell_is_reasoning_summary(&self) -> bool {
++        self.transcript
++            .active_cell
++            .as_ref()
++            .is_some_and(|cell| cell.as_any().is::<history_cell::ReasoningSummaryCell>())
++    }
++
++    fn sync_live_reasoning_summary_cell(&mut self) {
++        let mut reasoning_parts = self.reasoning_summary_parts.clone();
++        if !self.reasoning_buffer.is_empty() {
++            reasoning_parts.push(self.reasoning_buffer.clone());
++        }
++        let Some(cell) =
++            history_cell::new_visible_reasoning_summary_block(reasoning_parts, &self.config.cwd)
++        else {
++            return;
++        };
++
++        if !self.active_cell_is_reasoning_summary() {
++            self.flush_active_cell();
++        }
++        self.transcript.active_cell = Some(cell);
++        self.bump_active_cell_revision();
++    }
++
++    fn is_invisible_reasoning_delta(delta: &str) -> bool {
++        let trimmed = delta.trim();
++        delta.is_empty() || trimmed == "<!-- -->"
++    }
++
+     pub(super) fn on_reasoning_section_break(&mut self) {
+         // Start a new reasoning block for header extraction and accumulate transcript.
+         if !self.reasoning_buffer.is_empty() {
+diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
+index d44f9da6a2..1975e587c1 100644
+--- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
++++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
+@@ -2,6 +2,7 @@ use super::*;
+ use crate::app_event::HistoryLookupResponse;
+ use codex_app_server_protocol::NetworkAccess;
+ use codex_app_server_protocol::SandboxPolicy;
++use codex_config::types::TuiReasoningDisplay;
+ use codex_protocol::models::FunctionCallOutputBody;
+ use codex_protocol::models::ManagedFileSystemPermissions;
+ use codex_protocol::permissions::FileSystemAccessMode;
+@@ -1422,6 +1423,97 @@ async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
+     assert_eq!(rendered.matches("Summary only").count(), 1);
+ }
+ 
++#[tokio::test]
++async fn persistent_reasoning_summaries_keep_each_completed_item() {
++    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
++    chat.show_welcome_banner = false;
++    chat.local_settings.tui.reasoning_display = TuiReasoningDisplay::Persistent;
++
++    chat.handle_server_notification(
++        ServerNotification::TurnStarted(TurnStartedNotification {
++            thread_id: "thread-1".to_string(),
++            turn: AppServerTurn {
++                id: "turn-1".to_string(),
++                items_view: codex_app_server_protocol::TurnItemsView::Full,
++                items: Vec::new(),
++                status: AppServerTurnStatus::InProgress,
++                error: None,
++                started_at: Some(0),
++                completed_at: None,
++                duration_ms: None,
++            },
++        }),
++        /*replay_kind*/ None,
++    );
++    let _ = drain_insert_history(&mut rx);
++
++    let long_word = "x".repeat(120);
++    let summaries = [
++        (
++            "reasoning-1",
++            format!("**Step one**\n\nFirst line\n\n{long_word}"),
++        ),
++        (
++            "reasoning-2",
++            "**Step two**\n\nSecond summary line\nAnd another line".to_string(),
++        ),
++    ];
++
++    for (item_id, summary) in summaries {
++        handle_agent_reasoning_started(&mut chat, item_id);
++        if item_id == "reasoning-1" {
++            for delta in [
++                "**Step one**",
++                "\n",
++                "\n",
++                "First line",
++                "\n",
++                "\n",
++                long_word.as_str(),
++            ] {
++                handle_agent_reasoning_delta(&mut chat, delta);
++            }
++        } else {
++            handle_agent_reasoning_delta(&mut chat, summary.clone());
++        }
++
++        let live = active_blob(&chat);
++        assert!(
++            live.contains("Step "),
++            "expected the current item to render: {live:?}"
++        );
++        if item_id == "reasoning-1" {
++            assert_eq!(live.matches('x').count(), long_word.len(), "{live:?}");
++        }
++
++        chat.handle_server_notification(
++            ServerNotification::ItemCompleted(ItemCompletedNotification {
++                thread_id: "thread-1".to_string(),
++                turn_id: "turn-1".to_string(),
++                completed_at_ms: 0,
++                item: AppServerThreadItem::Reasoning {
++                    id: item_id.to_string(),
++                    summary: vec![summary],
++                    content: Vec::new(),
++                },
++            }),
++            /*replay_kind*/ None,
++        );
++    }
++
++    let rendered = drain_insert_history(&mut rx)
++        .into_iter()
++        .map(|cell| lines_to_single_string(&cell.display_lines(/*width*/ 80)))
++        .collect::<String>();
++    assert!(rendered.contains("First line"), "{rendered:?}");
++    assert!(rendered.contains("Second summary line"), "{rendered:?}");
++    assert_eq!(
++        rendered.matches('x').count(),
++        long_word.len(),
++        "{rendered:?}"
++    );
++}
++
+ #[tokio::test]
+ async fn live_reasoning_summary_drops_empty_parts_without_losing_content() {
+     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+diff --git a/codex-rs/tui/src/history_cell/messages.rs b/codex-rs/tui/src/history_cell/messages.rs
+index 084c4fffac..37a0310a78 100644
+--- a/codex-rs/tui/src/history_cell/messages.rs
++++ b/codex-rs/tui/src/history_cell/messages.rs
+@@ -676,6 +676,42 @@ pub(crate) fn new_reasoning_summary_block(
+     ))
+ }
+ 
++/// Build a visible reasoning-summary cell for live streaming and persistent transcript display.
++/// Returns `None` for summaries that contain only an activity heading or an empty placeholder.
++pub(crate) fn new_visible_reasoning_summary_block(
++    reasoning_parts: Vec<String>,
++    cwd: &Path,
++) -> Option<Box<dyn HistoryCell>> {
++    let (header, content) = split_reasoning_summary_parts(&reasoning_parts);
++    if !reasoning_summary_has_visible_body(&content) {
++        return None;
++    }
++    let visible_content = if header.is_empty() {
++        content
++    } else {
++        format!("{header}{content}")
++    };
++    Some(Box::new(ReasoningSummaryCell::new(
++        header,
++        visible_content,
++        cwd,
++        /*transcript_only*/ false,
++    )))
++}
++
++/// Check that a streamed summary has body text after any leading bold activity heading.
++fn reasoning_summary_has_visible_body(content: &str) -> bool {
++    let trimmed = content.trim();
++    let body = match trimmed.strip_prefix("**") {
++        Some(after_open) => match after_open.split_once("**") {
++            Some((_, rest)) => rest,
++            None => "",
++        },
++        None => trimmed,
++    };
++    !body.trim().is_empty()
++}
++
+ /// Split structured reasoning-summary parts into the status header and renderable content.
+ pub(crate) fn split_reasoning_summary_parts(reasoning_parts: &[String]) -> (String, String) {
+     let mut leading_empty_part_header = None;
+diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
+index 138c9b5b94..3af7c2b793 100644
+--- a/codex-rs/tui/src/history_cell/tests.rs
++++ b/codex-rs/tui/src/history_cell/tests.rs
+@@ -2676,6 +2676,29 @@ fn reasoning_summary_block() {
+     assert_eq!(rendered_transcript, vec!["• Detailed reasoning goes here."]);
+ }
+ 
++#[test]
++fn visible_reasoning_summary_wraps_multiline_and_long_single_line_content() {
++    let long_word = "x".repeat(160);
++    let content = format!("first paragraph\n\n{long_word}\n\nlast paragraph");
++    let cell = new_visible_reasoning_summary_block(vec![content], &test_cwd())
++        .expect("body text should produce a visible reasoning cell");
++
++    let rendered_lines = cell.display_lines(/*width*/ 24);
++    let rendered = render_lines(&rendered_lines).join("\n");
++
++    assert!(
++        rendered_lines.len() > 6,
++        "expected wrapped lines, got {rendered:?}"
++    );
++    assert!(rendered.contains("first paragraph"), "{rendered:?}");
++    assert!(rendered.contains("last paragraph"), "{rendered:?}");
++    assert_eq!(
++        rendered.matches('x').count(),
++        long_word.len(),
++        "{rendered:?}"
++    );
++}
++
+ #[test]
+ fn reasoning_summary_height_matches_wrapped_rendering_for_url_like_content() {
+     let summary = "example.test/api/v1/projects/alpha-team/releases/2026-02-17/builds/1234567890/artifacts/reports/performance/summary/detail/with/a/very/long/path/that/keeps/going";
+diff --git a/codex-rs/tui/src/local_settings.rs b/codex-rs/tui/src/local_settings.rs
+index 1afa22ec26..b4fb699c43 100644
+--- a/codex-rs/tui/src/local_settings.rs
++++ b/codex-rs/tui/src/local_settings.rs
+@@ -37,6 +37,7 @@ impl From<&Config> for LocalSettings {
+                 vim_mode_default: config.tui_vim_mode_default,
+                 question_esc_back: config.tui_question_esc_back,
+                 raw_output_mode: config.tui_raw_output_mode,
++                reasoning_display: config.tui_reasoning_display,
+                 alternate_screen: config.tui_alternate_screen,
+                 status_line: config.tui_status_line.clone(),
+                 status_line_use_colors: config.tui_status_line_use_colors,
