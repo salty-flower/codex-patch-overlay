@@ -85,7 +85,7 @@ index efa06b930a..b8b98715b5 100644
      assert_chatwidget_snapshot!(
          "unified_exec_unknown_end_with_active_exploring_cell",
 diff --git a/codex-rs/tui/src/chatwidget/tests/guardian.rs b/codex-rs/tui/src/chatwidget/tests/guardian.rs
-index b57de7f58b..5de78ecee6 100644
+index b57de7f58b..9ffd239c50 100644
 --- a/codex-rs/tui/src/chatwidget/tests/guardian.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/guardian.rs
 @@ -313,6 +313,7 @@ async fn guardian_denied_exec_renders_warning_and_denied_request() {
@@ -105,7 +105,24 @@ index b57de7f58b..5de78ecee6 100644
      );
  }
  
-@@ -529,6 +530,7 @@ async fn guardian_timed_out_exec_renders_warning_and_timed_out_request() {
+@@ -455,6 +456,7 @@ async fn guardian_approved_request_permissions_clears_status_without_history() {
+ 
+     assert!(drain_insert_history(&mut rx).is_empty());
+ 
++    chat.freeze_status_timer_for_snapshot_for_test();
+     term.draw(|f| {
+         chat.render(f.area(), f.buffer_mut());
+     })
+@@ -462,7 +464,7 @@ async fn guardian_approved_request_permissions_clears_status_without_history() {
+ 
+     assert_chatwidget_snapshot!(
+         "guardian_approved_request_permissions_clears_status_without_history",
+-        normalize_snapshot_paths(term.backend().vt100().screen().contents())
++        normalize_snapshot_paths(term.backend().vt100().screen().contents()).replace('◦', "•")
+     );
+ }
+ 
+@@ -529,6 +531,7 @@ async fn guardian_timed_out_exec_renders_warning_and_timed_out_request() {
              .expect("Failed to insert history lines in test");
      }
  
@@ -113,7 +130,7 @@ index b57de7f58b..5de78ecee6 100644
      term.draw(|f| {
          chat.render(f.area(), f.buffer_mut());
      })
-@@ -536,7 +538,7 @@ async fn guardian_timed_out_exec_renders_warning_and_timed_out_request() {
+@@ -536,7 +539,7 @@ async fn guardian_timed_out_exec_renders_warning_and_timed_out_request() {
  
      assert_chatwidget_snapshot!(
          "guardian_timed_out_exec_renders_warning_and_timed_out_request",
@@ -122,7 +139,7 @@ index b57de7f58b..5de78ecee6 100644
      );
  }
  
-@@ -648,6 +650,7 @@ async fn app_server_guardian_review_denied_renders_denied_request_snapshot() {
+@@ -648,6 +651,7 @@ async fn app_server_guardian_review_denied_renders_denied_request_snapshot() {
              .expect("Failed to insert history lines in test");
      }
  
@@ -130,7 +147,7 @@ index b57de7f58b..5de78ecee6 100644
      term.draw(|f| {
          chat.render(f.area(), f.buffer_mut());
      })
-@@ -655,7 +658,7 @@ async fn app_server_guardian_review_denied_renders_denied_request_snapshot() {
+@@ -655,7 +659,7 @@ async fn app_server_guardian_review_denied_renders_denied_request_snapshot() {
  
      assert_chatwidget_snapshot!(
          "app_server_guardian_review_denied_renders_denied_request",
@@ -139,7 +156,7 @@ index b57de7f58b..5de78ecee6 100644
      );
  }
  
-@@ -729,6 +732,7 @@ async fn app_server_guardian_review_timed_out_renders_timed_out_request_snapshot
+@@ -729,6 +733,7 @@ async fn app_server_guardian_review_timed_out_renders_timed_out_request_snapshot
              .expect("Failed to insert history lines in test");
      }
  
@@ -147,7 +164,7 @@ index b57de7f58b..5de78ecee6 100644
      term.draw(|f| {
          chat.render(f.area(), f.buffer_mut());
      })
-@@ -736,7 +740,7 @@ async fn app_server_guardian_review_timed_out_renders_timed_out_request_snapshot
+@@ -736,7 +741,7 @@ async fn app_server_guardian_review_timed_out_renders_timed_out_request_snapshot
  
      assert_chatwidget_snapshot!(
          "app_server_guardian_review_timed_out_renders_timed_out_request",
