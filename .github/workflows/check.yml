@@ -159,7 +159,16 @@ jobs:
           #
           # Recheck the historical Linux exclusions on 0.157 and stable Rust.
           # Keep process-heavy tests at two concurrent cases to limit contention.
-          cargo nextest run --no-fail-fast --test-threads 2 --lib \
+          # TLS fallback fixtures require the platform's default TLS backend.
+          # A custom CA environment selects rustls before those fixtures run;
+          # custom-CA tests supply their own explicit environment independently.
+          for name in CODEX_CA_CERTIFICATE SSL_CERT_FILE; do
+            if [[ -n "${!name:-}" ]]; then
+              echo "Isolating inherited ${name} from unit test fixtures"
+            fi
+          done
+          env -u CODEX_CA_CERTIFICATE -u SSL_CERT_FILE \
+            cargo nextest run --no-fail-fast --test-threads 2 --lib \
             -p codex-tui \
             -p codex-api \
             -p codex-login \
