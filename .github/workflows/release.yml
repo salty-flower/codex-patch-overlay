@@ -320,6 +320,23 @@ jobs:
             PYTHONPATH="${GITHUB_WORKSPACE}/staging/openai-codex/scripts" \
             python3 -c 'import os; from pathlib import Path; from codex_package.layout import validate_package_dir; from codex_package.targets import TARGET_SPECS, PACKAGE_VARIANTS; validate_package_dir(Path(os.environ["CODEX_PACKAGE_DIR"]), PACKAGE_VARIANTS["codex"], TARGET_SPECS[os.environ["TARGET"]], include_zsh=True)'
 
+          # Exercise the actual archive payload on its native CI host before
+          # publishing, including the Linux musl binaries that macOS cannot run.
+          smoke_root="${RUNNER_TEMP}/codex-package-smoke"
+          export CODEX_HOME="${smoke_root}/home"
+          export TMPDIR="${smoke_root}/tmp"
+          mkdir -p "$CODEX_HOME" "$TMPDIR"
+          for binary in codex codex-responses-api-proxy codex-code-mode-host; do
+            option=--help
+            if [[ "$binary" == codex ]]; then option=--version; fi
+            result=0
+            "$package_dir/bin/$binary" "$option" > "${smoke_root}/stdout" 2> "${smoke_root}/stderr" || result=$?
+            cat "${smoke_root}/stdout" "${smoke_root}/stderr"
+            test "$result" -eq 0
+            test -s "${smoke_root}/stdout"
+            test ! -s "${smoke_root}/stderr"
+          done
+
           # Name the archive, not "dist/<archive>", inside the sidecar: the
           # README tells consumers to run `shasum -a 256 -c <archive>.sha256`
           # from the download directory, where a dist/ prefix cannot resolve.
