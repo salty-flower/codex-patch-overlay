@@ -119,12 +119,39 @@ jobs:
           version="$(python3 staging/openai-codex/.github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
           base_url="https://github.com/openai/codex/releases/download/rusty-v8-v${version}"
           artifact_dir="${GITHUB_WORKSPACE}/.rusty_v8"
-          archive_path="${artifact_dir}/librusty_v8_release_${TARGET}.a.gz"
-          binding_path="${artifact_dir}/src_binding_release_${TARGET}.rs"
+          profile="ptrcomp_sandbox_release"
+          archive_name="librusty_v8_${profile}_${TARGET}.a.gz"
+          binding_name="src_binding_${profile}_${TARGET}.rs"
+          checksums_name="rusty_v8_${profile}_${TARGET}.sha256"
+          archive_path="${artifact_dir}/${archive_name}"
+          binding_path="${artifact_dir}/${binding_name}"
+          checksums_path="${artifact_dir}/${checksums_name}"
+          trusted_checksums="staging/openai-codex/third_party/v8/rusty_v8_${version//./_}_release_manifests.sha256"
+
+          if command -v sha256sum >/dev/null 2>&1; then
+            checksum_command=(sha256sum --check -)
+          else
+            checksum_command=(shasum -a 256 --check -)
+          fi
 
           mkdir -p "${artifact_dir}"
-          curl -fsSL "${base_url}/librusty_v8_release_${TARGET}.a.gz" -o "${archive_path}"
-          curl -fsSL "${base_url}/src_binding_release_${TARGET}.rs" -o "${binding_path}"
+          curl -fsSL "${base_url}/${checksums_name}" -o "${checksums_path}"
+          # Verify the manifest against the copy trusted by the pinned upstream source.
+          expected_manifest_checksum="$(awk -v name="$checksums_name" '{sub(/\r$/, "", $2)} $2 == name {print $1}' "$trusted_checksums")"
+          actual_manifest_checksum="$(shasum -a 256 "$checksums_path" | awk '{print $1}')"
+          if [[ -z "$expected_manifest_checksum" || "$actual_manifest_checksum" != "$expected_manifest_checksum" ]]; then
+            echo "Checksum mismatch for ${checksums_name}: expected ${expected_manifest_checksum}, got ${actual_manifest_checksum}" >&2
+            exit 1
+          fi
+
+          curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
+          curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
+
+          if [[ "$(wc -l < "${checksums_path}")" -ne 2 ]]; then
+            echo "Expected exactly two checksums for ${TARGET} in ${checksums_path}" >&2
+            exit 1
+          fi
+          (cd "${artifact_dir}" && tr -d '\r' < "${checksums_path}" | "${checksum_command[@]}")
 
           # Not $RUNNER_TEMP: the v8 build script bakes this directory into its
           # cached output as a linker search path, and a per-run path goes stale
@@ -180,6 +207,15 @@ jobs:
             -p codex-protocol \
             -p codex-model-provider \
             -p codex-http-client
+
+      - name: Verify code mode links sandbox-enabled V8
+        working-directory: staging/openai-codex/codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          env -u CODEX_CA_CERTIFICATE -u SSL_CERT_FILE \
+            cargo test -p codex-code-mode-runtime --lib \
+            runtime::tests::linked_v8_has_sandbox_enabled -- --exact
 
       - name: Check the public core API sample
         working-directory: staging/openai-codex/codex-rs

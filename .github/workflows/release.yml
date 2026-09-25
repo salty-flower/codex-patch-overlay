@@ -214,14 +214,27 @@ jobs:
           # e.g. a patch.N+1 re-release) and breaks linking with
           # "could not find native static library `rusty_v8`".
           binding_dir="${GITHUB_WORKSPACE}/.rusty_v8"
-          archive_path="${binding_dir}/librusty_v8_release_${TARGET}.a.gz"
-          binding_path="${binding_dir}/src_binding_release_${TARGET}.rs"
-          checksums_path="${binding_dir}/rusty_v8_release_${TARGET}.sha256"
+          # Match code-mode-runtime's v8_enable_sandbox feature and upstream's
+          # setup-rusty-v8 action; overrides bypass V8's feature-aware selection.
+          profile="ptrcomp_sandbox_release"
+          archive_name="librusty_v8_${profile}_${TARGET}.a.gz"
+          binding_name="src_binding_${profile}_${TARGET}.rs"
+          checksums_name="rusty_v8_${profile}_${TARGET}.sha256"
+          archive_path="${binding_dir}/${archive_name}"
+          binding_path="${binding_dir}/${binding_name}"
+          checksums_path="${binding_dir}/${checksums_name}"
+          trusted_checksums="staging/openai-codex/third_party/v8/rusty_v8_${version//./_}_release_manifests.sha256"
 
           mkdir -p "${binding_dir}"
-          curl -fsSL "${base_url}/librusty_v8_release_${TARGET}.a.gz" -o "${archive_path}"
-          curl -fsSL "${base_url}/src_binding_release_${TARGET}.rs" -o "${binding_path}"
-          curl -fsSL "${base_url}/rusty_v8_release_${TARGET}.sha256" -o "${checksums_path}"
+          curl -fsSL "${base_url}/${checksums_name}" -o "${checksums_path}"
+          expected_manifest_checksum="$(awk -v name="$checksums_name" '{sub(/\r$/, "", $2)} $2 == name {print $1}' "$trusted_checksums")"
+          actual_manifest_checksum="$(shasum -a 256 "$checksums_path" | awk '{print $1}')"
+          if [[ -z "$expected_manifest_checksum" || "$actual_manifest_checksum" != "$expected_manifest_checksum" ]]; then
+            echo "V8 checksum manifest does not match the pinned upstream source" >&2
+            exit 1
+          fi
+          curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
+          curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
 
           if [[ "$(wc -l < "${checksums_path}")" -ne 2 ]]; then
             echo "Expected exactly two checksums for ${TARGET} in ${checksums_path}" >&2
@@ -229,9 +242,9 @@ jobs:
           fi
 
           if command -v sha256sum >/dev/null 2>&1; then
-            (cd "${binding_dir}" && sha256sum -c "${checksums_path}")
+            (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum --check -)
           else
-            (cd "${binding_dir}" && shasum -a 256 -c "${checksums_path}")
+            (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | shasum -a 256 --check -)
           fi
 
           echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
@@ -286,6 +299,16 @@ jobs:
             --bin codex \
             --bin codex-responses-api-proxy \
             --bin codex-code-mode-host
+
+      - name: Verify linked V8 sandbox
+        working-directory: staging/openai-codex/codex-rs
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          cargo test --release --target "$TARGET" -p codex-code-mode-runtime --lib \
+            runtime::tests::linked_v8_has_sandbox_enabled -- --exact
 
       - name: Package artifact
         shell: bash
