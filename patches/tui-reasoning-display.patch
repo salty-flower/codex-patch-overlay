@@ -242,14 +242,14 @@ index ed25308534..fdec62a5f7 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 59bae56081..cf92c94b72 100644
+index 59bae56081..3e08b809e9 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
 @@ -244,6 +244,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
          tui_terminal_title: None,
          tui_theme: None,
          tui_raw_output_mode: false,
-+        tui_reasoning_display: codex_config::types::TuiReasoningDisplay::StatusOnly,
++        tui_reasoning_display: Default::default(),
          tui_default_collaboration_mode: None,
          tui_pet: None,
          tui_pet_anchor: TuiPetAnchor::Composer,
