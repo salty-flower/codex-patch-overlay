@@ -169,6 +169,10 @@ jobs:
             -p codex-protocol \
             -p codex-model-provider
 
+      - name: Check the public core API sample
+        working-directory: staging/openai-codex/codex-rs
+        run: cargo check -p codex-thread-manager-sample
+
       - name: Test carried integration scenarios
         working-directory: staging/openai-codex/codex-rs
         shell: bash

@@ -116,6 +116,18 @@ index 9078708388..6f70881fdb 100644
              tui_alternate_screen: cfg
                  .tui
                  .as_ref()
+diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
+index 308ce8b2e5..f386619ee9 100644
+--- a/codex-rs/thread-manager-sample/src/main.rs
++++ b/codex-rs/thread-manager-sample/src/main.rs
+@@ -243,6 +243,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
+         tui_terminal_title: None,
+         tui_theme: None,
+         tui_raw_output_mode: false,
++        tui_default_collaboration_mode: None,
+         tui_pet: None,
+         tui_pet_anchor: TuiPetAnchor::Composer,
+         terminal_resize_reflow: TerminalResizeReflowConfig::default(),
 diff --git a/codex-rs/tui/src/chatwidget/settings.rs b/codex-rs/tui/src/chatwidget/settings.rs
 index a9c2d1932d..f172af38d9 100644
 --- a/codex-rs/tui/src/chatwidget/settings.rs
