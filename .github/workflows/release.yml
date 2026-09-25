@@ -76,6 +76,17 @@ jobs:
             git -C staging/openai-codex apply "../../${patch_file}"
           done
 
+      - name: Install carried schema payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          # These compressed exports are embedded at compile time. Match the
+          # tested tree and Nix postPatch before building release binaries.
+          for kind in stable experimental; do
+            cp "patches/editable-enter-queue-app-server-exports-${kind}.json.zst" \
+              "staging/openai-codex/codex-rs/app-server-protocol/schema/precomputed/app-server-exports-${kind}.json.zst"
+          done
+
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"

@@ -36,6 +36,8 @@ because neither the tarball nor the Nix package fetches a missing helper later.
 The release workflow fetches the target-specific ripgrep archive from the staged
 upstream DotSlash manifest and verifies its SHA-256 before packaging it at
 `codex-path/rg`.
+Before compiling, it installs both carried compressed app-server schema exports,
+matching the test workflow and Nix `postPatch`; these payloads are embedded in the binary.
 
 `codex-rs/install-context` looks for `codex-code-mode-host` under
 `codex-resources/` first and then next to the running `codex` executable,

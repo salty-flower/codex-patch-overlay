@@ -89,7 +89,14 @@
             workflow=${./.github/workflows/release.yml}
             build_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Build release binaries").run' "$workflow")"
             rg_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Fetch packaged ripgrep").run' "$workflow")"
+            schema_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Install carried schema payloads").run' "$workflow")"
             package_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Package artifact").run' "$workflow")"
+            printf '%s' "$schema_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'for kind in stable experimental; do' \
+              || { echo "release.yml does not install both carried schema payloads" >&2; exit 1; }
+            printf '%s' "$schema_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'cp "patches/editable-enter-queue-app-server-exports-''${kind}.json.zst"' \
+              || { echo "release.yml does not copy the carried schema payloads" >&2; exit 1; }
+            printf '%s' "$schema_run" | ${pkgs.ripgrep}/bin/rg -qF -- '"staging/openai-codex/codex-rs/app-server-protocol/schema/precomputed/app-server-exports-''${kind}.json.zst"' \
+              || { echo "release.yml does not install the schemas at their embedded source paths" >&2; exit 1; }
             printf '%s' "$rg_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'from codex_package.ripgrep import fetch_rg' \
               || { echo "release.yml does not fetch ripgrep through upstream's verified DotSlash helper" >&2; exit 1; }
             printf '%s' "$rg_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'fetch_rg(TARGET_SPECS[os.environ["TARGET"]])' \
