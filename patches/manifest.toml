@@ -159,3 +159,17 @@ status = "carried"
 risk = "low"
 owner = "local"
 notes = "Remove the unused wiremock body_json import from the upstream openai_file_mcp integration suite. Test-only warning cleanup; remove when upstream drops the import."
+
+[[patches]]
+name = "core-test-error-format"
+enabled = true
+file = "patches/core-test-error-format.patch"
+upstream_base = "rust-v0.157.0"
+upstream_sha = "00c972ed5d6ff6499317fd41b7f23605b8e6850d"
+source_hash = "sha256-/f/k77vnFjPfnnf+X2E7rY2FxUR1xAcJZiPTv9Q8JVI="
+cargo_hash = "sha256-Mp4chq9QuQB19FrOZBhmUtPrDoEpZZna79+MZs9rGUo="
+upstream_issue = "local-test-regression"
+status = "carried"
+risk = "low"
+owner = "local"
+notes = "Compare shell-snapshot failure chains without backtrace text while separately asserting Debug output excludes the test credential. Test-only; preserves descendant cleanup coverage with RUST_BACKTRACE=1. Remove when upstream makes the assertion independent of backtrace settings."

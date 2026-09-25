@@ -24,3 +24,11 @@ Remove it when upstream makes these fixtures deterministic.
 
 Carry `core-test-unused-import` while upstream's `openai_file_mcp` suite imports `wiremock::matchers::body_json` without using it.
 Remove it when upstream removes or uses that import.
+
+## Shell-snapshot error formatting
+
+Carry `core-test-error-format` while shell-snapshot tests compare `anyhow::Error` Debug output to a bare message.
+CI enables `RUST_BACKTRACE=1`, which adds a stack trace to that output.
+The patch compares the complete Display error chain and separately checks that Debug output excludes the fixture credential.
+Descendant cleanup assertions remain unchanged.
+Remove it when upstream makes these assertions independent of backtrace settings.

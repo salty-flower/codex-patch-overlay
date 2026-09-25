@@ -1,0 +1,35 @@
+diff --git a/codex-rs/core/src/shell_snapshot_sandbox_tests.rs b/codex-rs/core/src/shell_snapshot_sandbox_tests.rs
+index cea68a9a0f..c7a5311dc7 100644
+--- a/codex-rs/core/src/shell_snapshot_sandbox_tests.rs
++++ b/codex-rs/core/src/shell_snapshot_sandbox_tests.rs
+@@ -4,6 +4,8 @@ use pretty_assertions::assert_eq;
+ use tempfile::tempdir;
+ use test_case::test_case;
+ 
++const TEST_GH_TOKEN: &str = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
++
+ #[derive(Clone, Copy)]
+ enum SnapshotFailure {
+     Exit,
+@@ -72,7 +74,7 @@ async fn snapshot_failure_omits_credentials_and_stops_descendants(
+         vec![
+             "/bin/sh".to_string(),
+             "-c".to_string(),
+-            format!("set -x; export GH_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789; {script}"),
++            format!("set -x; export GH_TOKEN={TEST_GH_TOKEN}; {script}"),
+         ],
+         &cwd,
+         std::env::vars().collect(),
+@@ -133,7 +135,11 @@ async fn snapshot_failure_omits_credentials_and_stops_descendants(
+                 unreachable!("dropped captures have no result")
+             }
+         };
+-        assert_eq!(format!("{error:?}"), expected);
++        assert_eq!(format!("{error:#}"), expected);
++        assert!(
++            !format!("{error:?}").contains(TEST_GH_TOKEN),
++            "snapshot failure debug rendering contains the test GH_TOKEN"
++        );
+     }
+     tokio::time::sleep(Duration::from_millis(1_100)).await;
+     assert!(

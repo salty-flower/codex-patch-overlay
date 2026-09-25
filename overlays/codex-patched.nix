@@ -188,6 +188,14 @@ in
         ''}
       '';
 
+      preInstall = (old.preInstall or "") + ''
+        # Completion generation and version checks create temporary PATH aliases.
+        # Release builds require CODEX_HOME outside TMPDIR, so use sibling dirs.
+        export CODEX_HOME="$NIX_BUILD_TOP/codex-install-home"
+        export TMPDIR="$NIX_BUILD_TOP/codex-install-tmp"
+        mkdir -p "$CODEX_HOME" "$TMPDIR"
+      '';
+
       postInstall = (old.postInstall or "") + ''
         install -m644 ${packageMetadata} "$out/codex-package.json"
         mkdir -p "$out/codex-resources/zsh" "$out/codex-path"
