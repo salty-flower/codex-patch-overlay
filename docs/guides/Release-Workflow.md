@@ -42,6 +42,9 @@ It writes the upstream package metadata, including the upstream version and targ
 and runs the upstream layout validator before archiving each package.
 The Nix overlay installs the same metadata and pinned zsh helper,
 with links to Nix's ripgrep and Linux bubblewrap at the package resource paths.
+Upstream's Linux zsh helper requires glibc 2.38 and `libtinfo.so.6` despite the archive's musl target name.
+The Nix overlay patches this helper's loader and library paths in a separate derivation.
+Binary archives preserve the upstream helper; musl-only systems cannot enable `shell_zsh_fork`.
 
 `codex-rs/install-context` looks for `codex-code-mode-host` under
 `codex-resources/` first and then next to the running `codex` executable,

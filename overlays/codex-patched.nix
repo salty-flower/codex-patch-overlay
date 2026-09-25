@@ -74,7 +74,7 @@ in
         hash = rustyV8Artifact.bindingHash;
       };
       # Match scripts/codex_package/codex-zsh from the pinned upstream source.
-      # Linux's upstream helper is statically linked against musl on both arches.
+      # The Linux archive names say musl, but the helper depends on glibc/tinfo.
       zshArtifacts = {
         aarch64-darwin = {
           target = "aarch64-apple-darwin";
@@ -97,6 +97,27 @@ in
       zshArchive = final.fetchurl {
         url = "https://github.com/openai/codex/releases/download/rust-v0.134.0-alpha.3/codex-zsh-${zshArtifact.target}.tar.gz";
         inherit (zshArtifact) sha256;
+      };
+      linuxZshRuntime = final.stdenv.mkDerivation {
+        pname = "codex-zsh";
+        version = "0.134.0-alpha.3";
+        src = zshArchive;
+        nativeBuildInputs = [ final.autoPatchelfHook ];
+        buildInputs = [ final.ncurses ];
+        dontConfigure = true;
+        dontBuild = true;
+        dontStrip = true;
+        installPhase = ''
+          runHook preInstall
+          install -Dm755 bin/zsh "$out/bin/zsh"
+          runHook postInstall
+        '';
+        doInstallCheck = final.stdenv.buildPlatform.canExecute final.stdenv.hostPlatform;
+        installCheckPhase = ''
+          runHook preInstallCheck
+          "$out/bin/zsh" --version
+          runHook postInstallCheck
+        '';
       };
       packageMetadata = final.writeText "codex-package.json" (
         builtins.toJSON {
@@ -158,9 +179,11 @@ in
         ${lib.optionalString hasEditableEnterQueue ''
           # Nix's patch hook cannot consume git binary diffs. Install the
           # generated app-server export payloads alongside the text patch.
-          install -Dm644 ${patchRoot}/patches/editable-enter-queue-app-server-exports-stable.json.zst \
+          install -Dm644 ${patchRoot + "/patches/editable-enter-queue-app-server-exports-stable.json.zst"} \
             app-server-protocol/schema/precomputed/app-server-exports-stable.json.zst
-          install -Dm644 ${patchRoot}/patches/editable-enter-queue-app-server-exports-experimental.json.zst \
+          install -Dm644 ${
+            patchRoot + "/patches/editable-enter-queue-app-server-exports-experimental.json.zst"
+          } \
             app-server-protocol/schema/precomputed/app-server-exports-experimental.json.zst
         ''}
       '';
@@ -168,8 +191,18 @@ in
       postInstall = (old.postInstall or "") + ''
         install -m644 ${packageMetadata} "$out/codex-package.json"
         mkdir -p "$out/codex-resources/zsh" "$out/codex-path"
-        tar -xzf ${zshArchive} --strip-components=1 -C "$out/codex-resources/zsh" codex-zsh/bin/zsh
-        chmod 0755 "$out/codex-resources/zsh/bin/zsh"
+        ${
+          if final.stdenv.hostPlatform.isLinux then
+            ''
+              mkdir -p "$out/codex-resources/zsh/bin"
+              ln -s ${linuxZshRuntime}/bin/zsh "$out/codex-resources/zsh/bin/zsh"
+            ''
+          else
+            ''
+              tar -xzf ${zshArchive} --strip-components=1 -C "$out/codex-resources/zsh" codex-zsh/bin/zsh
+              chmod 0755 "$out/codex-resources/zsh/bin/zsh"
+            ''
+        }
         ln -s ${lib.getExe final.ripgrep} "$out/codex-path/rg"
         ${lib.optionalString final.stdenv.hostPlatform.isLinux ''
           ln -s ${lib.getExe final.bubblewrap} "$out/codex-resources/bwrap"

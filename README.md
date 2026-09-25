@@ -29,6 +29,9 @@ tar xzf "$tag-$target.tar.gz"
 "./$tag-$target/bin/codex" --version
 ```
 
+The Linux CLI targets musl, but its bundled optional `shell_zsh_fork` helper requires glibc 2.38 or newer and `libtinfo.so.6`.
+The Nix overlay supplies those helper dependencies automatically.
+
 Or consume the Nix overlay, which always tracks the latest patch release:
 
 ```nix
