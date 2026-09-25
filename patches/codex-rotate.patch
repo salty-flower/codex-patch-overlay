@@ -1541,7 +1541,7 @@ index 72d2872606..45eee0e849 100644
        "description": "Compact prompt used for history compaction.",
        "type": "string"
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index 023be4ca9e..a00db1d7a7 100644
+index 023be4ca9e..5d7b78306e 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
 @@ -72,8 +72,11 @@ use codex_login::CodexAuth;
@@ -1556,16 +1556,17 @@ index 023be4ca9e..a00db1d7a7 100644
  use codex_otel::SessionTelemetry;
  use codex_otel::WEBSOCKET_CONTINUATION_COUNT_METRIC;
  use codex_otel::current_span_w3c_trace_context;
-@@ -282,6 +285,8 @@ pub struct ModelClient {
+@@ -282,6 +285,9 @@ pub struct ModelClient {
  /// the previous turn's sticky-routing token into the next turn, which violates the client/server
  /// contract and can cause routing bugs.
  pub struct ModelClientSession {
 +    rotate_step_auth: Option<CodexAuth>,
 +    rotate_step_residency: Option<ResidencyRequirement>,
++    base_http_client_factory: HttpClientFactory,
      client: ModelClient,
      websocket_session: WebsocketSession,
      /// Turn state for sticky routing.
-@@ -312,6 +317,7 @@ struct WebsocketContinuation {
+@@ -312,6 +318,7 @@ struct WebsocketContinuation {
  
  #[derive(Debug, Default)]
  struct WebsocketSession {
@@ -1573,7 +1574,11 @@ index 023be4ca9e..a00db1d7a7 100644
      connection: Option<ApiWebSocketConnection>,
      responses_headers: ApiHeaderMap,
      /// Owner of the cached state, including before a connection is opened.
-@@ -608,6 +614,8 @@ impl ModelClient {
+@@ -605,9 +612,12 @@ impl ModelClient {
+             websocket_session.auth_owner_generation = auth_owner_generation;
+         }
+         ModelClientSession {
++            base_http_client_factory: self.http_client_factory.clone(),
              client: self.clone(),
              websocket_session,
              turn_state: Arc::new(OnceLock::new()),
@@ -1582,7 +1587,7 @@ index 023be4ca9e..a00db1d7a7 100644
          }
      }
  
-@@ -1032,6 +1040,19 @@ impl ModelClient {
+@@ -1032,6 +1042,19 @@ impl ModelClient {
      /// This centralizes setup used by both prewarm and normal request paths so they stay in
      /// lockstep when auth/provider resolution changes.
      async fn current_client_setup(&self, routing: ClientRouting) -> Result<CurrentClientSetup> {
@@ -1602,7 +1607,7 @@ index 023be4ca9e..a00db1d7a7 100644
          // Capture before resolving credentials so an account switch during setup cannot label
          // an old connection with the new owner's revision.
          let auth_owner_generation = self.auth_owner_generation();
-@@ -1040,8 +1061,46 @@ impl ModelClient {
+@@ -1040,8 +1063,46 @@ impl ModelClient {
              .provider
              .auth_manager()
              .map(|manager| manager.auth_change_receiver());
@@ -1649,7 +1654,7 @@ index 023be4ca9e..a00db1d7a7 100644
              let auth = self.state.provider.auth().await;
              let (api_provider, redirect_policy) = match routing {
                  ClientRouting::Workspace => {
-@@ -1057,18 +1116,7 @@ impl ModelClient {
+@@ -1057,18 +1118,7 @@ impl ModelClient {
                      ClientRedirectPolicy::Default,
                  ),
              };
@@ -1669,7 +1674,7 @@ index 023be4ca9e..a00db1d7a7 100644
              // Command-backed bearer refreshes cannot change workspace routing. Keep the captured
              // revisions so a refresh during setup still invalidates cached WebSocket state.
              if self.state.provider.info().auth.is_none() {
-@@ -1184,12 +1232,32 @@ impl ModelClient {
+@@ -1184,12 +1234,32 @@ impl ModelClient {
          } else {
              redirect_policy
          };
@@ -1708,7 +1713,7 @@ index 023be4ca9e..a00db1d7a7 100644
          .map_err(std::io::Error::from)?;
          Ok(ReqwestTransport::from_http_client(client))
      }
-@@ -1224,13 +1292,28 @@ impl ModelClient {
+@@ -1224,13 +1294,28 @@ impl ModelClient {
              self.state.auth_env_telemetry.clone(),
          );
          let websocket_connect_timeout = self.state.provider.info().websocket_connect_timeout();
@@ -1738,7 +1743,7 @@ index 023be4ca9e..a00db1d7a7 100644
                  /*turn_state*/ None,
                  Some(websocket_telemetry),
              ),
-@@ -1338,6 +1421,29 @@ impl Drop for ModelClientSession {
+@@ -1338,6 +1423,32 @@ impl Drop for ModelClientSession {
  }
  
  impl ModelClientSession {
@@ -1747,9 +1752,12 @@ index 023be4ca9e..a00db1d7a7 100644
 +        &mut self,
 +        auth: Option<CodexAuth>,
 +        residency: Option<ResidencyRequirement>,
++        http_client_factory: Option<HttpClientFactory>,
 +    ) {
 +        self.rotate_step_auth = auth;
 +        self.rotate_step_residency = residency;
++        self.client.http_client_factory =
++            http_client_factory.unwrap_or_else(|| self.base_http_client_factory.clone());
 +    }
 +
 +    fn adopt_rotation_snapshot(&mut self, auth: Option<&CodexAuth>) {
@@ -1768,7 +1776,7 @@ index 023be4ca9e..a00db1d7a7 100644
      #[allow(clippy::too_many_arguments)]
      /// Builds shared Responses API transport options and request-body options.
      ///
-@@ -1463,6 +1569,7 @@ impl ModelClientSession {
+@@ -1463,6 +1574,7 @@ impl ModelClientSession {
                      "failed to build websocket prewarm client setup: {err}"
                  ))
              })?;
@@ -1776,7 +1784,7 @@ index 023be4ca9e..a00db1d7a7 100644
          let connection_key =
              ResponsesConnectionKey::new(&client_setup.api_provider, client_setup.auth_revision);
          if self.websocket_session.connection.is_some()
-@@ -1614,7 +1721,7 @@ impl ModelClientSession {
+@@ -1614,7 +1726,7 @@ impl ModelClientSession {
          )
      )]
      async fn stream_responses_api(
@@ -1785,7 +1793,7 @@ index 023be4ca9e..a00db1d7a7 100644
          prompt: &Prompt,
          model_info: &ModelInfo,
          session_telemetry: &SessionTelemetry,
-@@ -1630,11 +1737,23 @@ impl ModelClientSession {
+@@ -1630,11 +1742,23 @@ impl ModelClientSession {
              .map(AuthManager::unauthorized_recovery);
          let mut provider_auth_recovery_attempted = false;
          let mut pending_retry = PendingUnauthorizedRetry::default();
@@ -1810,7 +1818,7 @@ index 023be4ca9e..a00db1d7a7 100644
              let include_internal = is_internal_metadata_destination(&client_setup.api_provider);
              let responses_headers = self
                  .client
-@@ -1748,6 +1867,7 @@ impl ModelClientSession {
+@@ -1748,6 +1872,7 @@ impl ModelClientSession {
                      pending_retry = PendingUnauthorizedRetry::from_recovery(
                          handle_unauthorized(
                              unauthorized_transport,
@@ -1818,7 +1826,7 @@ index 023be4ca9e..a00db1d7a7 100644
                              &mut auth_recovery,
                              &mut provider_auth_recovery_attempted,
                              session_telemetry,
-@@ -1810,11 +1930,23 @@ impl ModelClientSession {
+@@ -1810,11 +1935,23 @@ impl ModelClientSession {
              .map(AuthManager::unauthorized_recovery);
          let mut provider_auth_recovery_attempted = false;
          let mut pending_retry = PendingUnauthorizedRetry::default();
@@ -1843,7 +1851,7 @@ index 023be4ca9e..a00db1d7a7 100644
              let include_internal = is_internal_metadata_destination(&client_setup.api_provider);
              let responses_headers = self
                  .client
-@@ -1887,6 +2019,7 @@ impl ModelClientSession {
+@@ -1887,6 +2024,7 @@ impl ModelClientSession {
                      pending_retry = PendingUnauthorizedRetry::from_recovery(
                          handle_unauthorized(
                              unauthorized_transport,
@@ -1851,7 +1859,7 @@ index 023be4ca9e..a00db1d7a7 100644
                              &mut auth_recovery,
                              &mut provider_auth_recovery_attempted,
                              session_telemetry,
-@@ -2535,8 +2668,13 @@ fn emit_auth_recovery_event(
+@@ -2535,8 +2673,13 @@ fn emit_auth_recovery_event(
      }
  }
  
@@ -1865,7 +1873,7 @@ index 023be4ca9e..a00db1d7a7 100644
      auth_recovery: &mut Option<UnauthorizedRecovery>,
      provider_auth_recovery_attempted: &mut bool,
      session_telemetry: &SessionTelemetry,
-@@ -2544,6 +2682,20 @@ async fn handle_unauthorized(
+@@ -2544,6 +2687,20 @@ async fn handle_unauthorized(
      event_sender: Option<&Sender<ProtocolEvent>>,
      turn_id: Option<&str>,
  ) -> Result<UnauthorizedRecoveryExecution> {
@@ -1887,10 +1895,10 @@ index 023be4ca9e..a00db1d7a7 100644
      if !*provider_auth_recovery_attempted {
          *provider_auth_recovery_attempted = true;
 diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
-index 69bdaf81fa..2b99b8a429 100644
+index 69bdaf81fa..3a25336434 100644
 --- a/codex-rs/core/src/client_tests.rs
 +++ b/codex-rs/core/src/client_tests.rs
-@@ -100,8 +100,64 @@ use wiremock::ResponseTemplate;
+@@ -100,8 +100,142 @@ use wiremock::ResponseTemplate;
  use wiremock::matchers::method;
  use wiremock::matchers::path;
  
@@ -1952,10 +1960,88 @@ index 69bdaf81fa..2b99b8a429 100644
 +    );
 +}
 +
++#[tokio::test]
++async fn rotate_network_policy_blocks_old_step_transport_and_restores_base_after_deactivation() {
++    use codex_client::HttpTransport;
++    use codex_http_client::DestinationPolicy;
++    use codex_http_client::NetworkPolicyController;
++    use codex_http_client::NetworkPolicyDenied;
++
++    let server = MockServer::start().await;
++    Mock::given(method("POST"))
++        .and(path("/responses"))
++        .respond_with(ResponseTemplate::new(200))
++        .expect(1)
++        .mount(&server)
++        .await;
++    let controller = NetworkPolicyController::default();
++    let policy = controller.policy();
++    assert!(controller.publish(policy.revision(), DestinationPolicy::Unrestricted));
++    let mut client = test_model_client(SessionSource::Cli);
++    client.http_client_factory = client
++        .http_client_factory
++        .clone()
++        .with_network_policy(policy.clone());
++    let admitted_factory = client
++        .http_client_factory
++        .clone()
++        .with_network_policy(policy.clone().for_current_account());
++    let mut session = client.new_session();
++    session.set_rotate_step_auth(
++        Some(CodexAuth::create_dummy_chatgpt_auth_for_testing()),
++        None,
++        Some(admitted_factory),
++    );
++
++    policy.invalidate();
++    assert!(controller.publish(policy.revision(), DestinationPolicy::Unrestricted));
++    let mut setup = session
++        .client
++        .current_client_setup(super::ClientRouting::ConfiguredProvider)
++        .await
++        .unwrap();
++    setup.api_provider.base_url = server.uri();
++    let denied: anyhow::Result<()> = async {
++        let transport = session.client.build_api_transport(
++            &setup.api_provider,
++            "/responses",
++            setup.redirect_policy,
++        )?;
++        let request = setup
++            .api_provider
++            .build_request(http::Method::POST, "/responses")
++            .with_json(&json!({"input": "old account step"}));
++        transport.execute(request).await?;
++        Ok(())
++    }
++    .await;
++    let error = format!("{:#}", denied.unwrap_err());
++    assert!(
++        error.contains(&NetworkPolicyDenied::Revoked.to_string()),
++        "old step must retain its revoked account binding: {error}"
++    );
++    assert!(server.received_requests().await.unwrap().is_empty());
++
++    session.set_rotate_step_auth(None, None, None);
++    let transport = session
++        .client
++        .build_api_transport(&setup.api_provider, "/responses", setup.redirect_policy)
++        .unwrap();
++    let request = setup
++        .api_provider
++        .build_request(http::Method::POST, "/responses")
++        .with_json(&json!({"input": "non-rotate step"}));
++    assert_eq!(
++        transport.execute(request).await.unwrap().status,
++        http::StatusCode::OK
++    );
++    assert_eq!(server.received_requests().await.unwrap().len(), 1);
++}
++
  fn test_model_client(session_source: SessionSource) -> ModelClient {
      test_model_client_with_thread_id(ThreadId::new(), session_source)
  }
-@@ -1450,6 +1506,7 @@ async fn bedrock_unauthorized_error_uses_provider_mapping() {
+@@ -1450,6 +1584,7 @@ async fn bedrock_unauthorized_error_uses_provider_mapping() {
                      .to_string(),
              ),
          },
@@ -1963,7 +2049,7 @@ index 69bdaf81fa..2b99b8a429 100644
          &mut auth_recovery,
          &mut provider_auth_recovery_attempted,
          &test_session_telemetry(),
-@@ -1546,6 +1603,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
+@@ -1546,6 +1681,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
          let (event_sender, event_receiver) = async_channel::unbounded();
          let result = super::handle_unauthorized(
              unauthorized(),
@@ -1971,7 +2057,7 @@ index 69bdaf81fa..2b99b8a429 100644
              &mut auth_recovery,
              &mut provider_auth_recovery_attempted,
              &telemetry,
-@@ -1565,6 +1623,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
+@@ -1565,6 +1701,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
              );
              super::handle_unauthorized(
                  unauthorized(),
@@ -1979,17 +2065,107 @@ index 69bdaf81fa..2b99b8a429 100644
                  &mut auth_recovery,
                  &mut provider_auth_recovery_attempted,
                  &telemetry,
+diff --git a/codex-rs/core/src/compact.rs b/codex-rs/core/src/compact.rs
+index c1e18ba7eb..d869c85c19 100644
+--- a/codex-rs/core/src/compact.rs
++++ b/codex-rs/core/src/compact.rs
+@@ -114,6 +114,8 @@ pub(crate) async fn build_compaction_initial_context(
+ pub(crate) async fn run_inline_auto_compact_task(
+     sess: Arc<Session>,
+     turn_context: Arc<TurnContext>,
++    rotate_auth: Option<codex_login::CodexAuth>,
++    rotate_http_client_factory: Option<codex_http_client::HttpClientFactory>,
+     initial_context_injection: InitialContextInjection,
+     reason: CompactionReason,
+     phase: CompactionPhase,
+@@ -133,6 +135,8 @@ pub(crate) async fn run_inline_auto_compact_task(
+     run_compact_task_inner(
+         sess,
+         turn_context,
++        rotate_auth,
++        rotate_http_client_factory,
+         input,
+         initial_context_injection,
+         CompactionTrigger::Auto,
+@@ -148,10 +152,27 @@ pub(crate) async fn run_compact_task(
+     turn_context: Arc<TurnContext>,
+     input: Vec<UserInput>,
+ ) -> CodexResult<()> {
++    let (rotate_auth, rotate_http_client_factory) =
++        if sess.services.auth_manager.has_rotate_helper() {
++            let step = sess
++                .capture_step_context(
++                    Arc::clone(&turn_context),
++                    &tokio_util::sync::CancellationToken::new(),
++                )
++                .await?;
++            (
++                step.rotate_auth.clone(),
++                step.rotate_http_client_factory.clone(),
++            )
++        } else {
++            (None, None)
++        };
+     sess.emit_turn_started(&turn_context).await;
+     run_compact_task_inner(
+         sess.clone(),
+         turn_context,
++        rotate_auth,
++        rotate_http_client_factory,
+         input,
+         InitialContextInjection::DoNotInject,
+         CompactionTrigger::Manual,
+@@ -165,6 +186,8 @@ pub(crate) async fn run_compact_task(
+ async fn run_compact_task_inner(
+     sess: Arc<Session>,
+     turn_context: Arc<TurnContext>,
++    rotate_auth: Option<codex_login::CodexAuth>,
++    rotate_http_client_factory: Option<codex_http_client::HttpClientFactory>,
+     input: Vec<UserInput>,
+     initial_context_injection: InitialContextInjection,
+     trigger: CompactionTrigger,
+@@ -201,6 +224,8 @@ async fn run_compact_task_inner(
+     let result = run_compact_task_inner_impl(
+         Arc::clone(&sess),
+         Arc::clone(&turn_context),
++        rotate_auth,
++        rotate_http_client_factory,
+         input,
+         initial_context_injection,
+         compaction_metadata,
+@@ -250,6 +275,8 @@ async fn run_compact_task_inner(
+ async fn run_compact_task_inner_impl(
+     sess: Arc<Session>,
+     turn_context: Arc<TurnContext>,
++    rotate_auth: Option<codex_login::CodexAuth>,
++    rotate_http_client_factory: Option<codex_http_client::HttpClientFactory>,
+     input: Vec<UserInput>,
+     initial_context_injection: InitialContextInjection,
+     compaction_metadata: CompactionTurnMetadata,
+@@ -270,6 +297,11 @@ async fn run_compact_task_inner_impl(
+     // Reuse one client session so turn-scoped state (sticky routing and websocket incremental
+     // request tracking) survives retries within this compact turn.
+     let mut client_session = sess.services.model_client.new_session();
++    client_session.set_rotate_step_auth(
++        rotate_auth,
++        turn_context.config.enforce_residency.value(),
++        rotate_http_client_factory,
++    );
+     let compaction_response = loop {
+         // Clone is required because of the loop
+         let mut turn_input = history
 diff --git a/codex-rs/core/src/compact_remote_v2.rs b/codex-rs/core/src/compact_remote_v2.rs
-index 722b24cf8e..22bc474519 100644
+index 722b24cf8e..a8f2593590 100644
 --- a/codex-rs/core/src/compact_remote_v2.rs
 +++ b/codex-rs/core/src/compact_remote_v2.rs
-@@ -397,6 +397,10 @@ async fn run_remote_compaction_request_v2(
+@@ -397,6 +397,11 @@ async fn run_remote_compaction_request_v2(
          .info()
          .stream_max_retries()
          .min(MAX_REMOTE_COMPACTION_V2_STREAM_RETRIES);
 +    client_session.set_rotate_step_auth(
 +        step_context.rotate_auth.clone(),
 +        turn_context.config.enforce_residency.value(),
++        step_context.rotate_http_client_factory.clone(),
 +    );
      let mut retry_state = ResponsesStreamRetryState::default();
      loop {
@@ -2453,7 +2629,7 @@ index 2bbee2d5ed..de2edcac2e 100644
      }
  }
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index bb5a1e8bed..a07821206d 100644
+index bb5a1e8bed..5ae0f9f422 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
 @@ -250,6 +250,7 @@ mod retained_context;
@@ -2472,7 +2648,7 @@ index bb5a1e8bed..a07821206d 100644
          })
          .await?;
          reply_rx.await.unwrap_or(Err(CodexErr::InternalAgentDied))
-@@ -3796,26 +3798,18 @@ impl Session {
+@@ -3796,26 +3798,19 @@ impl Session {
      }
  
      #[tracing::instrument(name = "step_context.capture", level = "info", skip_all)]
@@ -2484,6 +2660,7 @@ index bb5a1e8bed..a07821206d 100644
          required_servers: &[String],
          required_plugins: &HashSet<String>,
 +        rotate_auth: Option<CodexAuth>,
++        rotate_http_client_factory: Option<codex_http_client::HttpClientFactory>,
 +        mut settings: Arc<ResolvedStepSettings>,
 +        environments: impl std::future::Future<Output = TurnEnvironmentSnapshot> + Send + 'static,
      ) -> CodexResult<Arc<StepContext>> {
@@ -2504,7 +2681,7 @@ index bb5a1e8bed..a07821206d 100644
          if matches!(
              turn_context.session_source,
              SessionSource::SubAgent(SubAgentSource::ThreadSpawn { .. })
-@@ -3899,6 +3893,7 @@ impl Session {
+@@ -3899,6 +3894,7 @@ impl Session {
          }
          .or_cancel(cancellation_token)
          .await?;
@@ -2512,20 +2689,21 @@ index bb5a1e8bed..a07821206d 100644
          let mut selected_plugins = self
              .services
              .thread_extension_data
-@@ -3924,6 +3919,7 @@ impl Session {
+@@ -3924,6 +3920,8 @@ impl Session {
          .or_cancel(cancellation_token)
          .await??;
          Ok(Arc::new(StepContext {
 +            rotate_auth,
++            rotate_http_client_factory,
              settings,
              token_budget,
              session_telemetry,
 diff --git a/codex-rs/core/src/session/rotate_step.rs b/codex-rs/core/src/session/rotate_step.rs
 new file mode 100644
-index 0000000000..c9f7af6ad4
+index 0000000000..58f3a297c0
 --- /dev/null
 +++ b/codex-rs/core/src/session/rotate_step.rs
-@@ -0,0 +1,295 @@
+@@ -0,0 +1,299 @@
 +//! Personal account admission before any account-dependent step preparation.
 +//!
 +//! Managed cloud configuration is deliberately outside this personal adapter.
@@ -2727,6 +2905,7 @@ index 0000000000..c9f7af6ad4
 +                None
 +            };
 +        let prepare = async {
++            let mut rotate_http_client_factory = None;
 +            if let Some(auth) = &rotate_auth {
 +                validate_personal_step(&turn_context.config, auth)?;
 +                {
@@ -2742,10 +2921,12 @@ index 0000000000..c9f7af6ad4
 +                        ));
 +                    }
 +                }
-+                manager
-+                    .refresh_application_network_policy_for_request(auth)
-+                    .or_cancel(cancellation_token)
-+                    .await??;
++                rotate_http_client_factory = Some(
++                    manager
++                        .refresh_application_network_policy_for_request(auth)
++                        .or_cancel(cancellation_token)
++                        .await??,
++                );
 +                let plugins = &self.services.plugins_manager;
 +                let plugins_config = turn_context.config.plugins_config_input();
 +                if plugins_config.plugins_enabled
@@ -2780,6 +2961,7 @@ index 0000000000..c9f7af6ad4
 +                    required_servers,
 +                    required_plugins,
 +                    rotate_auth.clone(),
++                    rotate_http_client_factory,
 +                    settings,
 +                    environments,
 +                )
@@ -2866,39 +3048,43 @@ index 0000000000..dfe23ad9c5
 +    assert_eq!(has_cloud_requirements(&requirements), true);
 +}
 diff --git a/codex-rs/core/src/session/step_context.rs b/codex-rs/core/src/session/step_context.rs
-index 855d854fd0..ca15ce9ff5 100644
+index 855d854fd0..9db0060dc2 100644
 --- a/codex-rs/core/src/session/step_context.rs
 +++ b/codex-rs/core/src/session/step_context.rs
-@@ -10,6 +10,7 @@ use crate::session::turn_context::TurnContext;
+@@ -10,6 +10,8 @@ use crate::session::turn_context::TurnContext;
  use crate::tools::router::ToolRouter;
  use codex_exec_server::ExecutorCapabilityDiscoverySnapshot;
  use codex_exec_server::ResolvedSelectedCapabilityRoot;
++use codex_http_client::HttpClientFactory;
 +use codex_login::CodexAuth;
  use codex_mcp::McpBinding;
  use codex_otel::SessionTelemetry;
  use codex_protocol::items::ModelInvocationContext;
-@@ -18,6 +19,8 @@ use codex_protocol::protocol::TurnContextItem;
+@@ -18,6 +20,10 @@ use codex_protocol::protocol::TurnContextItem;
  /// Request-scoped state that may change between model sampling requests.
  pub(crate) struct StepContext {
      pub(crate) turn: Arc<TurnContext>,
 +    /// Exact personal account captured before plugin, MCP and tool preparation.
 +    pub(crate) rotate_auth: Option<CodexAuth>,
++    /// Content route pinned to the same account snapshot as `rotate_auth`.
++    pub(crate) rotate_http_client_factory: Option<HttpClientFactory>,
      /// One immutable settings version captured before request preparation.
      pub(crate) settings: Arc<ResolvedStepSettings>,
      /// Frozen turn preferences resolved against this step's captured model.
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 9a61d17de3..f9f2b2a08e 100644
+index 9a61d17de3..4e32b178ba 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -267,6 +267,7 @@ impl StepContext {
+@@ -267,6 +267,8 @@ impl StepContext {
          });
          settings.service_tier = turn.config.service_tier.clone();
          Arc::new(Self {
 +            rotate_auth: None,
++            rotate_http_client_factory: None,
              token_budget: token_budget::resolve_token_budget(
                  turn.configured_token_budget.as_ref(),
                  turn.use_model_token_budget_defaults,
-@@ -8978,7 +8979,8 @@ async fn refresh_mcp_servers_uses_latest_state_for_existing_turns() {
+@@ -8978,7 +8980,8 @@ async fn refresh_mcp_servers_uses_latest_state_for_existing_turns() {
              /*required_servers*/ &[],
              /*required_plugins*/ &HashSet::new(),
          )
@@ -2909,10 +3095,19 @@ index 9a61d17de3..f9f2b2a08e 100644
      let configured_servers = codex_mcp::configured_mcp_servers(new_step.mcp.config());
      assert_eq!(
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index 8f96220f62..7fe9fd1049 100644
+index 8f96220f62..8f1857af50 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -1661,6 +1661,18 @@ async fn run_sampling_request(
+@@ -1490,6 +1490,8 @@ async fn run_auto_compact(
+             run_inline_auto_compact_task(
+                 Arc::clone(sess),
+                 Arc::clone(turn_context),
++                step_context.rotate_auth.clone(),
++                step_context.rotate_http_client_factory.clone(),
+                 initial_context_injection,
+                 reason,
+                 phase,
+@@ -1661,6 +1663,18 @@ async fn run_sampling_request(
                      return Err(err);
                  }
                  CodexErrorDetails::UsageLimitReached(e) => {
@@ -2931,18 +3126,19 @@ index 8f96220f62..7fe9fd1049 100644
                      let rate_limits = e.rate_limits.clone();
                      if let Some(rate_limits) = rate_limits {
                          sess.update_rate_limits(&turn_context, *rate_limits).await;
-@@ -2503,6 +2515,10 @@ async fn try_run_sampling_request(
+@@ -2503,6 +2517,11 @@ async fn try_run_sampling_request(
          .features
          .enabled(Feature::ConcurrentReasoningSummaries)
          && turn_context.provider.info().is_openai();
 +    client_session.set_rotate_step_auth(
 +        step_context.rotate_auth.clone(),
 +        turn_context.config.enforce_residency.value(),
++        step_context.rotate_http_client_factory.clone(),
 +    );
      let mut stream = client_session
          .stream(
              prompt,
-@@ -2531,6 +2547,7 @@ async fn try_run_sampling_request(
+@@ -2531,6 +2550,7 @@ async fn try_run_sampling_request(
      )> = None;
      let mut should_emit_turn_diff = false;
      let mut should_emit_token_count = false;
@@ -2950,7 +3146,7 @@ index 8f96220f62..7fe9fd1049 100644
      const MAX_ANALYTICS_TOOL_CALL_IDS_PER_RESPONSE: usize = 256;
      let mut analytics_tool_call_ids = Vec::new();
      let reasoning_effort = step_context
-@@ -2834,6 +2851,14 @@ async fn try_run_sampling_request(
+@@ -2834,6 +2854,14 @@ async fn try_run_sampling_request(
                  sess.set_server_reasoning_included(included).await;
              }
              ResponseEvent::RateLimits(snapshot) => {
@@ -2965,7 +3161,7 @@ index 8f96220f62..7fe9fd1049 100644
                  // Update internal state with latest rate limits, but defer sending until
                  // token usage is available to avoid duplicate TokenCount events.
                  sess.record_rate_limits_info(snapshot).await;
-@@ -3055,6 +3080,15 @@ async fn try_run_sampling_request(
+@@ -3055,6 +3083,15 @@ async fn try_run_sampling_request(
      )
      .await;
  
@@ -3599,10 +3795,21 @@ index 1624e777fd..e2c11bfd25 100644
      let args = json!({
          "cmd": command,
 diff --git a/codex-rs/http-client/src/network_policy.rs b/codex-rs/http-client/src/network_policy.rs
-index 4c3ce3e5f0..3f88d07ad6 100644
+index 4c3ce3e5f0..3f868d96b0 100644
 --- a/codex-rs/http-client/src/network_policy.rs
 +++ b/codex-rs/http-client/src/network_policy.rs
-@@ -219,6 +219,14 @@ impl NetworkPolicy {
+@@ -210,7 +210,9 @@ impl NetworkPolicy {
+     /// Binds a content client to the current account so retained credentials cannot
+     /// be used after another workspace's policy has been installed.
+     pub fn for_current_account(mut self) -> Self {
+-        self.account = self.state.as_ref().map(|state| lock_state(state).account);
++        if self.account.is_none() {
++            self.account = self.state.as_ref().map(|state| lock_state(state).account);
++        }
+         self
+     }
+ 
+@@ -219,6 +221,14 @@ impl NetworkPolicy {
          self.state.is_some()
      }
  
@@ -3754,7 +3961,7 @@ index ae509a4a73..a43018614c 100644
      std::env::var("CODEX_SANDBOX").as_deref() == Ok("seatbelt")
  }
 diff --git a/codex-rs/login/src/auth/manager.rs b/codex-rs/login/src/auth/manager.rs
-index 14cfee9221..1ede19d2af 100644
+index 14cfee9221..a0d2b0b586 100644
 --- a/codex-rs/login/src/auth/manager.rs
 +++ b/codex-rs/login/src/auth/manager.rs
 @@ -1,5 +1,8 @@
@@ -4060,7 +4267,7 @@ index 14cfee9221..1ede19d2af 100644
      /// Returns the Codex home directory used for auth storage.
      fn codex_home(&self) -> PathBuf;
  
-@@ -2133,6 +2333,85 @@ fn default_agent_identity_authapi_base_url() -> Option<String> {
+@@ -2133,6 +2333,127 @@ fn default_agent_identity_authapi_base_url() -> Option<String> {
  }
  
  impl AuthManager {
@@ -4112,14 +4319,63 @@ index 14cfee9221..1ede19d2af 100644
 +        Ok(self.application_network_policy().revision())
 +    }
 +
++    fn http_client_factory_for_auth(
++        &self,
++        auth: &CodexAuth,
++        expected_revision: Option<codex_http_client::NetworkPolicyRevision>,
++    ) -> std::io::Result<HttpClientFactory> {
++        // Keep auth ownership and the policy account binding in one snapshot. Owner changes
++        // invalidate this policy while holding the same auth write lock.
++        let current = self
++            .inner
++            .read()
++            .map_err(|_| std::io::Error::other("cached auth lock poisoned"))?;
++        let auth_matches = if let Some(requested) = auth.rotate_identity() {
++            same_owner(current.auth.as_ref(), Some(auth))
++                && current
++                    .auth
++                    .as_ref()
++                    .and_then(CodexAuth::rotate_identity)
++                    .is_some_and(|current| {
++                        current.account_key == requested.account_key
++                            && current.selection_epoch == requested.selection_epoch
++                    })
++        } else {
++            Self::auths_equal_for_refresh(current.auth.as_ref(), Some(auth))
++        };
++        if !auth_matches {
++            return Err(std::io::Error::other(
++                codex_http_client::NetworkPolicyDenied::Revoked,
++            ));
++        }
++
++        let policy = self.application_network_policy();
++        if expected_revision.is_some_and(|revision| policy.revision() != revision) {
++            return Err(std::io::Error::other(
++                codex_http_client::NetworkPolicyDenied::Revoked,
++            ));
++        }
++        if !policy.is_available() {
++            return Err(std::io::Error::other(
++                codex_http_client::NetworkPolicyDenied::Unavailable,
++            ));
++        }
++
++        Ok(self
++            .auth_route_config
++            .http_client_factory()
++            .clone()
++            .with_network_policy(policy.for_current_account()))
++    }
++
 +    /// Restores the admitted personal account's policy before any account-dependent I/O.
 +    pub async fn refresh_application_network_policy_for_request(
 +        &self,
 +        auth: &CodexAuth,
-+    ) -> std::io::Result<()> {
++    ) -> std::io::Result<HttpClientFactory> {
 +        let policy = self.application_network_policy();
 +        if !policy.is_managed() {
-+            return Ok(());
++            return self.http_client_factory_for_auth(auth, None);
 +        }
 +        let revision = self.request_network_policy_revision(auth)?;
 +        // The configuration owner also validates that a background refresh did not
@@ -4127,26 +4383,19 @@ index 14cfee9221..1ede19d2af 100644
 +        let refresh = self
 +            .application_network_policy_refresh
 +            .read()
-+            .map_err(|_| {
-+                std::io::Error::other("application network policy refresh lock poisoned")
-+            })?
++            .map_err(|_| std::io::Error::other("application network policy refresh lock poisoned"))?
 +            .clone()
 +            .ok_or_else(|| {
 +                std::io::Error::other("application network policy refresh is unavailable")
 +            })?;
 +        refresh(auth.clone(), revision).await?;
-+        if self.request_network_policy_revision(auth)? != revision || !policy.is_available() {
-+            return Err(std::io::Error::other(
-+                codex_http_client::NetworkPolicyDenied::Revoked,
-+            ));
-+        }
-+        Ok(())
++        self.http_client_factory_for_auth(auth, Some(revision))
 +    }
 +
      /// Returns the application policy associated with this account owner.
      pub fn application_network_policy(&self) -> codex_http_client::NetworkPolicy {
          self.auth_route_config
-@@ -2163,6 +2442,7 @@ impl AuthManager {
+@@ -2163,6 +2484,7 @@ impl AuthManager {
      ) -> Self {
          Self::new_from_auth_config(
              AuthConfig {
@@ -4154,7 +4403,7 @@ index 14cfee9221..1ede19d2af 100644
                  codex_home,
                  auth_credentials_store_mode,
                  keyring_backend_kind,
-@@ -2179,11 +2459,12 @@ impl AuthManager {
+@@ -2179,11 +2501,12 @@ impl AuthManager {
  
      async fn new_from_auth_config(auth_config: AuthConfig, enable_codex_api_key_env: bool) -> Self {
          let managed_auth = auth_config
@@ -4168,7 +4417,7 @@ index 14cfee9221..1ede19d2af 100644
              codex_home,
              auth_credentials_store_mode,
              keyring_backend_kind,
-@@ -2205,6 +2486,7 @@ impl AuthManager {
+@@ -2205,6 +2528,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -4176,7 +4425,7 @@ index 14cfee9221..1ede19d2af 100644
              enable_codex_api_key_env,
              auth_credentials_store_mode,
              keyring_backend_kind,
-@@ -2241,6 +2523,7 @@ impl AuthManager {
+@@ -2241,6 +2565,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -4184,7 +4433,7 @@ index 14cfee9221..1ede19d2af 100644
              enable_codex_api_key_env: false,
              auth_credentials_store_mode: AuthCredentialsStoreMode::File,
              keyring_backend_kind: AuthKeyringBackendKind::default(),
-@@ -2271,6 +2554,7 @@ impl AuthManager {
+@@ -2271,6 +2596,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -4192,7 +4441,7 @@ index 14cfee9221..1ede19d2af 100644
              enable_codex_api_key_env: false,
              auth_credentials_store_mode: AuthCredentialsStoreMode::File,
              keyring_backend_kind: AuthKeyringBackendKind::default(),
-@@ -2305,6 +2589,7 @@ impl AuthManager {
+@@ -2305,6 +2631,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -4200,7 +4449,7 @@ index 14cfee9221..1ede19d2af 100644
              enable_codex_api_key_env: false,
              auth_credentials_store_mode: AuthCredentialsStoreMode::File,
              keyring_backend_kind: AuthKeyringBackendKind::default(),
-@@ -2337,6 +2622,7 @@ impl AuthManager {
+@@ -2337,6 +2664,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -4208,7 +4457,7 @@ index 14cfee9221..1ede19d2af 100644
              enable_codex_api_key_env: false,
              auth_credentials_store_mode: AuthCredentialsStoreMode::File,
              keyring_backend_kind: AuthKeyringBackendKind::default(),
-@@ -2360,6 +2646,9 @@ impl AuthManager {
+@@ -2360,6 +2688,9 @@ impl AuthManager {
  
      /// Current cached auth (clone) without attempting a refresh.
      pub fn auth_cached(&self) -> Option<CodexAuth> {
@@ -4218,7 +4467,7 @@ index 14cfee9221..1ede19d2af 100644
          self.inner
              .read()
              .ok()
-@@ -2391,6 +2680,15 @@ impl AuthManager {
+@@ -2391,6 +2722,15 @@ impl AuthManager {
      /// a guarded reload and then refreshes only if the on-disk auth is unchanged.
      #[instrument(level = "trace", skip_all)]
      pub async fn auth(&self) -> Option<CodexAuth> {
@@ -4234,7 +4483,20 @@ index 14cfee9221..1ede19d2af 100644
          if self.has_external_auth() {
              self.reload().await;
              return self.auth_cached();
-@@ -2422,6 +2720,17 @@ impl AuthManager {
+@@ -2409,9 +2749,9 @@ impl AuthManager {
+     /// Refreshes auth, then captures credentials and their account-bound factory together.
+     /// The auth read lock prevents an identity change between the two snapshots.
+     pub async fn auth_with_http_client_factory(&self) -> Option<(CodexAuth, HttpClientFactory)> {
+-        self.auth().await;
+-        let cached = self.inner.read().ok()?;
+-        Some((cached.auth.clone()?, self.http_client_factory()))
++        let auth = self.auth().await?;
++        let factory = self.http_client_factory_for_auth(&auth, None).ok()?;
++        Some((auth, factory))
+     }
+ 
+     pub async fn agent_identity_auth(
+@@ -2422,6 +2762,17 @@ impl AuthManager {
          let Some(auth) = self.auth().await else {
              return Ok(None);
          };
@@ -4252,7 +4514,7 @@ index 14cfee9221..1ede19d2af 100644
          if policy == AgentIdentityAuthPolicy::ChatGptAuth && matches!(auth, CodexAuth::Chatgpt(_)) {
              let _bootstrap_permit = self
                  .agent_identity_lock
-@@ -2430,7 +2739,7 @@ impl AuthManager {
+@@ -2430,7 +2781,7 @@ impl AuthManager {
                  .map_err(std::io::Error::other)?;
              let effective_chatgpt_workspaces = self.effective_chatgpt_workspaces();
              let cooldown_key = ManagedChatGptAgentIdentityBinding::from_auth(
@@ -4261,7 +4523,7 @@ index 14cfee9221..1ede19d2af 100644
                  effective_chatgpt_workspaces.clone(),
              )
              .and_then(|binding| {
-@@ -2664,11 +2973,20 @@ impl AuthManager {
+@@ -2664,11 +3015,20 @@ impl AuthManager {
          &self,
          external_auth: Arc<dyn ExternalAuth>,
      ) -> Result<(), RefreshTokenError> {
@@ -4283,7 +4545,7 @@ index 14cfee9221..1ede19d2af 100644
          self.install_external_auth(external_auth).await
      }
  
-@@ -2689,7 +3007,11 @@ impl AuthManager {
+@@ -2689,7 +3049,11 @@ impl AuthManager {
      }
  
      pub fn clear_external_auth(&self) {
@@ -4296,7 +4558,7 @@ index 14cfee9221..1ede19d2af 100644
              return;
          }
          if let Ok(mut external_auth) = self.external_auth.write()
-@@ -2739,6 +3061,12 @@ impl AuthManager {
+@@ -2739,6 +3103,12 @@ impl AuthManager {
          self.external_auth_provider().is_some()
      }
  
@@ -4309,7 +4571,7 @@ index 14cfee9221..1ede19d2af 100644
      pub fn is_workload_identity_selected(&self) -> bool {
          self.workload_identity_selected
      }
-@@ -2799,6 +3127,13 @@ impl AuthManager {
+@@ -2799,6 +3169,13 @@ impl AuthManager {
          enable_codex_api_key_env: bool,
      ) -> Result<Arc<Self>, AuthManagerInitializationError> {
          let external_auth = WorkloadIdentityExternalAuth::from_process_config(&auth_config)?;
@@ -4323,7 +4585,7 @@ index 14cfee9221..1ede19d2af 100644
          let mut manager = Self::new_from_auth_config(auth_config, enable_codex_api_key_env).await;
          manager.workload_identity_selected = external_auth.is_some();
          let manager = Arc::new(manager);
-@@ -2807,9 +3142,203 @@ impl AuthManager {
+@@ -2807,9 +3184,212 @@ impl AuthManager {
                  .install_external_auth(Arc::new(external_auth))
                  .await?;
          }
@@ -4426,6 +4688,12 @@ index 14cfee9221..1ede19d2af 100644
 +                "Codex Rotate request owner is missing",
 +            ));
 +        }
++        let http_client_factory = if self.application_network_policy().is_managed() {
++            self.http_client_factory_for_auth(&auth, None)?
++        } else {
++            // Standalone callers have no shared application-policy owner to revoke.
++            self.http_client_factory()
++        };
 +        let external: Arc<dyn ExternalAuth> =
 +            Arc::new(RequestSnapshotAuth::new(authority, auth.clone()));
 +        Ok(Arc::new(Self {
@@ -4451,7 +4719,10 @@ index 14cfee9221..1ede19d2af 100644
 +            agent_identity_bootstrap_cooldown: Mutex::default(),
 +            external_auth: RwLock::new(Some(external)),
 +            workload_identity_selected: false,
-+            auth_route_config: self.auth_route_config.clone(),
++            auth_route_config: self
++                .auth_route_config
++                .clone()
++                .with_http_client_factory(http_client_factory),
 +        }))
 +    }
 +
@@ -4527,7 +4798,7 @@ index 14cfee9221..1ede19d2af 100644
      pub fn unauthorized_recovery(self: &Arc<Self>) -> UnauthorizedRecovery {
          UnauthorizedRecovery::new(Arc::clone(self))
      }
-@@ -2939,12 +3468,41 @@ impl AuthManager {
+@@ -2939,12 +3519,41 @@ impl AuthManager {
          result
      }
  
@@ -4573,7 +4844,7 @@ index 14cfee9221..1ede19d2af 100644
          let removed = logout_all_stores(
              &self.codex_home,
              self.auth_credentials_store_mode,
-@@ -2958,6 +3516,9 @@ impl AuthManager {
+@@ -2958,6 +3567,9 @@ impl AuthManager {
  
      pub async fn logout_with_revoke(&self) -> std::io::Result<bool> {
          self.ensure_logout_allowed()?;
@@ -4583,7 +4854,7 @@ index 14cfee9221..1ede19d2af 100644
          let auth_dot_json = self
              .auth_cached()
              .and_then(|auth| auth.get_current_auth_json());
-@@ -2977,6 +3538,14 @@ impl AuthManager {
+@@ -2977,6 +3589,14 @@ impl AuthManager {
      }
  
      fn ensure_logout_allowed(&self) -> std::io::Result<()> {
@@ -4598,7 +4869,7 @@ index 14cfee9221..1ede19d2af 100644
          if self.workload_identity_selected {
              return Err(std::io::Error::new(
                  std::io::ErrorKind::PermissionDenied,
-@@ -3002,6 +3571,9 @@ impl AuthManager {
+@@ -3002,6 +3622,9 @@ impl AuthManager {
      }
  
      fn should_refresh_proactively(auth: &CodexAuth) -> bool {
@@ -4608,7 +4879,7 @@ index 14cfee9221..1ede19d2af 100644
          let chatgpt_auth = match auth {
              CodexAuth::Chatgpt(chatgpt_auth) => chatgpt_auth,
              _ => return false,
-@@ -3094,6 +3666,11 @@ impl AuthManager {
+@@ -3094,6 +3717,11 @@ impl AuthManager {
          auth: &ChatgptAuth,
          refresh_token: String,
      ) -> Result<(), RefreshTokenError> {
@@ -4620,7 +4891,7 @@ index 14cfee9221..1ede19d2af 100644
          let refresh_response = request_chatgpt_token_refresh(refresh_token, auth.client()).await?;
  
          persist_tokens(
-@@ -3111,6 +3688,7 @@ impl AuthManager {
+@@ -3111,6 +3739,7 @@ impl AuthManager {
  
  fn auth_config_from(config: &impl AuthManagerConfig) -> AuthConfig {
      AuthConfig {
@@ -4630,10 +4901,10 @@ index 14cfee9221..1ede19d2af 100644
          keyring_backend_kind: config.auth_keyring_backend_kind(),
 diff --git a/codex-rs/login/src/auth/manager/application_network_refresh_tests.rs b/codex-rs/login/src/auth/manager/application_network_refresh_tests.rs
 new file mode 100644
-index 0000000000..34b7a55962
+index 0000000000..b414ac993c
 --- /dev/null
 +++ b/codex-rs/login/src/auth/manager/application_network_refresh_tests.rs
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,352 @@
 +use super::*;
 +use base64::Engine;
 +use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -4648,6 +4919,28 @@ index 0000000000..34b7a55962
 +use tokio::sync::mpsc;
 +
 +fn rotate_auth(account: &str, credential_revision: u64) -> CodexAuth {
++    rotate_auth_with_epoch(account, credential_revision, 7)
++}
++
++fn rotate_auth_with_epoch(
++    account: &str,
++    credential_revision: u64,
++    selection_epoch: u64,
++) -> CodexAuth {
++    rotate_auth_with_credentials(
++        account,
++        credential_revision,
++        selection_epoch,
++        "synthetic-access",
++    )
++}
++
++fn rotate_auth_with_credentials(
++    account: &str,
++    credential_revision: u64,
++    selection_epoch: u64,
++    access_token: &str,
++) -> CodexAuth {
 +    let claims = json!({
 +        "https://api.openai.com/auth": {
 +            "chatgpt_account_id": account,
@@ -4662,14 +4955,23 @@ index 0000000000..34b7a55962
 +    let snapshot = serde_json::from_value(json!({
 +        "account_key": account,
 +        "account_id": account,
-+        "selection_epoch": 7,
++        "selection_epoch": selection_epoch,
 +        "credential_revision": credential_revision,
 +        "id_token": id_token,
-+        "access_token": "synthetic-access",
++        "access_token": access_token,
 +        "expires_at": chrono::Utc::now().timestamp() + 3600
 +    }))
 +    .unwrap();
 +    CodexAuth::from_rotate_snapshot(snapshot, None).unwrap()
++}
++
++fn install_rotate_helper(manager: &mut Arc<AuthManager>) {
++    let helper: Arc<dyn super::ExternalAuth> = Arc::new(
++        super::RotateHelper::new(vec!["/synthetic/missing-rotate-helper".to_string()])
++            .expect("absolute synthetic helper path should be accepted"),
++    );
++    let manager = Arc::get_mut(manager).expect("test manager should not have been cloned");
++    *manager.external_auth.write().unwrap() = Some(helper);
 +}
 +
 +fn managed_manager(
@@ -4745,6 +5047,123 @@ index 0000000000..34b7a55962
 +        .expect("policy refresh task should finish")
 +        .expect("policy refresh should succeed");
 +    assert!(policy.is_available());
++}
++
++#[tokio::test]
++async fn captured_policy_factory_cannot_rebind_after_account_switch() {
++    let auth = rotate_auth("account-a", 3);
++    let (manager, controller, policy) = managed_manager(auth.clone());
++    let controller_for_refresh = controller.clone();
++    manager
++        .set_application_network_policy_refresh_callback(move |_, revision| {
++            let controller = controller_for_refresh.clone();
++            async move {
++                assert!(controller.publish(revision, DestinationPolicy::Unrestricted));
++                Ok(())
++            }
++        })
++        .unwrap();
++
++    let factory = manager
++        .refresh_application_network_policy_for_request(&auth)
++        .await
++        .expect("account A policy should be captured");
++    let endpoint = "https://policy-pin.example/".parse().unwrap();
++    assert!(factory.network_policy().acquire(&endpoint).is_ok());
++
++    manager.set_cached_auth(Some(rotate_auth("account-b", 1)));
++    assert!(controller.publish(policy.revision(), DestinationPolicy::Unrestricted));
++
++    let repeated_account_binding = factory.network_policy().clone().for_current_account();
++    assert_eq!(
++        repeated_account_binding.acquire(&endpoint).err(),
++        Some(codex_http_client::NetworkPolicyDenied::Revoked),
++        "reusing a captured factory must retain account A's binding"
++    );
++    assert!(
++        manager
++            .http_client_factory()
++            .network_policy()
++            .acquire(&endpoint)
++            .is_ok(),
++        "the current manager should create a factory for account B"
++    );
++}
++
++#[tokio::test]
++async fn same_rotate_owner_can_capture_policy_after_credential_refresh() {
++    let previous_auth = rotate_auth("account-a", 3);
++    let refreshed_auth =
++        rotate_auth_with_credentials("account-a", 4, 7, "refreshed-synthetic-access");
++    let (manager, controller, policy) = managed_manager(previous_auth.clone());
++    assert!(controller.publish(policy.revision(), DestinationPolicy::Unrestricted));
++    manager.set_cached_auth(Some(refreshed_auth));
++
++    let factory = manager
++        .http_client_factory_for_auth(&previous_auth, None)
++        .expect("same account and selection epoch should retain the policy binding");
++
++    assert!(factory.network_policy().is_available());
++}
++
++#[tokio::test]
++async fn same_rotate_token_with_new_selection_epoch_is_rejected() {
++    let current_auth = rotate_auth_with_epoch("account-a", 3, 7);
++    let stale_epoch_auth = rotate_auth_with_epoch("account-a", 3, 8);
++    let (manager, controller, policy) = managed_manager(current_auth);
++    assert!(controller.publish(policy.revision(), DestinationPolicy::Unrestricted));
++
++    let error = manager
++        .http_client_factory_for_auth(&stale_epoch_auth, None)
++        .expect_err("a different selection epoch must not capture the current policy");
++
++    assert_eq!(
++        error.to_string(),
++        codex_http_client::NetworkPolicyDenied::Revoked.to_string()
++    );
++}
++
++#[tokio::test]
++async fn request_snapshot_factory_cannot_rebind_after_account_switch() {
++    let auth = rotate_auth("account-a", 3);
++    let (mut manager, controller, policy) = managed_manager(auth.clone());
++    install_rotate_helper(&mut manager);
++    assert!(controller.publish(policy.revision(), DestinationPolicy::Unrestricted));
++
++    let request_snapshot = manager
++        .for_request_snapshot(auth)
++        .expect("request snapshot should capture its owner's factory");
++
++    manager.set_cached_auth(Some(rotate_auth("account-b", 1)));
++    assert!(controller.publish(policy.revision(), DestinationPolicy::Unrestricted));
++    let endpoint = "https://policy-pin.example/".parse().unwrap();
++
++    assert_eq!(
++        request_snapshot
++            .http_client_factory()
++            .network_policy()
++            .acquire(&endpoint)
++            .err(),
++        Some(codex_http_client::NetworkPolicyDenied::Revoked),
++        "a long-lived MCP request snapshot must retain account A's policy binding"
++    );
++}
++
++#[tokio::test]
++async fn scoped_old_auth_is_not_paired_with_current_policy() {
++    let auth_a = rotate_auth("account-a", 3);
++    let auth_b = rotate_auth("account-b", 1);
++    let manager = AuthManager::from_auth_for_testing(auth_a.clone());
++
++    manager
++        .scope_request_auth(auth_a, async {
++            manager.set_cached_auth(Some(auth_b));
++            assert!(
++                manager.auth_with_http_client_factory().await.is_none(),
++                "scoped account A auth must fail closed after the manager switches to B"
++            );
++        })
++        .await;
 +}
 +
 +#[tokio::test]
@@ -5970,6 +6389,23 @@ index f9f8f1993b..f611773030 100644
      )
      .await
  }
+diff --git a/codex-rs/login/src/outbound_proxy.rs b/codex-rs/login/src/outbound_proxy.rs
+index 430b99d453..cc436cb3fc 100644
+--- a/codex-rs/login/src/outbound_proxy.rs
++++ b/codex-rs/login/src/outbound_proxy.rs
+@@ -26,6 +26,12 @@ impl AuthRouteConfig {
+         self
+     }
+ 
++    /// Replaces the content factory while preserving any local bootstrap route.
++    pub fn with_http_client_factory(mut self, factory: HttpClientFactory) -> Self {
++        self.http_client_factory = factory;
++        self
++    }
++
+     pub(crate) fn authentication_factory(&self, endpoint: &str) -> HttpClientFactory {
+         let Some(factory) = &self.local_bootstrap_factory else {
+             return self.http_client_factory.clone();
 diff --git a/codex-rs/login/src/server.rs b/codex-rs/login/src/server.rs
 index 35999a2b73..eb7fae028e 100644
 --- a/codex-rs/login/src/server.rs
