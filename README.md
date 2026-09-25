@@ -20,7 +20,7 @@ for macOS (`aarch64-apple-darwin`) and Linux (`x86_64-unknown-linux-musl`), each
 `.sha256` checksum. No Nix required:
 
 ```sh
-tag=codex-0.157.0-patch.1
+tag=codex-0.157.0-patch.2
 target=aarch64-apple-darwin   # or x86_64-unknown-linux-musl
 base=https://github.com/salty-flower/codex-patch-overlay/releases/download/$tag
 curl -fsSL -O "$base/$tag-$target.tar.gz"
@@ -113,8 +113,15 @@ Use `/later <delay> <prompt>` to queue a prompt for a future time.
 The default collaboration mode, reasoning display, and status-line command are TUI settings:
 
 `reasoning_display` accepts `status-only` (the default), `persistent` (show and retain each received summary), or `hidden`.
+The default keeps summaries in the expanded transcript while showing the current summary in the status row.
+Persistent mode also shows summaries in ordinary scrollback, including restored sessions.
+Hidden mode suppresses summaries and uses generic working status; raw reasoning remains independently controlled by `show_raw_agent_reasoning`.
+This setting displays summaries supplied by the model and does not request additional reasoning content.
+Set `model_reasoning_summary` at the top level to request summaries from models that support them.
 
 ```toml
+model_reasoning_summary = "detailed"
+
 [tui]
 default_collaboration_mode = "plan"
 reasoning_display = "persistent"
