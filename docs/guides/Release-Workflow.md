@@ -40,6 +40,8 @@ because neither the tarball nor the Nix package fetches a missing helper later.
 The release workflow fetches target-specific ripgrep and zsh archives from the staged
 upstream DotSlash manifests and verifies their SHA-256 before packaging them.
 The publish job downloads this run's two target artifacts through the Actions API and verifies each API-provided ZIP digest before extraction.
+CI-only OpenSSL installer patches come from the exact workflow commit, while the application patch stack and package metadata come from the release tag.
+This lets a corrected workflow rebuild an existing source tag without moving that tag.
 Before compiling, it installs both carried compressed app-server schema exports,
 matching the test workflow and Nix `postPatch`; these payloads are embedded in the binary.
 It writes the upstream package metadata, including the upstream version and target,

@@ -160,11 +160,19 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
+          RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          git -C staging/openai-codex apply --check "$GITHUB_WORKSPACE/scripts/ci/codex-musl-openssl-install-hook.patch"
-          git -C staging/openai-codex apply "$GITHUB_WORKSPACE/scripts/ci/codex-musl-openssl-install-hook.patch"
-          export OPENSSL_INSTALL_VARS_PATCH="$GITHUB_WORKSPACE/scripts/ci/openssl-install-vars-defaults.patch"
+          ci_patches="${RUNNER_TEMP}/release-ci-patches"
+          mkdir -p "$ci_patches"
+          # A retry may run a corrected workflow against an existing source tag.
+          # Keep CI-only installer patches tied to that workflow's exact commit.
+          for patch_file in codex-musl-openssl-install-hook.patch openssl-install-vars-defaults.patch; do
+            git show "${RELEASE_WORKFLOW_SHA}:scripts/ci/${patch_file}" > "$ci_patches/$patch_file"
+          done
+          git -C staging/openai-codex apply --check "$ci_patches/codex-musl-openssl-install-hook.patch"
+          git -C staging/openai-codex apply "$ci_patches/codex-musl-openssl-install-hook.patch"
+          export OPENSSL_INSTALL_VARS_PATCH="$ci_patches/openssl-install-vars-defaults.patch"
           bash staging/openai-codex/.github/scripts/install-musl-build-tools.sh
           echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
           target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${TARGET}"

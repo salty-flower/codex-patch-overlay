@@ -3,11 +3,11 @@ repos:
     rev: "v6.0.0"
     hooks:
       - id: "end-of-file-fixer"
-        # patches/*.patch is diff content: a fixer rewriting trailing whitespace or
+        # Patch files are diff content: a fixer rewriting trailing whitespace or
         # the final newline can shift hunk context and break `git apply`/`patch -p2`.
-        exclude: "^patches/.*\\.patch$"
+        exclude: "^(patches|scripts/ci)/.*\\.patch$"
       - id: "trailing-whitespace"
-        exclude: "^patches/.*\\.patch$"
+        exclude: "^(patches|scripts/ci)/.*\\.patch$"
       - id: "check-merge-conflict"
       - id: "check-yaml"
       - id: "check-added-large-files"

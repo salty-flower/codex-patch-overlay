@@ -5,7 +5,7 @@
    echo "${openssl_sha256}  ${archive}" | sha256sum -c -
    tar -xzf "${archive}" -C "${openssl_root}"
 +  : "${OPENSSL_INSTALL_VARS_PATCH:?OPENSSL_INSTALL_VARS_PATCH must name the CI-only mkinstallvars patch}"
-+  patch -d "${openssl_root}/openssl-${openssl_version}" -p1 < "${OPENSSL_INSTALL_VARS_PATCH}"
++  patch --fuzz=0 -d "${openssl_root}/openssl-${openssl_version}" -p1 < "${OPENSSL_INSTALL_VARS_PATCH}"
 
    (
      cd "${openssl_root}/openssl-${openssl_version}"

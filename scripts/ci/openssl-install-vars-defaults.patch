@@ -1,6 +1,6 @@
 --- a/util/mkinstallvars.pl
 +++ b/util/mkinstallvars.pl
-@@ -41,6 +41,23 @@
+@@ -44,6 +44,22 @@
      $keys{$k} = 1;
      push @{$values{$k}}, $v;
  }
@@ -20,11 +20,10 @@
 +sub _mkinstallvars_string {
 +    return defined $_[0] ? $_[0] : '';
 +}
-+
+ 
  # special case for LIBDIR vs libdir.
  # For installations, They both get their value from ./Configure's --libdir or
- # corresponding config target attribute, but LIBDIR only gets a value if the
-@@ -48,9 +65,10 @@
+@@ -52,9 +68,10 @@
  # the former doesn't have a value, we give it the latter's value, and rely
  # on mechanisms further down to do the rest of the processing.
  # If they're both empty, it's still fine.
@@ -34,10 +33,10 @@
  $values{LIBDIR}->[0] = $values{libdir}->[0] unless $values{LIBDIR}->[0];
 -print STDERR "LIBDIR = $values{LIBDIR}->[0]\n";
 +print STDERR "LIBDIR = ", _mkinstallvars_string($values{LIBDIR}->[0]), "\n";
+ 
  # warn if there are missing values, and also if there are unexpected values
  foreach my $k (sort keys %all) {
-     warn "No value given for $k\n" unless $keys{$k};
-@@ -63,10 +81,10 @@
+@@ -69,10 +86,10 @@
  foreach my $k (@absolutes) {
      my $v = $values{$k} || [ '.' ];
      die "Can't have more than one $k\n" if scalar @$v > 1;
@@ -48,9 +47,9 @@
 -    print STDERR "$k = $v->[0]\n";
 +    print STDERR $k, " = ", _mkinstallvars_string($v->[0]), "\n";
  }
+ 
  # Absolute paths for the subdir variables are computed.  This provides
- # the usual form of values for names that have become norm, known as GNU
-@@ -81,9 +99,10 @@
+@@ -88,9 +105,10 @@
          my $kr = "${k}_REL_${var}";
          my $v2 = $values{$k} || [ '.' ];
          $values{$k} = [];       # We're rebuilding it
@@ -64,7 +63,7 @@
          foreach my $v (@$v2) {
              if (File::Spec->file_name_is_absolute($v)) {
                  push @{$values{$k}}, $v;
-@@ -99,8 +118,8 @@
+@@ -106,8 +124,8 @@
                            map {
                                my $v = $values{$_};
                                "$_ = " . (scalar @$v > 1
@@ -75,8 +74,8 @@
                            } ($k, $kr)),
              "\n";
      }
-@@ -134,7 +153,7 @@
- _____
+@@ -143,7 +161,7 @@
+ 
  foreach my $k (@absolutes) {
      print "our \@$k" . ' ' x (27 - length($k)) . "= ( '",
 -        join("', '", @{$values{$k}}),
@@ -84,7 +83,7 @@
          "' );\n";
  }
  foreach my $pair (@subdirs) {
-@@ -142,10 +161,10 @@
+@@ -151,10 +169,10 @@
      foreach my $k (@$subdir_vars) {
          my $k2 = "${k}_REL_${var}";
          print "our \@$k" . ' ' x (27 - length($k)) . "= ( '",
