@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 821824f..20968d4 100644
+index b2cad6b4cd..0a0b629a4b 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -706,6 +706,40 @@ pub struct TuiNotificationSettings {
+@@ -727,6 +727,40 @@ pub struct TuiNotificationSettings {
      /// regardless of focus. Defaults to `unfocused`.
      #[serde(default, rename = "notification_condition")]
      pub condition: NotificationCondition,
@@ -43,11 +43,60 @@ index 821824f..20968d4 100644
  }
  
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index c5302f17d8..522207074b 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -4476,6 +4476,18 @@
+           "default": "auto",
+           "description": "Notification method to use for terminal notifications. Defaults to `auto`."
+         },
++        "notification_sound": {
++          "allOf": [
++            {
++              "$ref": "#/definitions/TuiNotificationSoundConfig"
++            }
++          ],
++          "default": {
++            "command": null,
++            "enabled": true
++          },
++          "description": "Optional sound command to run after a TUI desktop notification.\n\nWhen unset, Codex uses a platform default sound command. Set `enabled = false` to disable the extra sound, or set `command` to run a custom argv array.\n\n```toml [tui] notification_sound = { command = [\"afplay\", \"/path/to/done.aiff\"] } ```"
++        },
+         "notifications": {
+           "allOf": [
+             {
+@@ -5543,6 +5555,25 @@
+       },
+       "type": "object"
+     },
++    "TuiNotificationSoundConfig": {
++      "additionalProperties": false,
++      "properties": {
++        "command": {
++          "default": null,
++          "description": "Custom sound command argv. The first item is the executable; remaining items are arguments.",
++          "items": {
++            "type": "string"
++          },
++          "type": "array"
++        },
++        "enabled": {
++          "default": true,
++          "description": "Enable the extra notification sound. Defaults to `true`.",
++          "type": "boolean"
++        }
++      },
++      "type": "object"
++    },
+     "TuiPagerKeymap": {
+       "additionalProperties": false,
+       "description": "Pager context keybindings for transcript and static overlays.",
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index a093aaf..606f97b 100644
+index 5013f50b30..d43f7c587c 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -12947,3 +12947,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
+@@ -13376,3 +13376,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
  
      Ok(())
  }
@@ -86,10 +135,10 @@ index a093aaf..606f97b 100644
 +    assert_eq!(sound.command, None);
 +}
 diff --git a/codex-rs/tui/src/app/agents_overview.rs b/codex-rs/tui/src/app/agents_overview.rs
-index 79668e6..c53a56e 100644
+index b88f392ffd..97d468a33d 100644
 --- a/codex-rs/tui/src/app/agents_overview.rs
 +++ b/codex-rs/tui/src/app/agents_overview.rs
-@@ -498,6 +498,7 @@ impl App {
+@@ -675,6 +675,7 @@ impl App {
              tui.set_notification_settings(
                  self.local_settings.tui.notification_settings.method,
                  self.local_settings.tui.notification_settings.condition,
@@ -98,10 +147,10 @@ index 79668e6..c53a56e 100644
              self.file_search
                  .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 8f2a0d8..4d7c454 100644
+index 1ad29bfa68..1d234870d6 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -1231,6 +1231,7 @@ impl App {
+@@ -1343,6 +1343,7 @@ impl App {
          tui.set_notification_settings(
              self.local_settings.tui.notification_settings.method,
              self.local_settings.tui.notification_settings.condition,
@@ -110,10 +159,10 @@ index 8f2a0d8..4d7c454 100644
          self.file_search
              .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index 2bb22a5..d5d7125 100644
+index 95807f0a72..50b143e4df 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -187,6 +187,7 @@ impl App {
+@@ -208,6 +208,7 @@ impl App {
          tui.set_notification_settings(
              local_settings.tui.notification_settings.method,
              local_settings.tui.notification_settings.condition,
@@ -122,10 +171,10 @@ index 2bb22a5..d5d7125 100644
  
          let harness_overrides =
 diff --git a/codex-rs/tui/src/app/working_directory.rs b/codex-rs/tui/src/app/working_directory.rs
-index b0906f8..f8bccef 100644
+index 36b4765947..99c5536549 100644
 --- a/codex-rs/tui/src/app/working_directory.rs
 +++ b/codex-rs/tui/src/app/working_directory.rs
-@@ -453,7 +453,7 @@ impl App {
+@@ -457,7 +457,7 @@ impl App {
          self.file_search
              .update_search_dir(self.config.cwd.to_path_buf());
          let notify = &self.local_settings.tui.notification_settings;
@@ -135,7 +184,7 @@ index b0906f8..f8bccef 100644
              tracing::warn!(%error, "failed to clear ambient pet image");
          }
 diff --git a/codex-rs/tui/src/notifications/mod.rs b/codex-rs/tui/src/notifications/mod.rs
-index ee6694b..fdafce9 100644
+index ee6694b357..fdafce9857 100644
 --- a/codex-rs/tui/src/notifications/mod.rs
 +++ b/codex-rs/tui/src/notifications/mod.rs
 @@ -1,14 +1,17 @@
@@ -216,10 +265,10 @@ index ee6694b..fdafce9 100644
          for name in [
 diff --git a/codex-rs/tui/src/notifications/sound.rs b/codex-rs/tui/src/notifications/sound.rs
 new file mode 100644
-index 0000000..07f2b8e
+index 0000000000..149efcb458
 --- /dev/null
 +++ b/codex-rs/tui/src/notifications/sound.rs
-@@ -0,0 +1,481 @@
+@@ -0,0 +1,503 @@
 +use codex_config::types::TuiNotificationSoundConfig;
 +use std::path::Path;
 +use std::sync::Arc;
@@ -277,15 +326,7 @@ index 0000000..07f2b8e
 +
 +async fn run_sound_commands(commands: Vec<SoundCommand>, timeout: Duration) {
 +    for command in commands {
-+        let mut process = Command::new(command.program);
-+        process
-+            .args(command.args)
-+            .stdin(std::process::Stdio::null())
-+            .stdout(std::process::Stdio::null())
-+            .stderr(std::process::Stdio::null())
-+            .kill_on_drop(true);
-+
-+        let mut child = match process.spawn() {
++        let mut child = match spawn_sound_command(command) {
 +            Ok(child) => child,
 +            Err(error) => {
 +                tracing::debug!(%error, "failed to spawn notification sound command");
@@ -297,6 +338,17 @@ index 0000000..07f2b8e
 +        // Preserve the fallback contract: only a spawn failure tries the next command.
 +        return;
 +    }
++}
++
++fn spawn_sound_command(command: SoundCommand) -> std::io::Result<Child> {
++    let mut process = Command::new(command.program);
++    process
++        .args(command.args)
++        .stdin(std::process::Stdio::null())
++        .stdout(std::process::Stdio::null())
++        .stderr(std::process::Stdio::null())
++        .kill_on_drop(true);
++    process.spawn()
 +}
 +
 +async fn wait_for_sound_command(child: &mut Child, timeout: Duration) {
@@ -407,6 +459,10 @@ index 0000000..07f2b8e
 +    use super::sound_commands;
 +    #[cfg(any(target_os = "macos", target_os = "linux"))]
 +    use super::sound_commands_for_platform;
++    #[cfg(unix)]
++    use super::spawn_sound_command;
++    #[cfg(unix)]
++    use super::wait_for_sound_command;
 +    use codex_config::types::TuiNotificationSoundConfig;
 +
 +    fn command(program: &str, args: &[&str]) -> SoundCommand {
@@ -496,14 +552,15 @@ index 0000000..07f2b8e
 +    }
 +
 +    #[cfg(unix)]
-+    async fn wait_for_helper(log: &std::path::Path) {
-+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
-+            while !log.exists() {
++    async fn wait_for_helper(log: &std::path::Path, mode: &str) -> bool {
++        let pidfile = std::path::PathBuf::from(format!("{}.{mode}.pid", log.display()));
++        tokio::time::timeout(std::time::Duration::from_secs(10), async {
++            while !log.exists() || !pidfile.exists() {
 +                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
 +            }
 +        })
 +        .await
-+        .expect("sound helper did not start");
++        .is_ok()
 +    }
 +
 +    #[cfg(unix)]
@@ -525,7 +582,7 @@ index 0000000..07f2b8e
 +        };
 +        run_sound_commands(
 +            sound_commands(&config, |_| true),
-+            std::time::Duration::from_secs(1),
++            std::time::Duration::from_secs(10),
 +        )
 +        .await;
 +        assert_eq!(
@@ -546,7 +603,7 @@ index 0000000..07f2b8e
 +                    &["argv", fallback_log.to_str().unwrap(), "unexpected"],
 +                ),
 +            ],
-+            std::time::Duration::from_secs(1),
++            std::time::Duration::from_secs(10),
 +        )
 +        .await;
 +        assert_eq!(std::fs::read_to_string(&fallback_log).unwrap(), "fail\n");
@@ -567,7 +624,7 @@ index 0000000..07f2b8e
 +                    &["fallback", log.to_str().unwrap()],
 +                ),
 +            ],
-+            std::time::Duration::from_secs(1),
++            std::time::Duration::from_secs(10),
 +        )
 +        .await;
 +
@@ -581,19 +638,20 @@ index 0000000..07f2b8e
 +        let temp = tempfile::tempdir().unwrap();
 +        let helper = helper(&temp);
 +        let log = temp.path().join("log");
++        let mut child = spawn_sound_command(command(
++            helper.to_str().unwrap(),
++            &["hang", log.to_str().unwrap()],
++        ))
++        .expect("sound helper must start");
++        let helper_started = wait_for_helper(&log, "hang").await;
 +        tokio::time::timeout(
 +            std::time::Duration::from_secs(5),
-+            run_sound_commands(
-+                vec![command(
-+                    helper.to_str().unwrap(),
-+                    &["hang", log.to_str().unwrap()],
-+                )],
-+                std::time::Duration::from_millis(250),
-+            ),
++            wait_for_sound_command(&mut child, std::time::Duration::from_millis(250)),
 +        )
 +        .await
 +        .expect("sound command exceeded its bound");
 +
++        assert!(helper_started, "sound helper did not start");
 +        assert_eq!(std::fs::read_to_string(&log).unwrap(), "hang\n");
 +        assert_reaped(&log, "hang");
 +    }
@@ -613,23 +671,36 @@ index 0000000..07f2b8e
 +                &["hang", log.to_str().unwrap()],
 +            )],
 +            slot.clone(),
-+            std::time::Duration::from_secs(1),
++            std::time::Duration::from_secs(15),
 +        )
 +        .unwrap();
-+        wait_for_helper(&log).await;
-+        assert!(
-+            super::spawn_sound_commands(
-+                &handle,
-+                vec![command(
-+                    helper.to_str().unwrap(),
-+                    &["overlap", log.to_str().unwrap()]
-+                )],
-+                slot.clone(),
-+                std::time::Duration::from_secs(1),
-+            )
-+            .is_none()
++        let helper_started = wait_for_helper(&log, "hang").await;
++        let overlap = super::spawn_sound_commands(
++            &handle,
++            vec![command(
++                helper.to_str().unwrap(),
++                &["overlap", log.to_str().unwrap()],
++            )],
++            slot.clone(),
++            std::time::Duration::from_secs(10),
 +        );
-+        first.await.unwrap();
++        let overlap_was_dropped = overlap.is_none();
++        let pidfile = std::path::PathBuf::from(format!("{}.hang.pid", log.display()));
++        let helper_pid = std::fs::read_to_string(pidfile)
++            .ok()
++            .and_then(|pid| pid.trim().parse::<libc::pid_t>().ok());
++        let kill_result = helper_pid.map(|pid| unsafe { libc::kill(pid, libc::SIGKILL) });
++        let first_result = first.await;
++        if let Some(overlap) = overlap {
++            overlap.await.unwrap();
++            assert_reaped(&log, "overlap");
++        }
++
++        assert!(helper_started, "sound helper did not start");
++        assert_eq!(kill_result, Some(0), "sound helper should be alive to kill");
++        first_result.unwrap();
++        assert!(overlap_was_dropped, "overlapping command must be dropped");
++        assert_eq!(std::fs::read_to_string(&log).unwrap(), "hang\n");
 +        assert_reaped(&log, "hang");
 +
 +        let next = super::spawn_sound_commands(
@@ -639,7 +710,7 @@ index 0000000..07f2b8e
 +                &["next", log.to_str().unwrap()],
 +            )],
 +            slot,
-+            std::time::Duration::from_secs(1),
++            std::time::Duration::from_secs(10),
 +        )
 +        .expect("reaping must release the sound slot");
 +        next.await.unwrap();
@@ -702,42 +773,42 @@ index 0000000..07f2b8e
 +    }
 +}
 diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
-index 96b3fbc..59a5b97 100644
+index a2ed6f98d0..dde5f9b8c7 100644
 --- a/codex-rs/tui/src/tui.rs
 +++ b/codex-rs/tui/src/tui.rs
-@@ -50,6 +50,7 @@ use crate::custom_terminal::Terminal as CustomTerminal;
+@@ -49,6 +49,7 @@ use crate::custom_terminal::Terminal as CustomTerminal;
  use crate::insert_history::HistoryLineWrapPolicy;
  use crate::notifications::DesktopNotificationBackend;
  use crate::notifications::detect_backend;
 +use crate::notifications::notify_with_sound;
  use crate::terminal_hyperlinks::HyperlinkLine;
  use crate::terminal_hyperlinks::plain_hyperlink_lines;
- use crate::tui::event_stream::EventBroker;
+ use crate::tui::alternate_screen::ALTERNATE_SCREEN;
 @@ -60,6 +61,7 @@ use crate::tui::screen_size::ScreenSizePolicy;
  use crate::tui::scrollback::ScrollbackStrategy;
  use codex_config::types::NotificationCondition;
  use codex_config::types::NotificationMethod;
 +use codex_config::types::TuiNotificationSoundConfig;
  
+ mod alternate_screen;
  mod event_stream;
- mod frame_rate_limiter;
-@@ -601,6 +603,7 @@ pub struct Tui {
-     enhanced_keys_supported: bool,
+@@ -642,6 +644,7 @@ pub struct Tui {
+     pub(crate) terminal_app_over_ssh: bool,
      notification_backend: Option<DesktopNotificationBackend>,
      notification_condition: NotificationCondition,
 +    notification_sound: TuiNotificationSoundConfig,
      scrollback: ScrollbackStrategy,
-     // When false, enter_alt_screen() becomes a no-op.
+     // When false, overlays stay on the inline screen.
      alt_screen_enabled: bool,
-@@ -656,6 +659,7 @@ impl Tui {
-             enhanced_keys_supported,
+@@ -714,6 +717,7 @@ impl Tui {
+             terminal_app_over_ssh: false,
              notification_backend: Some(detect_backend(NotificationMethod::default())),
              notification_condition: NotificationCondition::default(),
 +            notification_sound: TuiNotificationSoundConfig::default(),
              scrollback,
              alt_screen_enabled: true,
-             _stderr_guard: stderr_guard,
-@@ -671,9 +675,11 @@ impl Tui {
+             owned_screen: false,
+@@ -801,9 +805,11 @@ impl Tui {
          &mut self,
          method: NotificationMethod,
          condition: NotificationCondition,
@@ -749,7 +820,7 @@ index 96b3fbc..59a5b97 100644
      }
  
      pub(crate) fn is_terminal_focused(&self) -> bool {
-@@ -793,7 +799,7 @@ impl Tui {
+@@ -937,7 +943,7 @@ impl Tui {
          };
  
          let message = message.as_ref().to_string();

@@ -1,0 +1,12 @@
+diff --git a/codex-rs/core/tests/suite/openai_file_mcp.rs b/codex-rs/core/tests/suite/openai_file_mcp.rs
+index db3d52b5bf..f99daca2da 100644
+--- a/codex-rs/core/tests/suite/openai_file_mcp.rs
++++ b/codex-rs/core/tests/suite/openai_file_mcp.rs
+@@ -44,7 +44,6 @@ use serde_json::json;
+ use wiremock::Mock;
+ use wiremock::MockServer;
+ use wiremock::ResponseTemplate;
+-use wiremock::matchers::body_json;
+ use wiremock::matchers::body_partial_json;
+ use wiremock::matchers::header;
+ use wiremock::matchers::method;

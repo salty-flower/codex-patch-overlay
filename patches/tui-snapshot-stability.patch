@@ -1,0 +1,142 @@
+diff --git a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
+index 683e8fc461..cea5350f9a 100644
+--- a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
++++ b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
+@@ -621,9 +621,10 @@ async fn reconnect_exhaustion_and_unknown_initial_thread_stay_offline() -> Resul
+     assert!((15..=65).contains(&start.elapsed().as_secs()));
+     app.begin_reconnect();
+     app.chat_widget.reconnect_failed();
++    app.chat_widget.freeze_status_timer_for_snapshot_for_test();
+     assert_snapshot!(
+         "reconnect_failed",
+-        render_bottom_popup(&app.chat_widget, /*width*/ 80)
++        render_bottom_popup(&app.chat_widget, /*width*/ 80).replace('◦', "•")
+     );
+     tokio::time::resume();
+     Ok(())
+diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
+index bcf42c427d..1e29e91e35 100644
+--- a/codex-rs/tui/src/chatwidget.rs
++++ b/codex-rs/tui/src/chatwidget.rs
+@@ -1790,6 +1790,13 @@ impl ChatWidget {
+         self.bottom_pane.is_task_running()
+     }
+ 
++    #[cfg(test)]
++    pub(crate) fn freeze_status_timer_for_snapshot_for_test(&mut self) {
++        self.bottom_pane.set_status_timer_origin(Some(
++            std::time::Instant::now() + std::time::Duration::from_secs(60),
++        ));
++    }
++
+     pub(crate) fn toggle_vim_mode_and_notify(&mut self) {
+         let enabled = self.bottom_pane.toggle_vim_enabled();
+         let message = if enabled {
+diff --git a/codex-rs/tui/src/chatwidget/tests/guardian.rs b/codex-rs/tui/src/chatwidget/tests/guardian.rs
+index b57de7f58b..5de78ecee6 100644
+--- a/codex-rs/tui/src/chatwidget/tests/guardian.rs
++++ b/codex-rs/tui/src/chatwidget/tests/guardian.rs
+@@ -313,6 +313,7 @@ async fn guardian_denied_exec_renders_warning_and_denied_request() {
+             .expect("Failed to insert history lines in test");
+     }
+ 
++    chat.freeze_status_timer_for_snapshot_for_test();
+     term.draw(|f| {
+         chat.render(f.area(), f.buffer_mut());
+     })
+@@ -320,7 +321,7 @@ async fn guardian_denied_exec_renders_warning_and_denied_request() {
+ 
+     assert_chatwidget_snapshot!(
+         "guardian_denied_exec_renders_warning_and_denied_request",
+-        normalize_snapshot_paths(term.backend().vt100().screen().contents())
++        normalize_snapshot_paths(term.backend().vt100().screen().contents()).replace('◦', "•")
+     );
+ }
+ 
+@@ -529,6 +530,7 @@ async fn guardian_timed_out_exec_renders_warning_and_timed_out_request() {
+             .expect("Failed to insert history lines in test");
+     }
+ 
++    chat.freeze_status_timer_for_snapshot_for_test();
+     term.draw(|f| {
+         chat.render(f.area(), f.buffer_mut());
+     })
+@@ -536,7 +538,7 @@ async fn guardian_timed_out_exec_renders_warning_and_timed_out_request() {
+ 
+     assert_chatwidget_snapshot!(
+         "guardian_timed_out_exec_renders_warning_and_timed_out_request",
+-        normalize_snapshot_paths(term.backend().vt100().screen().contents())
++        normalize_snapshot_paths(term.backend().vt100().screen().contents()).replace('◦', "•")
+     );
+ }
+ 
+@@ -648,6 +650,7 @@ async fn app_server_guardian_review_denied_renders_denied_request_snapshot() {
+             .expect("Failed to insert history lines in test");
+     }
+ 
++    chat.freeze_status_timer_for_snapshot_for_test();
+     term.draw(|f| {
+         chat.render(f.area(), f.buffer_mut());
+     })
+@@ -655,7 +658,7 @@ async fn app_server_guardian_review_denied_renders_denied_request_snapshot() {
+ 
+     assert_chatwidget_snapshot!(
+         "app_server_guardian_review_denied_renders_denied_request",
+-        normalize_snapshot_paths(term.backend().vt100().screen().contents())
++        normalize_snapshot_paths(term.backend().vt100().screen().contents()).replace('◦', "•")
+     );
+ }
+ 
+@@ -729,6 +732,7 @@ async fn app_server_guardian_review_timed_out_renders_timed_out_request_snapshot
+             .expect("Failed to insert history lines in test");
+     }
+ 
++    chat.freeze_status_timer_for_snapshot_for_test();
+     term.draw(|f| {
+         chat.render(f.area(), f.buffer_mut());
+     })
+@@ -736,7 +740,7 @@ async fn app_server_guardian_review_timed_out_renders_timed_out_request_snapshot
+ 
+     assert_chatwidget_snapshot!(
+         "app_server_guardian_review_timed_out_renders_timed_out_request",
+-        normalize_snapshot_paths(term.backend().vt100().screen().contents())
++        normalize_snapshot_paths(term.backend().vt100().screen().contents()).replace('◦', "•")
+     );
+ }
+ 
+diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
+index 1c2308a4d1..373f229b4b 100644
+--- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
++++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
+@@ -5429,6 +5429,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+         ),
+     );
+     reveal_running_hooks(&mut chat);
++    chat.freeze_status_timer_for_snapshot_for_test();
+     let exec_and_hook_running = hook_status_frame(&chat, /*width*/ 80);
+ 
+     end_exec(&mut chat, begin, "done", "", /*exit_code*/ 0);
+@@ -5436,6 +5437,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+         .iter()
+         .map(|lines| lines_to_single_string(lines))
+         .collect::<String>();
++    chat.freeze_status_timer_for_snapshot_for_test();
+     let hook_running_after_exec = hook_status_frame(&chat, /*width*/ 80);
+ 
+     handle_hook_completed(
+@@ -5448,6 +5450,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+         ),
+     );
+     assert!(drain_insert_history(&mut rx).is_empty());
++    chat.freeze_status_timer_for_snapshot_for_test();
+     let quiet_hook_completed = hook_status_frame(&chat, /*width*/ 80);
+     expire_quiet_hook_linger(&mut chat);
+     assert!(chat.active_hook_cell.is_none());
+@@ -5457,6 +5460,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+         format!(
+             "exec running:\n{exec_running}\nexec and hook running:\n{exec_and_hook_running}\nhistory after exec:\n{history_after_exec}\nhook running after exec:\n{hook_running_after_exec}\nquiet hook completed:\n{quiet_hook_completed}"
+         )
++        .replace('◦', "•")
+     );
+ }
+ 

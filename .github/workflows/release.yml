@@ -43,7 +43,7 @@ jobs:
             target: x86_64-unknown-linux-musl
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
@@ -51,7 +51,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.95.0
+          toolchain: stable
           targets: ${{ matrix.target }}
 
       - name: Stage patched upstream
@@ -76,6 +76,24 @@ jobs:
             git -C staging/openai-codex apply "../../${patch_file}"
           done
 
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      - name: Fetch packaged ripgrep
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          codex_repo="${GITHUB_WORKSPACE}/staging/openai-codex"
+          rg_bin="$(
+            CODEX_REPO_ROOT="${codex_repo}" PYTHONPATH="${codex_repo}/scripts" \
+              python3 -c 'import os; from codex_package.ripgrep import fetch_rg; from codex_package.targets import TARGET_SPECS; print(fetch_rg(TARGET_SPECS[os.environ["TARGET"]]))'
+          )"
+          test -x "${rg_bin}"
+          echo "CODEX_RG_BIN=${rg_bin}" >> "${GITHUB_ENV}"
+
       - name: Use hermetic Cargo home for musl
         if: contains(matrix.target, 'linux-musl')
         shell: bash
@@ -89,9 +107,9 @@ jobs:
 
       - name: Install Zig for musl
         if: contains(matrix.target, 'linux-musl')
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        uses: mlugg/setup-zig@v2
         with:
-          version: 0.14.0
+          version: latest
           use-cache: false
 
       - name: Install musl build tools
@@ -251,7 +269,7 @@ jobs:
         run: |
           set -euo pipefail
           package_dir="dist/${RELEASE_TAG}-${TARGET}"
-          mkdir -p "$package_dir/bin" "$package_dir/codex-resources"
+          mkdir -p "$package_dir/bin" "$package_dir/codex-resources" "$package_dir/codex-path"
           printf '{}\n' > "$package_dir/codex-package.json"
           # Keep codex-code-mode-host in bin/ next to codex, matching upstream's
           # package layout (scripts/codex_package/layout.py) and the sibling
@@ -260,6 +278,8 @@ jobs:
             cp "staging/openai-codex/codex-rs/target/${TARGET}/release/${binary}" "$package_dir/bin/"
             chmod 0755 "$package_dir/bin/${binary}"
           done
+          cp "$CODEX_RG_BIN" "$package_dir/codex-path/rg"
+          chmod 0755 "$package_dir/codex-path/rg"
           if [[ -f "staging/openai-codex/codex-rs/target/${TARGET}/release/bwrap" ]]; then
             cp "staging/openai-codex/codex-rs/target/${TARGET}/release/bwrap" "$package_dir/codex-resources/bwrap"
             chmod 0755 "$package_dir/codex-resources/bwrap"
@@ -273,7 +293,7 @@ jobs:
           tar -C dist -czf "dist/${archive_name}" "${RELEASE_TAG}-${TARGET}"
           ( cd dist && shasum -a 256 "$archive_name" > "${archive_name}.sha256" )
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: codex-${{ env.RELEASE_TAG }}-${{ matrix.target }}
           path: |
@@ -289,13 +309,13 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
           persist-credentials: true
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -324,7 +344,7 @@ jobs:
             echo "Artifacts are built by GitHub Actions from the tagged manifest and include SHA-256 sidecar files."
           } > release-notes.md
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: ${{ env.RELEASE_TAG }}

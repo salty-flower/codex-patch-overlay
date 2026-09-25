@@ -1,20 +1,20 @@
 diff --git a/codex-rs/codex-api/Cargo.toml b/codex-rs/codex-api/Cargo.toml
-index 01cacbe..b249355 100644
+index da3f1b7fcb..82bec69218 100644
 --- a/codex-rs/codex-api/Cargo.toml
 +++ b/codex-rs/codex-api/Cargo.toml
-@@ -34,6 +34,7 @@ uuid = { workspace = true }
- anyhow = { workspace = true }
- assert_matches = { workspace = true }
- pretty_assertions = { workspace = true }
+@@ -37,6 +37,7 @@ pretty_assertions = { workspace = true }
+ rcgen = { workspace = true }
+ rustls = { workspace = true }
+ tempfile = { workspace = true }
 +tokio = { workspace = true, features = ["test-util"] }
  tokio-test = { workspace = true }
  wiremock = { workspace = true }
  
 diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-index 95d41e0..9b804f7 100644
+index 4fe0071ac9..ffb96f9afa 100644
 --- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 +++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-@@ -27,7 +27,10 @@ use serde_json::Value;
+@@ -26,7 +26,10 @@ use serde_json::Value;
  use serde_json::map::Map as JsonMap;
  use std::sync::Arc;
  use std::sync::OnceLock;
@@ -25,7 +25,7 @@ index 95d41e0..9b804f7 100644
  use tokio::sync::Mutex;
  use tokio::sync::mpsc;
  use tokio::sync::oneshot;
-@@ -58,62 +61,218 @@ enum WsCommand {
+@@ -57,62 +60,218 @@ enum WsCommand {
          message: Message,
          tx_result: oneshot::Sender<Result<(), WsError>>,
      },
@@ -278,7 +278,7 @@ index 95d41e0..9b804f7 100644
                  }
              }
          });
-@@ -141,11 +300,125 @@ impl WsStream {
+@@ -145,11 +304,125 @@ impl WsStream {
              .await
      }
  
@@ -428,7 +428,7 @@ index 95d41e0..9b804f7 100644
      }
  
      #[instrument(
-@@ -927,6 +1215,7 @@ mod tests {
+@@ -921,6 +1209,7 @@ mod tests {
      use super::*;
      use crate::common::ResponseCreateWsRequest;
      use crate::common::ResponsesApiRequest;
@@ -436,7 +436,7 @@ index 95d41e0..9b804f7 100644
      use codex_protocol::ResponseItemId;
      use codex_protocol::models::ContentItem;
      use codex_protocol::models::ResponseItem;
-@@ -936,6 +1225,61 @@ mod tests {
+@@ -930,6 +1219,61 @@ mod tests {
      use serde_json::value::to_raw_value;
      use std::collections::HashMap;
      use std::sync::Arc;
@@ -498,7 +498,7 @@ index 95d41e0..9b804f7 100644
  
      #[test]
      fn direct_serialization_preserves_websocket_request_payload() {
-@@ -1005,6 +1349,389 @@ mod tests {
+@@ -999,6 +1343,389 @@ mod tests {
          assert!(config.extensions.permessage_deflate.is_some());
      }
  
@@ -889,30 +889,30 @@ index 95d41e0..9b804f7 100644
      fn parse_wrapped_websocket_error_event_maps_to_transport_http() {
          let payload = json!({
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index a813022..0d1bb5f 100644
+index 68900517ab..023be4ca9e 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
-@@ -1486,7 +1486,14 @@ impl ModelClientSession {
-         } = params;
-         let needs_new = match self.websocket_session.connection.as_ref() {
-             Some(conn) => {
--                self.websocket_session.endpoint != Some(endpoint) || conn.is_closed().await
-+                if self.websocket_session.endpoint != Some(endpoint) || conn.is_closed().await {
-+                    true
-+                } else if let Err(err) = conn.probe_liveness().await {
-+                    warn!(error = %err, "invalidating unresponsive responses websocket");
-+                    true
-+                } else {
-+                    false
-+                }
+@@ -1531,7 +1531,14 @@ impl ModelClientSession {
+                 Some("other")
              }
-             None => true,
+             Some(conn) if conn.is_closed().await => Some("connection_closed"),
+-            Some(_) | None => None,
++            Some(conn) => match conn.probe_liveness().await {
++                Ok(()) => None,
++                Err(err) => {
++                    warn!(error = %err, "invalidating unresponsive responses websocket");
++                    Some("connection_closed")
++                }
++            },
++            None => None,
          };
+         let needs_new = self.websocket_session.connection.is_none() || reset_reason.is_some();
+         // Resolving an external auth provider can change ownership during client setup.
 diff --git a/codex-rs/core/src/responses_retry.rs b/codex-rs/core/src/responses_retry.rs
-index fb05054..c00ec6f 100644
+index 03acba415c..e4f14e3382 100644
 --- a/codex-rs/core/src/responses_retry.rs
 +++ b/codex-rs/core/src/responses_retry.rs
-@@ -16,6 +16,7 @@ use tracing::warn;
+@@ -15,6 +15,7 @@ use tracing::warn;
  
  const INITIAL_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(5);
  const MAX_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(60);
@@ -920,7 +920,7 @@ index fb05054..c00ec6f 100644
  
  #[derive(Debug, Clone, Copy)]
  pub(crate) enum ResponsesStreamRequest {
-@@ -109,7 +110,12 @@ pub(crate) async fn handle_retryable_response_stream_error(
+@@ -118,7 +119,12 @@ pub(crate) async fn handle_response_stream_error(
          // transient reconnect messages. In debug builds, keep full visibility for diagnosis.
          let report_error = retry_count > 1
              || cfg!(debug_assertions)
@@ -935,10 +935,10 @@ index fb05054..c00ec6f 100644
              // Surface retry information to any UI/front-end so the user understands what is
              // happening instead of staring at a seemingly frozen screen.
 diff --git a/codex-rs/core/tests/common/responses.rs b/codex-rs/core/tests/common/responses.rs
-index 9c4fdb0..3cd840d 100644
+index 408a6234b3..82c323b658 100644
 --- a/codex-rs/core/tests/common/responses.rs
 +++ b/codex-rs/core/tests/common/responses.rs
-@@ -1408,10 +1408,18 @@ pub async fn start_websocket_server_with_headers(
+@@ -1287,10 +1287,18 @@ pub async fn start_websocket_server_with_headers(
              };
              let close_after_requests = connection.close_after_requests;
              for request_events in connection.requests {
@@ -959,7 +959,7 @@ index 9c4fdb0..3cd840d 100644
                      let mut log = requests.lock().unwrap();
                      if let Some(connection_log) = log.get_mut(connection_index) {
                          connection_log.push(WebSocketRequest { body });
-@@ -1444,8 +1452,8 @@ pub async fn start_websocket_server_with_headers(
+@@ -1323,8 +1331,8 @@ pub async fn start_websocket_server_with_headers(
                                  .and_then(Value::as_str),
                          );
                      }
@@ -969,7 +969,7 @@ index 9c4fdb0..3cd840d 100644
  
                  eprintln!(
                      "[ws test server +{}ms] connection={} sending batch_size={} event_types={:?} audio_data={:?}",
-@@ -1493,6 +1501,95 @@ pub async fn start_websocket_server_with_headers(
+@@ -1372,6 +1380,95 @@ pub async fn start_websocket_server_with_headers(
      }
  }
  
@@ -1066,10 +1066,10 @@ index 9c4fdb0..3cd840d 100644
      match message {
          Message::Text(text) => serde_json::from_str(&text).ok(),
 diff --git a/codex-rs/core/tests/suite/client_websockets.rs b/codex-rs/core/tests/suite/client_websockets.rs
-index 3263b9e..3e50d41 100755
+index b9a0492e1a..98bf8a65b4 100755
 --- a/codex-rs/core/tests/suite/client_websockets.rs
 +++ b/codex-rs/core/tests/suite/client_websockets.rs
-@@ -49,6 +49,7 @@ use core_test_support::responses::WebSocketTestServer;
+@@ -56,6 +56,7 @@ use core_test_support::responses::WebSocketTestServer;
  use core_test_support::responses::ev_assistant_message;
  use core_test_support::responses::ev_completed;
  use core_test_support::responses::ev_response_created;
@@ -1077,7 +1077,7 @@ index 3263b9e..3e50d41 100755
  use core_test_support::responses::start_websocket_server;
  use core_test_support::responses::start_websocket_server_with_headers;
  use core_test_support::responses_metadata as test_responses_metadata;
-@@ -2116,6 +2117,50 @@ async fn responses_websocket_uses_previous_response_id_when_prefix_after_complet
+@@ -2322,6 +2323,50 @@ async fn responses_websocket_uses_previous_response_id_when_prefix_after_complet
      server.shutdown().await;
  }
  

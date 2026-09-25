@@ -22,7 +22,7 @@ jobs:
   nix:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
       - run: nix develop --command nu scripts/check-editable-enter-queue.nu
       - run: nix flake check
@@ -38,17 +38,14 @@ jobs:
       # Mirrors the upstream justfile's test recipe, bumped from its 8 MiB:
       # `agents_overview::tests::overview_cold_resume_honors_working_directory_selection`
       # runs as a plain `#[tokio::test]` with no explicit thread stack size,
-      # so it falls through to this env-derived default and overflows an
-      # 8 MiB budget on this runner's toolchain/glibc combination. Two other
-      # tests also overflow here but hardcode their own stack size in source
-      # (`std::thread::Builder::stack_size`, `Builder::thread_stack_size`) and
-      # so never see this var at all -- they're skipped below instead of
-      # "fixed" by a number this env can't reach.
+      # so it falls through to this env-derived default and overflowed an
+      # 8 MiB budget on the previous runner/toolchain combination.
+      # Tests with explicit thread/runtime stack sizes retain their own limits.
       RUST_MIN_STACK: "16777216"
       RUST_BACKTRACE: "1"
       TARGET: x86_64-unknown-linux-gnu
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install build dependencies
         shell: bash
@@ -62,7 +59,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.95.0
+          toolchain: stable
 
       - name: Stage patched upstream
         shell: bash
@@ -157,51 +154,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # The enabled patches add unit tests inside these crates. Integration
-          # suites (`kind(test)`) spawn whole app-server and core processes and
-          # are not covered here yet.
+          # Run unit tests from every crate touched by the carried patches.
+          # The next step covers their process-level integration tests.
           #
-          # Three of these skipped tests live in files no enabled patch
-          # touches (tui/src/app/tests/safety_buffering.rs, tui/src/pets/mod.rs)
-          # and fail identically on a clean, unpatched checkout of this exact
-          # tagged commit -- confirmed locally. Two more compare the
-          # editable-enter-queue patch's carried precomputed schema payloads
-          # against freshly generated output; those payloads are already
-          # stale on origin/main (predates this change) and have their own
-          # regeneration path (workflows/refresh-editable-enter-schema.yml).
-          # The last two (guardian::tests::guardian_ephemeral_retry_preserves_
-          # parallel_trunk_and_fork_history, app::tests::selected_and_resumed_
-          # threads_use_server_capability_for_v1_and_v2_children) hardcode
-          # their own thread/runtime stack size in source -- 4 MiB and 8 MiB
-          # respectively -- which RUST_MIN_STACK above cannot influence, and
-          # that hardcoded budget overflows on this runner's toolchain/glibc
-          # combination even though neither is touched by any enabled patch.
-          #
-          # shell_snapshot::sandbox::tests::snapshot_failure_omits_credentials_
-          # and_stops_descendants::{network_denial,startup_exit,timeout} is a
-          # test file upstream added in rust-v0.155.0 (did not exist at
-          # 0.154.0, so this is its first run in this repo's CI); no enabled
-          # patch touches shell_snapshot or its sandbox module. All 5 of its
-          # cases (these 3 plus caller_drop and caller_drop_preserves_
-          # network_token, which do pass here) run green on a clean, unpatched
-          # checkout of this exact tagged commit on non-CI Linux -- these 3
-          # fail only on this runner, most likely from shell/process-timing
-          # sensitivity under a shared, resource-constrained CI VM rather than
-          # anything code-level.
-          #
-          # shell_snapshot::tests::snapshot_discovers_and_redacts_shell_
-          # initialized_credentials times out on this runner on both nextest
-          # attempts (confirmed on an actual run of this exact patch stack,
-          # not just local reproduction) despite no enabled patch touching
-          # shell_snapshot.rs, shell_snapshot_tests.rs, or the sandbox helper
-          # it spawns; same class of shell/process-timing sensitivity as the
-          # three above, on the same shared CI VM. Re-check all eleven skips
-          # here on the next upstream bump rather than carrying them forward
-          # blindly.
-          cargo nextest run --no-fail-fast \
-            -E 'kind(lib) and not (test(active_turn_interrupt_is_nonblocking_and_coalesces_repeated_requests) or test(agents_overview_acknowledges_inactive_steer_before_interrupt) or test(kitty_local_file_pet_image_uses_file_reference_without_inline_payload) or test(stable_precomputed_exports_match_schema_fixtures) or test(experimental_precomputed_exports_match_generated) or test(guardian_ephemeral_retry_preserves_parallel_trunk_and_fork_history) or test(selected_and_resumed_threads_use_server_capability_for_v1_and_v2_children) or test(snapshot_failure_omits_credentials_and_stops_descendants::network_denial) or test(snapshot_failure_omits_credentials_and_stops_descendants::startup_exit) or test(snapshot_failure_omits_credentials_and_stops_descendants::timeout) or test(shell_snapshot::tests::snapshot_discovers_and_redacts_shell_initialized_credentials))' \
+          # Recheck the historical Linux exclusions on 0.157 and stable Rust.
+          # Keep process-heavy tests at two concurrent cases to limit contention.
+          cargo nextest run --no-fail-fast --test-threads 2 --lib \
             -p codex-tui \
             -p codex-api \
             -p codex-login \
             -p codex-core \
-            -p codex-app-server-protocol
+            -p codex-app-server-protocol \
+            -p codex-app-server \
+            -p codex-protocol \
+            -p codex-model-provider
+
+      - name: Test carried integration scenarios
+        working-directory: staging/openai-codex/codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo nextest run --no-fail-fast --test-threads 1 --test all \
+            -p codex-core -p codex-app-server -p codex-login \
+            -E 'test(rotate_) or test(account_rotate) or test(login_server) or test(responses_websocket_blackholed_reuse_reconnects_with_full_context)'

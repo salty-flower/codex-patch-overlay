@@ -30,7 +30,12 @@ because neither the tarball nor the Nix package fetches a missing helper later.
 | `bin/codex` | `--bin codex` | the CLI/TUI entrypoint |
 | `bin/codex-responses-api-proxy` | `--bin codex-responses-api-proxy` | `codex responses-api-proxy` |
 | `bin/codex-code-mode-host` | `--bin codex-code-mode-host` | code mode, mandatory from upstream 0.147.0 |
+| `codex-path/rg` | upstream `scripts/codex_package/rg`, fetched by `ripgrep.py` | file search; required by upstream's package layout |
 | `codex-resources/bwrap` | `--bin bwrap`, Linux only | sandboxed exec on Linux |
+
+The release workflow fetches the target-specific ripgrep archive from the staged
+upstream DotSlash manifest and verifies its SHA-256 before packaging it at
+`codex-path/rg`.
 
 `codex-rs/install-context` looks for `codex-code-mode-host` under
 `codex-resources/` first and then next to the running `codex` executable,

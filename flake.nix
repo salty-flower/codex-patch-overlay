@@ -75,7 +75,7 @@
               }
             '
 
-            ${pkgs.yq-go}/bin/yq -e '.jobs.publish.steps[] | select(.uses == "actions/checkout@v5").with."persist-credentials" == true' ${./.github/workflows/release.yml} > /dev/null
+            ${pkgs.yq-go}/bin/yq -e '.jobs.publish.steps[] | select(.uses == "actions/checkout@v7").with."persist-credentials" == true' ${./.github/workflows/release.yml} > /dev/null
             ${pkgs.yq-go}/bin/yq -e '.jobs.publish.steps[] | select(.name == "Move latest release ref").run | contains("scripts/move-latest-release-ref.nu")' ${./.github/workflows/release.yml} > /dev/null
             ${pkgs.yq-go}/bin/yq -e '.jobs.build."timeout-minutes" >= 120' ${./.github/workflows/release.yml} > /dev/null
             ${pkgs.yq-go}/bin/yq -e '.jobs.build.steps[] | select(.uses == "Swatinem/rust-cache@v2").with.key == "''${{ matrix.target }}"' ${./.github/workflows/release.yml} > /dev/null
@@ -88,7 +88,16 @@
           release-binaries = pkgs.runCommand "codex-release-binaries-check" { } ''
             workflow=${./.github/workflows/release.yml}
             build_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Build release binaries").run' "$workflow")"
+            rg_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Fetch packaged ripgrep").run' "$workflow")"
             package_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Package artifact").run' "$workflow")"
+            printf '%s' "$rg_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'from codex_package.ripgrep import fetch_rg' \
+              || { echo "release.yml does not fetch ripgrep through upstream's verified DotSlash helper" >&2; exit 1; }
+            printf '%s' "$rg_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'fetch_rg(TARGET_SPECS[os.environ["TARGET"]])' \
+              || { echo "release.yml does not select ripgrep for the matrix target" >&2; exit 1; }
+            printf '%s' "$package_run" | ${pkgs.ripgrep}/bin/rg -qF -- '"$CODEX_RG_BIN" "$package_dir/codex-path/rg"' \
+              || { echo "release.yml package step does not ship ripgrep at codex-path/rg" >&2; exit 1; }
+            printf '%s' "$package_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'chmod 0755 "$package_dir/codex-path/rg"' \
+              || { echo "release.yml package step does not mark codex-path/rg executable" >&2; exit 1; }
             for binary in codex codex-responses-api-proxy codex-code-mode-host; do
               printf '%s' "$build_run" | ${pkgs.ripgrep}/bin/rg -qF -- "--bin $binary" \
                 || { echo "release.yml build step does not build $binary" >&2; exit 1; }
