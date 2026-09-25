@@ -151,6 +151,10 @@ in
       preVersionCheck = ''
         version=${upstreamVersion}
       '';
+      versionCheckKeepEnvironment = (old.versionCheckKeepEnvironment or [ ]) ++ [
+        "CODEX_HOME"
+        "TMPDIR"
+      ];
 
       __structuredAttrs = false;
       env =
