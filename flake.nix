@@ -13,7 +13,10 @@
       systems,
     }:
     let
-      eachSystem = nixpkgs.lib.genAttrs (import systems);
+      # nixpkgs 26.11 dropped Intel macOS; do not advertise unevaluable outputs.
+      eachSystem = nixpkgs.lib.genAttrs (
+        builtins.filter (system: system != "x86_64-darwin") (import systems)
+      );
       manifest = builtins.fromTOML (builtins.readFile ./patches/manifest.toml);
       patchSuffix = manifest.release.patch_suffix;
       overlay = import ./overlays/codex-patched.nix {

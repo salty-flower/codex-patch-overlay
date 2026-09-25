@@ -10,7 +10,7 @@
 | Tracking check | Carried patches are recorded in `patches/manifest.toml` |
 
 `nix flake check` builds `codex-patched` with
-`cargoBuildFlags = --package codex-cli --package codex-code-mode-host` and `doCheck`
+`cargoBuildFlags = --package codex-cli --package codex-code-mode-host --package codex-responses-api-proxy` and `doCheck`
 empty — it runs **no tests**, for any crate, including `codex-tui`. A patch's own
 bundled test (e.g. one added alongside a struct/behavior change) can be permanently
 broken and this gate will never catch it; treat such tests as unverified until run
@@ -40,6 +40,8 @@ Before compiling, it installs both carried compressed app-server schema exports,
 matching the test workflow and Nix `postPatch`; these payloads are embedded in the binary.
 It writes the upstream package metadata, including the upstream version and target,
 and runs the upstream layout validator before archiving each package.
+The Nix overlay installs the same metadata and pinned zsh helper,
+with links to Nix's ripgrep and Linux bubblewrap at the package resource paths.
 
 `codex-rs/install-context` looks for `codex-code-mode-host` under
 `codex-resources/` first and then next to the running `codex` executable,

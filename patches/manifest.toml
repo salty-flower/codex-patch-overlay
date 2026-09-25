@@ -144,7 +144,7 @@ upstream_issue = "local-test-regression"
 status = "carried"
 risk = "low"
 owner = "local"
-notes = "Stabilize reconnect, guardian, and hook snapshots by fixing the displayed status timer and normalizing the activity spinner. Tokio's paused clock does not freeze the renderer's std::time::Instant. Test-only; no runtime or golden snapshot changes. Remove when upstream stabilizes these fixtures."
+notes = "Stabilize reconnect, guardian, hook, and exec-flow fixtures by fixing the displayed status timer and normalizing the activity spinner. Tokio's paused clock does not freeze the renderer's std::time::Instant. Test-only; no runtime or golden snapshot changes. Remove when upstream stabilizes these fixtures."
 
 [[patches]]
 name = "core-test-unused-import"

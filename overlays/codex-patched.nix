@@ -27,9 +27,8 @@ in
     old:
     let
       # Codex 0.147.0 moved to rusty_v8 150.4.0 and enabled the sandbox
-      # pointer-compression feature for code mode.  nixpkgs still provides the
-      # older 146.4.0 archive, so use the matching artifacts published with
-      # the Codex releases instead, for every upstream release since 0.147.0.
+      # pointer-compression feature for code mode. Pin the matching artifacts
+      # published with Codex independently of nixpkgs' bundled version.
       # When a future bump changes the resolved v8 crate, the stale binding
       # file fails compilation loudly; refresh rustyV8Version and the hashes
       # then.  Keep these targets aligned with .github/workflows/release.yml's
@@ -74,6 +73,42 @@ in
         url = "${rustyV8Base}/src_binding_ptrcomp_sandbox_release_${rustyV8Target}.rs";
         hash = rustyV8Artifact.bindingHash;
       };
+      # Match scripts/codex_package/codex-zsh from the pinned upstream source.
+      # Linux's upstream helper is statically linked against musl on both arches.
+      zshArtifacts = {
+        aarch64-darwin = {
+          target = "aarch64-apple-darwin";
+          sha256 = "49dec9832379688c9090666694a3449502ac5ebd4d76b9ffde1d0999cd088205";
+        };
+        x86_64-darwin = {
+          target = "x86_64-apple-darwin";
+          sha256 = "0246fd4703bb540ae74f13ec739ca365ebd607df44a1f21e335eb7a421352923";
+        };
+        aarch64-linux = {
+          target = "aarch64-unknown-linux-musl";
+          sha256 = "8d50cff5dfabc97e37e1138513da022d9247a802c2ff996ab91654bf1892c7d5";
+        };
+        x86_64-linux = {
+          target = "x86_64-unknown-linux-musl";
+          sha256 = "e7f760998c9644448d2cb8a821084a0134d6820c14b284bd7f39d7f32262ad40";
+        };
+      };
+      zshArtifact = zshArtifacts.${final.stdenv.hostPlatform.system};
+      zshArchive = final.fetchurl {
+        url = "https://github.com/openai/codex/releases/download/rust-v0.134.0-alpha.3/codex-zsh-${zshArtifact.target}.tar.gz";
+        inherit (zshArtifact) sha256;
+      };
+      packageMetadata = final.writeText "codex-package.json" (
+        builtins.toJSON {
+          layoutVersion = 1;
+          version = upstreamVersion;
+          target = final.stdenv.hostPlatform.rust.rustcTarget;
+          variant = "codex";
+          entrypoint = "bin/codex";
+          resourcesDir = "codex-resources";
+          pathDir = "codex-path";
+        }
+      );
     in
     {
       __intentionallyOverridingVersion = true;
@@ -88,6 +123,10 @@ in
       };
       patches = (old.patches or [ ]) ++ patchPaths;
       patchFlags = [ "-p2" ];
+      cargoBuildFlags = (old.cargoBuildFlags or [ ]) ++ [
+        "--package"
+        "codex-responses-api-proxy"
+      ];
       preVersionCheck = ''
         version=${upstreamVersion}
       '';
@@ -124,6 +163,20 @@ in
           install -Dm644 ${patchRoot}/patches/editable-enter-queue-app-server-exports-experimental.json.zst \
             app-server-protocol/schema/precomputed/app-server-exports-experimental.json.zst
         ''}
+      '';
+
+      postInstall = (old.postInstall or "") + ''
+        install -m644 ${packageMetadata} "$out/codex-package.json"
+        mkdir -p "$out/codex-resources/zsh" "$out/codex-path"
+        tar -xzf ${zshArchive} --strip-components=1 -C "$out/codex-resources/zsh" codex-zsh/bin/zsh
+        chmod 0755 "$out/codex-resources/zsh/bin/zsh"
+        ln -s ${lib.getExe final.ripgrep} "$out/codex-path/rg"
+        ${lib.optionalString final.stdenv.hostPlatform.isLinux ''
+          ln -s ${lib.getExe final.bubblewrap} "$out/codex-resources/bwrap"
+        ''}
+        for binary in codex codex-responses-api-proxy codex-code-mode-host; do
+          test -x "$out/bin/$binary"
+        done
       '';
 
       passthru = (old.passthru or { }) // {

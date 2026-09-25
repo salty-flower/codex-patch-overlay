@@ -15,7 +15,7 @@ This exception applies only to this known warning.
 
 ## TUI snapshot timing
 
-Carry `tui-snapshot-stability` while the affected reconnect, guardian, and hook fixtures render real-time status timers and spinner phases.
+Carry `tui-snapshot-stability` while the affected reconnect, guardian, hook, and exec-flow fixtures render real-time status timers and spinner phases.
 Tokio's paused clock does not freeze the renderer's `std::time::Instant`.
 The patch fixes fixture timer origins and normalizes the activity spinner without changing runtime behavior or golden snapshots.
 Remove it when upstream makes these fixtures deterministic.
