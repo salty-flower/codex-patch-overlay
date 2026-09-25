@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: main
-      - uses: cachix/install-nix-action@v31
+      - uses: ./.github/actions/install-nix
       - name: Stage patched upstream
         run: |
           nix develop --command nu scripts/stage-upstream.nu

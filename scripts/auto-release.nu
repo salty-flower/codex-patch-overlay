@@ -236,7 +236,7 @@ def write-record [release_tag: string, upstream_repo: string, upstream_tag: stri
       "## Gate"
       ""
       "- Enabled patches applied with `git apply --check`."
-      "- `nix flake check` passed before tagging."
+      "- `nix flake check --all-systems` passed before tagging."
       "- GitHub Actions builds release artifacts from the tag."
       ""
       "## Enabled Patches"
@@ -310,7 +310,7 @@ def main [
   let new_cargo_hash = (if ($target_tag == $current_tag) { $patches.0.cargo_hash } else { refresh-cargo-hash })
   update-manifest $manifest_path $target_tag $upstream.sha $new_source_hash $new_cargo_hash $patch_suffix
 
-  ^nix flake check
+  ^nix flake check --all-systems
 
   let record_path = (write-record $release_tag $upstream_repo $target_tag $upstream.sha $patches)
   ^git config user.name "github-actions[bot]"

@@ -90,7 +90,7 @@ See the [account-transition verification record](docs/records/2026-09-13-codex-r
 ## Quick Start
 
 ```sh
-nix flake check
+nix flake check --all-systems
 nu scripts/stage-upstream.nu
 nu scripts/apply-patches.nu
 ```

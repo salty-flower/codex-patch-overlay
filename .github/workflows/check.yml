@@ -23,9 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: cachix/install-nix-action@v31
+      - uses: ./.github/actions/install-nix
       - run: nix develop --command nu scripts/check-editable-enter-queue.nu
-      - run: nix flake check
+      - run: nix flake check --all-systems
 
   # `nix flake check` builds the patched package with its `doCheck` disabled, so
   # no bundled test runs in the nix gate and a broken test can ship unnoticed.

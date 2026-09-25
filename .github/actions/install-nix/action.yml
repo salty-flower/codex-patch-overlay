@@ -1,0 +1,17 @@
+name: Install Nix with system builder UIDs
+description: Install Nix with the upstream daemon mode and a free Linux builder UID range.
+runs:
+  using: composite
+  steps:
+    - name: Verify builder UID selection
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/test-select-build-uids.sh"
+    - name: Select unused Linux Nix builder UIDs
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/select-build-uids.sh"
+    - name: Install Nix
+      uses: cachix/install-nix-action@v31

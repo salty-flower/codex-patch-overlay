@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
 
-      - uses: cachix/install-nix-action@v31
+      - uses: ./.github/actions/install-nix
 
       - name: Check for upstream release and tag patched release
         id: auto

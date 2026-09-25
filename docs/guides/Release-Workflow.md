@@ -5,7 +5,7 @@
 | Gate | Required |
 | --- | --- |
 | Manifest check | Enabled patches have SHA and patch file |
-| Build check | `nix flake check` |
+| Build check | `nix flake check --all-systems` |
 | Patch check | `nu scripts/check-release.nu` |
 | Tracking check | Carried patches are recorded in `patches/manifest.toml` |
 
@@ -19,6 +19,9 @@ a patch that adds a field to an existing struct must be re-checked against every
 construction site on the new upstream, and `auto-release`'s `verify-patches-apply`
 stops at the first failing patch, so a reported failure understates the real scope.
 Always verify ALL enabled patches applied cumulatively, not just the one you touched.
+
+Use `--all-systems` to evaluate every declared platform without omitted-system warnings.
+Nix still builds only the current platform's checks, so macOS and Linux build gates run on their respective hosts.
 
 ## Packaged Binaries
 
@@ -94,7 +97,7 @@ When a newer upstream release exists, `scripts/auto-release.nu`:
    `git apply --check`.
 3. Updates enabled manifest entries to the new upstream tag, commit SHA, source
    hash, and Cargo vendor hash.
-4. Runs `nix flake check`.
+4. Runs `nix flake check --all-systems`.
 5. Commits the manifest and release record, tags
    `codex-<upstream-version>-patch.1`, and pushes it. The tag push triggers the
    release build workflow; an explicit dispatch is reserved for retrying an
@@ -168,6 +171,9 @@ For a classic PAT, grant `repo` and `workflow` scopes.
 The [`workflow` scope](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps) permits pushes that add or update workflow files.
 
 ## Known CI Failure Modes
+
+Workflows use the shared `.github/actions/install-nix` action to retain upstream Nix installation while selecting unused Linux system UIDs for its build users.
+The selection fails if the runner has no sufficiently large free range; it does not modify the runner's account policy.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
