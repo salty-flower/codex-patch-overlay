@@ -572,7 +572,7 @@ jobs:
           prerelease="$(gh release view "${RELEASE_TAG}" --json isPrerelease --jq .isPrerelease)"
           echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
 
-      - uses: cachix/install-nix-action@v31
+      - uses: ./.github/actions/install-nix
         if: steps.release-metadata.outputs.prerelease != 'true'
 
       - name: Move latest release ref

@@ -3,5 +3,5 @@
 def main [] {
   ^nu scripts/check-editable-enter-queue.nu
   ^nu scripts/check-manifest-fields.nu
-  ^nix flake check
+  ^nix flake check --all-systems
 }

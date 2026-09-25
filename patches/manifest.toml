@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.1"
+patch_suffix = "patch.2"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
@@ -144,7 +144,7 @@ upstream_issue = "local-test-regression"
 status = "carried"
 risk = "low"
 owner = "local"
-notes = "Stabilize reconnect, guardian, hook, and exec-flow fixtures by fixing the displayed status timer and normalizing the activity spinner. Tokio's paused clock does not freeze the renderer's std::time::Instant. Test-only; no runtime or golden snapshot changes. Remove when upstream stabilizes these fixtures."
+notes = "Stabilize reconnect, disconnect, guardian, hook, and exec-flow fixtures by fixing the displayed status timer and normalizing the activity spinner. Tokio's paused clock does not freeze the renderer's std::time::Instant. Test-only; no runtime or golden snapshot changes. Remove when upstream stabilizes these fixtures."
 
 [[patches]]
 name = "core-test-unused-import"
@@ -173,3 +173,17 @@ status = "carried"
 risk = "low"
 owner = "local"
 notes = "Compare shell-snapshot failure chains without backtrace text while separately asserting Debug output excludes the test credential. Test-only; preserves descendant cleanup coverage with RUST_BACKTRACE=1. Remove when upstream makes the assertion independent of backtrace settings."
+
+[[patches]]
+name = "tui-reasoning-display"
+enabled = true
+file = "patches/tui-reasoning-display.patch"
+upstream_base = "rust-v0.157.0"
+upstream_sha = "00c972ed5d6ff6499317fd41b7f23605b8e6850d"
+source_hash = "sha256-/f/k77vnFjPfnnf+X2E7rY2FxUR1xAcJZiPTv9Q8JVI="
+cargo_hash = "sha256-Mp4chq9QuQB19FrOZBhmUtPrDoEpZZna79+MZs9rGUo="
+upstream_issue = "local-request"
+status = "carried"
+risk = "medium"
+owner = "local"
+notes = "Add `[tui].reasoning_display` with `status-only` (default), `persistent`, and `hidden` modes. Persistent mode renders received reasoning summaries while they stream and commits each completed item to the transcript, preserving summaries across later tool and assistant activity. Summary cells use width-aware Markdown wrapping, retain explicit newlines, and break overlong unspaced text instead of clipping it. This displays model-provided summaries only; raw reasoning remains controlled by `show_raw_agent_reasoning`."

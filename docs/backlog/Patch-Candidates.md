@@ -13,7 +13,8 @@
 
 | Patch | Upstream | Risk | Status |
 | --- | --- | --- | --- |
-| Stream reasoning live | `openai/codex#5339`, `openai/codex#6006` | medium | carried |
+| Stream reasoning live | `openai/codex#5339`, `openai/codex#6006` | — | **retired**: upstream now emits reasoning summaries; local persistent rendering is tracked separately |
+| Persistent TUI reasoning summaries | local request | medium | carried |
 | TUI notification sound | `openai/codex#8417` | low | carried |
 | WebP image input | `openai/codex#8562`, `openai/codex#8589` | low | carried |
 | Transcript search | `openai/codex#8641` | high | candidate |

@@ -6,7 +6,7 @@
 
 ## Verification
 
-- [ ] `nix flake check`
+- [ ] `nix flake check --all-systems`
 - [ ] `nu scripts/check-release.nu`
 - [ ] Patch-specific tests:
 
