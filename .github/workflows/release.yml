@@ -54,6 +54,14 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
+      - name: Configure macOS linker
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          classic_linker="$(xcrun --find ld-classic)"
+          echo "CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS=-C link-arg=-fuse-ld=${classic_linker}" >> "$GITHUB_ENV"
+
       - name: Stage patched upstream
         shell: bash
         run: |
@@ -154,6 +162,9 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
+          git -C staging/openai-codex apply --check "$GITHUB_WORKSPACE/scripts/ci/codex-musl-openssl-install-hook.patch"
+          git -C staging/openai-codex apply "$GITHUB_WORKSPACE/scripts/ci/codex-musl-openssl-install-hook.patch"
+          export OPENSSL_INSTALL_VARS_PATCH="$GITHUB_WORKSPACE/scripts/ci/openssl-install-vars-defaults.patch"
           bash staging/openai-codex/.github/scripts/install-musl-build-tools.sh
           echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
           target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${TARGET}"
@@ -390,6 +401,7 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
       contents: write
 
     steps:
@@ -398,11 +410,117 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
           persist-credentials: true
+          token: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
 
-      - uses: actions/download-artifact@v8
-        with:
-          path: dist
-          merge-multiple: true
+      - name: Download and verify build artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          artifact_macos="codex-${RELEASE_TAG}-aarch64-apple-darwin"
+          artifact_linux="codex-${RELEASE_TAG}-x86_64-unknown-linux-musl"
+          artifact_work_dir="$(mktemp -d "${RUNNER_TEMP}/release-artifacts.XXXXXX")"
+
+          if [[ -e dist ]]; then
+            shopt -s dotglob nullglob
+            existing_files=(dist/*)
+            shopt -u dotglob nullglob
+            if (( ${#existing_files[@]} > 0 )); then
+              echo "dist must be empty before downloading artifacts" >&2
+              exit 1
+            fi
+          else
+            mkdir -p dist
+          fi
+
+          artifact_metadata="$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100")"
+          selected_artifacts="$(jq -ce \
+            --arg macos "$artifact_macos" \
+            --arg linux "$artifact_linux" '
+              . as $response
+              | $response.artifacts as $artifacts
+              | [$artifacts[] | select(.expired == false)] as $live
+              | if $response.total_count != ($artifacts | length) then
+                  error("artifact listing was truncated; increase per_page")
+                elif any($artifacts[]; .name != $macos and .name != $linux) then
+                  error("run contains an unexpected build artifact")
+                elif ([$live[].name] | unique | sort) != ([$macos, $linux] | sort) then
+                  error("run must contain a non-expired artifact for each target")
+                else
+                  [$macos, $linux]
+                  | map(. as $name
+                    | ($live | map(select(.name == $name)) | sort_by(.created_at, .id) | last))
+                end
+              | if length != 2 or any(.[]; ((.digest | type) != "string") or ((.digest | test("^sha256:[0-9a-f]{64}$")) | not)) then
+                  error("selected artifacts must each have a SHA-256 digest")
+                else
+                  .
+                end
+            ' <<< "$artifact_metadata")"
+
+          echo "Selected build artifacts:"
+          jq -r '.[] | "- \(.name) (id \(.id), \(.size_in_bytes) bytes, \(.digest))"' <<< "$selected_artifacts"
+          artifact_rows="$(jq -r '.[] | [.name, (.id | tostring), .digest] | @tsv' <<< "$selected_artifacts")"
+
+          while IFS=$'\t' read -r artifact_name artifact_id api_digest; do
+            case "$artifact_name" in
+              "$artifact_macos") target="aarch64-apple-darwin" ;;
+              "$artifact_linux") target="x86_64-unknown-linux-musl" ;;
+              *) echo "Unexpected selected artifact: $artifact_name" >&2; exit 1 ;;
+            esac
+
+            zip_path="${artifact_work_dir}/${artifact_id}.zip"
+            unpack_dir="${artifact_work_dir}/${artifact_id}"
+            mkdir -p "$unpack_dir"
+            curl --fail --location --silent --show-error \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
+              --output "$zip_path"
+
+            expected_digest="${api_digest#sha256:}"
+            actual_digest="$(sha256sum "$zip_path" | awk '{print $1}')"
+            if [[ "$actual_digest" != "$expected_digest" ]]; then
+              echo "Artifact digest mismatch for $artifact_name: expected $expected_digest, got $actual_digest" >&2
+              exit 1
+            fi
+
+            archive_name="${RELEASE_TAG}-${target}.tar.gz"
+            sidecar_name="${archive_name}.sha256"
+            members="$(unzip -Z1 "$zip_path" | LC_ALL=C sort)"
+            expected_members="$(printf '%s\n' "$archive_name" "$sidecar_name" | LC_ALL=C sort)"
+            if [[ "$members" != "$expected_members" ]]; then
+              echo "Unexpected files in $artifact_name artifact:" >&2
+              printf '%s\n' "$members" >&2
+              exit 1
+            fi
+
+            unzip -qq "$zip_path" -d "$unpack_dir"
+            (
+              cd "$unpack_dir"
+              shasum -a 256 -c "$sidecar_name"
+            )
+            install -m 0644 "$unpack_dir/$archive_name" "dist/$archive_name"
+            install -m 0644 "$unpack_dir/$sidecar_name" "dist/$sidecar_name"
+            echo "Verified and unpacked $artifact_name"
+          done <<< "$artifact_rows"
+
+          expected_dist_files="$(printf '%s\n' \
+            "${RELEASE_TAG}-aarch64-apple-darwin.tar.gz" \
+            "${RELEASE_TAG}-aarch64-apple-darwin.tar.gz.sha256" \
+            "${RELEASE_TAG}-x86_64-unknown-linux-musl.tar.gz" \
+            "${RELEASE_TAG}-x86_64-unknown-linux-musl.tar.gz.sha256" | LC_ALL=C sort)"
+          actual_dist_files="$(printf '%s\n' dist/* | sed 's|^dist/||' | LC_ALL=C sort)"
+          if [[ "$actual_dist_files" != "$expected_dist_files" ]]; then
+            echo "dist does not contain exactly the two platform archives and their sidecars" >&2
+            printf '%s\n' "$actual_dist_files" >&2
+            exit 1
+          fi
 
       - name: Write release notes
         shell: bash

@@ -103,13 +103,24 @@ def main [
 
   release-version-parts $target_tag | ignore
 
+  let target_commitish = ("refs/tags/" + $target_tag + "^{commit}")
+  let target_commit_result = (^git rev-parse --verify --quiet $target_commitish | complete)
+  if ($target_commit_result.exit_code != 0) {
+    fail $"release tag does not resolve to a commit [($target_tag)]: ($target_commit_result.stderr | str trim)"
+  }
+
+  let target_commit = ($target_commit_result.stdout | str trim)
+  if ($target_commit | is-empty) {
+    fail $"release tag does not resolve to a commit: ($target_tag)"
+  }
+
   let current = (current-latest-release $remote $ref)
   if not (should-move-latest-release-ref $target_tag $current.tag) {
     print $"keeping ($ref) at newer release ($current.tag); not moving it back to ($target_tag)"
     return
   }
 
-  let push = (^git push $remote $"HEAD:($ref)" --force | complete)
+  let push = (^git push $remote $"($target_commit):($ref)" --force | complete)
   if $push.exit_code != 0 {
     fail $"failed to move ($ref) to ($target_tag): ($push.stderr)"
   }

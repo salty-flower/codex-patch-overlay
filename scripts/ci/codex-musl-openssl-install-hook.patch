@@ -1,0 +1,11 @@
+--- a/.github/scripts/install-musl-openssl.sh
++++ b/.github/scripts/install-musl-openssl.sh
+@@ -24,6 +24,8 @@
+   curl -fsSL "https://github.com/openssl/openssl/releases/download/openssl-${openssl_version}/openssl-${openssl_version}.tar.gz" -o "${archive}"
+   echo "${openssl_sha256}  ${archive}" | sha256sum -c -
+   tar -xzf "${archive}" -C "${openssl_root}"
++  : "${OPENSSL_INSTALL_VARS_PATCH:?OPENSSL_INSTALL_VARS_PATCH must name the CI-only mkinstallvars patch}"
++  patch -d "${openssl_root}/openssl-${openssl_version}" -p1 < "${OPENSSL_INSTALL_VARS_PATCH}"
+
+   (
+     cd "${openssl_root}/openssl-${openssl_version}"

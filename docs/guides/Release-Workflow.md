@@ -36,6 +36,7 @@ because neither the tarball nor the Nix package fetches a missing helper later.
 
 The release workflow fetches target-specific ripgrep and zsh archives from the staged
 upstream DotSlash manifests and verifies their SHA-256 before packaging them.
+The publish job downloads this run's two target artifacts through the Actions API and verifies each API-provided ZIP digest before extraction.
 Before compiling, it installs both carried compressed app-server schema exports,
 matching the test workflow and Nix `postPatch`; these payloads are embedded in the binary.
 It writes the upstream package metadata, including the upstream version and target,
@@ -76,6 +77,7 @@ A new helper binary shows up as a `--bin` target in
 6. Publish release notes from manifest entries.
 7. Move the `latest-release` branch to the released commit after GitHub Release
    publication succeeds.
+   The publish checkout uses `RELEASE_PUSH_TOKEN` so ref updates can include workflow files.
 
 ## Auto Release
 
@@ -140,8 +142,9 @@ from `codex-0.147.0-patch.1`, `codex-code-mode-host` came from upstream's own
    release through the API creates the tag, which fires `on: push: tags:`; that
    run would rebuild from source and overwrite the uploaded assets with different
    SHA-256 digests, breaking any pin made in the meantime.
-6. Move the release ref: `nu scripts/move-latest-release-ref.nu <tag>` with `HEAD`
-   at the released commit — nothing else does it when the publish job never runs.
+6. Move the release ref: `nu scripts/move-latest-release-ref.nu <tag>`.
+   The script resolves the tag's commit independently of the current checkout.
+   Run it after publication when the publish job did not move the ref.
 7. Record the provenance in `docs/records/`, since the release notes are the only
    other place that says the artifacts are not purely CI-built.
 
@@ -152,8 +155,7 @@ or the protocol it speaks before mixing it with a patched `codex`.
 
 ## `RELEASE_PUSH_TOKEN`
 
-Read by `auto-release.yml` (commit/tag/dispatch) and `release.yml`'s publish
-step, falling back to `github.token` when unset.
+Read by `auto-release.yml` (commit/tag/dispatch) and `release.yml`'s publish checkout and release upload, falling back to `github.token` when unset.
 
 Fine-grained PAT requirements, repo-scoped to `codex-patch-overlay`:
 
@@ -162,7 +164,8 @@ Fine-grained PAT requirements, repo-scoped to `codex-patch-overlay`:
 | Contents | Read and write | commit, tag, push, create/update release, upload assets |
 | Workflows | Read and write | `gh workflow run` dispatch; also required for release **update** (`Contents` alone 403s with `Resource not accessible by personal access token`) |
 
-Classic PAT with `repo` scope covers both and is the simpler fallback.
+For a classic PAT, grant `repo` and `workflow` scopes.
+The [`workflow` scope](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps) permits pushes that add or update workflow files.
 
 ## Known CI Failure Modes
 
@@ -172,3 +175,4 @@ Classic PAT with `repo` scope covers both and is the simpler fallback.
 | `nix flake check` fails on `checks.<system>.latest-release-ref`: `no matches found` | `flake.nix` pins the build jobs' `Swatinem/rust-cache` key to `${{ matrix.target }}` via a `yq` assertion — do not change it to bust a cache | bust a poisoned cache with `gh cache delete <id>` instead of changing the key |
 | `publish`: `403 Resource not accessible by integration` | `GITHUB_TOKEN` cannot update a release that already exists (only create one on tag push) | pass `token: ${{ secrets.RELEASE_PUSH_TOKEN \|\| github.token }}` to `action-gh-release` |
 | `publish`: `403 Resource not accessible by personal access token` | fine-grained PAT has `Contents: write` but not `Workflows: write` | add `Workflows: write` to the PAT |
+| `publish`: push rejected for missing `workflows` permission | checkout persisted `GITHUB_TOKEN`; the `latest-release` ref update contains workflow-file changes | pass the existing `RELEASE_PUSH_TOKEN` to `actions/checkout` |

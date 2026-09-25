@@ -1,10 +1,24 @@
 # Temporary Workarounds
 
+## macOS compact unwind table
+
+The macOS release job selects Apple's classic linker while the default linker reports that Codex's `__eh_frame` section exceeds the 16 MiB compact-unwind offset limit.
+This matches the verified local linker configuration and preserves unwind metadata.
+Remove the selection when the default Apple linker builds the complete release binaries without this warning.
+
 ## Rust compiler query depth
 
 Carry `chatgpt-recursion-limit` while Rust 1.98 exceeds the default query-depth limit compiling `codex-chatgpt` with the enabled patches.
 The compiler reports a depth increase of 130 for `connectors::list_connectors`; the patch raises the crate limit from 128 to 256 without changing runtime behavior.
 Remove it when upstream raises the limit or the cumulative patch stack compiles on stable Rust with the default limit.
+
+## OpenSSL installation metadata
+
+The musl release build applies the two CI-only patches under `scripts/ci/` to the pinned OpenSSL installer and its `mkinstallvars.pl` helper.
+OpenSSL 3.6.4's generated build/install commands omit optional path and comment fields, causing Perl to report missing and uninitialized values.
+The helper patch makes those defaults explicit and formats optional undefined values as empty text; replaying both commands produces byte-identical metadata while retaining diagnostics for missing required fields.
+The archive checksum and OpenSSL library sources remain unchanged.
+Remove both patches when the pinned upstream installer generates this metadata without the diagnostics.
 
 ## Accepted dependency warning for 0.157.0
 
