@@ -14,6 +14,27 @@ index 683e8fc461..cea5350f9a 100644
      );
      tokio::time::resume();
      Ok(())
+diff --git a/codex-rs/tui/src/app/tests/disconnect_tests.rs b/codex-rs/tui/src/app/tests/disconnect_tests.rs
+index b47efa4265..3108be4fde 100644
+--- a/codex-rs/tui/src/app/tests/disconnect_tests.rs
++++ b/codex-rs/tui/src/app/tests/disconnect_tests.rs
+@@ -111,6 +111,7 @@ async fn lost_mutation_reply_preserves_work_without_resubmitting() -> Result<()>
+         (history.session_id, history.text),
+         (id.to_string(), "only once".into())
+     );
++    app.chat_widget.freeze_status_timer_for_snapshot_for_test();
+     assert_snapshot!(
+         "offline_draft",
+         format!(
+@@ -121,7 +122,7 @@ async fn lost_mutation_reply_preserves_work_without_resubmitting() -> Result<()>
+                     .unwrap()
+                     .display_lines(/*width*/ 80)
+             ),
+-            render_bottom_popup(&app.chat_widget, /*width*/ 80)
++            render_bottom_popup(&app.chat_widget, /*width*/ 80).replace('◦', "•")
+         )
+     );
+     let mut keymap = codex_config::types::TuiKeymap::default();
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
 index bcf42c427d..1e29e91e35 100644
 --- a/codex-rs/tui/src/chatwidget.rs
