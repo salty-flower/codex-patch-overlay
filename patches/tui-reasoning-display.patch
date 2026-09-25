@@ -1753,7 +1753,7 @@ index 5a976e468d..2d8aa12585 100644
              bg_tx,
          );
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index babf331fa2..4b1ae99829 100644
+index babf331fa2..f193d2f330 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
 @@ -19,6 +19,7 @@ use crate::legacy_core::config::Config;
@@ -1775,7 +1775,13 @@ index babf331fa2..4b1ae99829 100644
  pub(crate) mod tools;
  
  pub(crate) use activity_pages::fold_trailing_activity_details;
-@@ -70,6 +75,23 @@ pub(crate) async fn load_session_transcript(
+@@ -65,11 +70,29 @@ pub(crate) enum RawReasoningVisibility {
+     Visible,
+ }
+ 
++#[cfg(test)]
+ pub(crate) async fn load_session_transcript(
+     app_server: &mut AppServerSession,
      thread_id: ThreadId,
      raw_reasoning_visibility: RawReasoningVisibility,
      config: Option<&Config>,
@@ -1799,7 +1805,7 @@ index babf331fa2..4b1ae99829 100644
  ) -> std::io::Result<TranscriptCells> {
      let mut thread = app_server
          .thread_read(thread_id, /*include_turns*/ false)
-@@ -86,9 +108,10 @@ pub(crate) async fn load_session_transcript(
+@@ -86,17 +109,33 @@ pub(crate) async fn load_session_transcript(
          )
          .await
          .map_err(std::io::Error::other)?;
@@ -1811,7 +1817,9 @@ index babf331fa2..4b1ae99829 100644
          config,
      ))
  }
-@@ -97,6 +120,20 @@ pub(crate) fn thread_to_transcript_cells(
+ 
++#[cfg(test)]
+ pub(crate) fn thread_to_transcript_cells(
      thread: Thread,
      raw_reasoning_visibility: RawReasoningVisibility,
      config: Option<&Config>,
@@ -1832,7 +1840,7 @@ index babf331fa2..4b1ae99829 100644
  ) -> TranscriptCells {
      let cwd = thread.cwd;
      let thread_id = ThreadId::from_string(&thread.id).ok();
-@@ -104,11 +141,12 @@ pub(crate) fn thread_to_transcript_cells(
+@@ -104,11 +143,12 @@ pub(crate) fn thread_to_transcript_cells(
          .turns
          .into_iter()
          .flat_map(|turn| {
@@ -1846,7 +1854,7 @@ index babf331fa2..4b1ae99829 100644
                  config,
              )
          })
-@@ -127,6 +165,30 @@ pub(crate) fn thread_items_to_transcript_cells(
+@@ -127,6 +167,30 @@ pub(crate) fn thread_items_to_transcript_cells(
      items: impl IntoIterator<Item = ThreadItem>,
      raw_reasoning_visibility: RawReasoningVisibility,
      config: Option<&Config>,
@@ -1877,7 +1885,7 @@ index babf331fa2..4b1ae99829 100644
  ) -> TranscriptCells {
      let inline_visualization_context = config.and_then(|config| {
          thread_id.and_then(|thread_id| InlineVisualizationContext::from_config(config, thread_id))
-@@ -135,12 +197,14 @@ pub(crate) fn thread_items_to_transcript_cells(
+@@ -135,12 +199,14 @@ pub(crate) fn thread_items_to_transcript_cells(
      let mut pending = None;
      for item in items {
          if matches!(item, ThreadItem::Reasoning { .. })
@@ -1892,7 +1900,7 @@ index babf331fa2..4b1ae99829 100644
                  inline_visualization_context.clone(),
              ) {
                  match group {
-@@ -205,6 +269,7 @@ pub(crate) fn thread_items_to_transcript_cells(
+@@ -205,6 +271,7 @@ pub(crate) fn thread_items_to_transcript_cells(
                      item,
                      cwd,
                      raw_reasoning_visibility,
@@ -1900,7 +1908,7 @@ index babf331fa2..4b1ae99829 100644
                      inline_visualization_context.clone(),
                  );
                  if !projected.is_empty() {
-@@ -223,6 +288,7 @@ fn item_to_cells(
+@@ -223,6 +290,7 @@ fn item_to_cells(
      item: ThreadItem,
      cwd: &AbsolutePathBuf,
      raw_reasoning_visibility: RawReasoningVisibility,
@@ -1908,7 +1916,7 @@ index babf331fa2..4b1ae99829 100644
      inline_visualization_context: Option<InlineVisualizationContext>,
  ) -> TranscriptCells {
      let mut cells: TranscriptCells = Vec::new();
-@@ -309,25 +375,58 @@ fn item_to_cells(
+@@ -309,25 +377,58 @@ fn item_to_cells(
              summary,
              content,
          } => {
