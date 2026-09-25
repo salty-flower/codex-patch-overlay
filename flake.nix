@@ -89,6 +89,7 @@
             workflow=${./.github/workflows/release.yml}
             build_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Build release binaries").run' "$workflow")"
             rg_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Fetch packaged ripgrep").run' "$workflow")"
+            zsh_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Fetch packaged zsh").run' "$workflow")"
             schema_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Install carried schema payloads").run' "$workflow")"
             package_run="$(${pkgs.yq-go}/bin/yq -r '.jobs.build.steps[] | select(.name == "Package artifact").run' "$workflow")"
             printf '%s' "$schema_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'for kind in stable experimental; do' \
@@ -105,6 +106,16 @@
               || { echo "release.yml package step does not ship ripgrep at codex-path/rg" >&2; exit 1; }
             printf '%s' "$package_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'chmod 0755 "$package_dir/codex-path/rg"' \
               || { echo "release.yml package step does not mark codex-path/rg executable" >&2; exit 1; }
+            printf '%s' "$zsh_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'resolve_zsh_bin(TARGET_SPECS[os.environ["TARGET"]])' \
+              || { echo "release.yml does not fetch zsh for the matrix target" >&2; exit 1; }
+            printf '%s' "$package_run" | ${pkgs.ripgrep}/bin/rg -qF -- '"$CODEX_ZSH_BIN" "$package_dir/codex-resources/zsh/bin/zsh"' \
+              || { echo "release.yml does not ship the bundled zsh fork" >&2; exit 1; }
+            printf '%s' "$package_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'validate_package_dir(' \
+              || { echo "release.yml does not validate its package layout" >&2; exit 1; }
+            printf '%s' "$package_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'include_zsh=True' \
+              || { echo "release.yml does not validate the bundled zsh fork" >&2; exit 1; }
+            printf '%s' "$package_run" | ${pkgs.ripgrep}/bin/rg -qF -- '--arg version "''${upstream_base#rust-v}" --arg target "$TARGET"' \
+              || { echo "release.yml does not record the upstream version and target" >&2; exit 1; }
             for binary in codex codex-responses-api-proxy codex-code-mode-host; do
               printf '%s' "$build_run" | ${pkgs.ripgrep}/bin/rg -qF -- "--bin $binary" \
                 || { echo "release.yml build step does not build $binary" >&2; exit 1; }

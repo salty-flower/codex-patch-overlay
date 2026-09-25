@@ -31,13 +31,15 @@ because neither the tarball nor the Nix package fetches a missing helper later.
 | `bin/codex-responses-api-proxy` | `--bin codex-responses-api-proxy` | `codex responses-api-proxy` |
 | `bin/codex-code-mode-host` | `--bin codex-code-mode-host` | code mode, mandatory from upstream 0.147.0 |
 | `codex-path/rg` | upstream `scripts/codex_package/rg`, fetched by `ripgrep.py` | file search; required by upstream's package layout |
+| `codex-resources/zsh/bin/zsh` | upstream `scripts/codex_package/codex-zsh`, fetched by `zsh.py` | opt-in `shell_zsh_fork` execution |
 | `codex-resources/bwrap` | `--bin bwrap`, Linux only | sandboxed exec on Linux |
 
-The release workflow fetches the target-specific ripgrep archive from the staged
-upstream DotSlash manifest and verifies its SHA-256 before packaging it at
-`codex-path/rg`.
+The release workflow fetches target-specific ripgrep and zsh archives from the staged
+upstream DotSlash manifests and verifies their SHA-256 before packaging them.
 Before compiling, it installs both carried compressed app-server schema exports,
 matching the test workflow and Nix `postPatch`; these payloads are embedded in the binary.
+It writes the upstream package metadata, including the upstream version and target,
+and runs the upstream layout validator before archiving each package.
 
 `codex-rs/install-context` looks for `codex-code-mode-host` under
 `codex-resources/` first and then next to the running `codex` executable,
