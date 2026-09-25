@@ -132,10 +132,20 @@ jobs:
 
       - name: Install Zig for musl
         if: contains(matrix.target, 'linux-musl')
-        uses: mlugg/setup-zig@v2
-        with:
-          version: latest
-          use-cache: false
+        shell: bash
+        run: |
+          set -euo pipefail
+          zig_dir="${RUNNER_TEMP}/zig"
+          mkdir -p "$zig_dir"
+          curl -fsSL https://ziglang.org/download/index.json -o "$zig_dir/index.json"
+          version="$(jq -r 'keys | map(select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))) | max_by(split(".") | map(tonumber))' "$zig_dir/index.json")"
+          archive_url="$(jq -er --arg version "$version" '.[$version]["x86_64-linux"].tarball' "$zig_dir/index.json")"
+          archive_sha="$(jq -er --arg version "$version" '.[$version]["x86_64-linux"].shasum' "$zig_dir/index.json")"
+          curl -fsSL "$archive_url" -o "$zig_dir/zig.tar.xz"
+          printf '%s  %s\n' "$archive_sha" "$zig_dir/zig.tar.xz" | sha256sum --check -
+          tar -xJf "$zig_dir/zig.tar.xz" --strip-components=1 -C "$zig_dir"
+          "$zig_dir/zig" version
+          echo "$zig_dir" >> "$GITHUB_PATH"
 
       - name: Install musl build tools
         if: contains(matrix.target, 'linux-musl')
