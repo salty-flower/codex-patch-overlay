@@ -1,3 +1,439 @@
+diff --git a/codex-rs/app-server/src/application_network.rs b/codex-rs/app-server/src/application_network.rs
+index 0641a80e0b..c68b074560 100644
+--- a/codex-rs/app-server/src/application_network.rs
++++ b/codex-rs/app-server/src/application_network.rs
+@@ -9,6 +9,7 @@ use codex_config::CloudConfigBundleLoader;
+ use codex_config::NetworkDomainPermissionToml;
+ use codex_http_client::DestinationPolicy;
+ use codex_http_client::NetworkPolicyDenied;
++use codex_protocol::account::PlanType;
+ use std::io;
+ use std::sync::Arc;
+ 
+@@ -29,6 +30,109 @@ pub(crate) fn destination_policy(
+ }
+ 
+ impl ConfigManager {
++    /// Reinstalls the local application policy for an admitted personal Rotate owner.
++    ///
++    /// Rotate identities are always personal and cannot receive cloud configuration.
++    /// Requiring the previous snapshot to prove that it contained no cloud bundle keeps
++    /// this recovery path from reusing another account's cached managed policy.
++    pub(crate) async fn refresh_personal_application_network_policy(
++        &self,
++        auth: &codex_login::CodexAuth,
++        expected_revision: codex_http_client::NetworkPolicyRevision,
++    ) -> io::Result<()> {
++        if auth.rotate_identity().is_none()
++            || !matches!(
++                auth.account_plan_type(),
++                Some(
++                    PlanType::Free
++                        | PlanType::Go
++                        | PlanType::Plus
++                        | PlanType::Pro
++                        | PlanType::ProLite
++                )
++            )
++        {
++            return Err(io::Error::new(
++                io::ErrorKind::PermissionDenied,
++                "application network policy refresh requires a personal Codex Rotate owner",
++            ));
++        }
++
++        let policy = self.network_policy.policy();
++        if policy.revision() != expected_revision {
++            return Err(io::Error::other(NetworkPolicyDenied::Revoked));
++        }
++
++        let _reload = self
++            .network_policy_reload
++            .acquire()
++            .await
++            .map_err(io::Error::other)?;
++        if policy.revision() != expected_revision {
++            return Err(io::Error::other(NetworkPolicyDenied::Revoked));
++        }
++
++        let cached_cloud = self
++            .network_policy_snapshot
++            .read()
++            .map_err(|_| io::Error::other("application network policy snapshot lock poisoned"))?
++            .as_ref()
++            .map(|snapshot| snapshot.cloud.is_some());
++        match cached_cloud {
++            Some(false) => {}
++            Some(true) => {
++                self.fail_application_policy(expected_revision)?;
++                return Err(io::Error::new(
++                    io::ErrorKind::PermissionDenied,
++                    "cached managed cloud policy cannot be applied to a Codex Rotate owner",
++                ));
++            }
++            None => {
++                self.fail_application_policy(expected_revision)?;
++                return Err(io::Error::other(NetworkPolicyDenied::Unavailable));
++            }
++        }
++
++        if policy.is_available()
++            && self
++                .network_policy_snapshot
++                .read()
++                .map_err(|_| io::Error::other("application network policy snapshot lock poisoned"))?
++                .as_ref()
++                .is_some_and(|snapshot| snapshot.revision == expected_revision)
++        {
++            return Ok(());
++        }
++
++        let local_sources = self.load_local_network_policy(expected_revision).await?;
++        let application = match local_sources.compose(Default::default()) {
++            Ok(application) => application,
++            Err(error) => {
++                self.fail_application_policy(expected_revision)?;
++                return Err(error);
++            }
++        };
++        let policy = destination_policy(application.as_ref());
++
++        let mut current = self
++            .network_policy_snapshot
++            .write()
++            .map_err(|_| io::Error::other("application network policy snapshot lock poisoned"))?;
++        if !self
++            .network_policy
++            .publish(expected_revision, policy.clone())
++        {
++            *current = None;
++            return Err(io::Error::other(NetworkPolicyDenied::Revoked));
++        }
++        *current = Some(Arc::new(ApplicationPolicySnapshot {
++            revision: expected_revision,
++            policy,
++            cloud: None,
++        }));
++        Ok(())
++    }
++
+     pub(super) async fn refresh_local_network_policy(
+         &self,
+     ) -> io::Result<codex_config::loader::LocalApplicationRequirements> {
+diff --git a/codex-rs/app-server/src/application_network_tests.rs b/codex-rs/app-server/src/application_network_tests.rs
+index 20a63a2d69..75b9c03949 100644
+--- a/codex-rs/app-server/src/application_network_tests.rs
++++ b/codex-rs/app-server/src/application_network_tests.rs
+@@ -2,11 +2,18 @@
+ 
+ use super::ConfigManager;
+ use anyhow::Result;
++use app_test_support::ChatGptIdTokenClaims;
++use app_test_support::encode_id_token;
+ use codex_config::CloudConfigBundleLoader;
+ use codex_config::LoaderOverrides;
+ use codex_config::test_support::CloudConfigBundleFixture;
+ use codex_http_client::NetworkPolicyDenied;
++use codex_login::CodexAuth;
++use codex_login::ExternalAuth;
++use codex_login::auth::RotateHelper;
+ use pretty_assertions::assert_eq;
++use serde_json::json;
++use std::path::Path;
+ use std::sync::Arc;
+ use std::sync::atomic::AtomicUsize;
+ use std::sync::atomic::Ordering;
+@@ -280,3 +287,290 @@ async fn cloud_config_change_supersedes_load_even_when_network_rules_are_unchang
+     );
+     Ok(())
+ }
++
++#[cfg(unix)]
++async fn rotate_personal_auth() -> Result<CodexAuth> {
++    let id_token = encode_id_token(
++        &ChatGptIdTokenClaims::new()
++            .email("rotate@example.com")
++            .plan_type("pro")
++            .chatgpt_user_id("rotate-user")
++            .chatgpt_account_id("rotate-account"),
++    )?;
++    let response = json!({
++        "version": 1,
++        "ok": true,
++        "snapshot": {
++            "account_key": "personal-profile",
++            "account_id": "rotate-account",
++            "selection_epoch": 1,
++            "credential_revision": 1,
++            "access_token": "synthetic-access",
++            "id_token": id_token,
++            "expires_at": chrono::Utc::now().timestamp() + 3600
++        }
++    });
++    let response = serde_json::to_string(&response)?.replace('\'', "'\\''");
++    let helper = RotateHelper::new(vec![
++        "/bin/sh".into(),
++        "-c".into(),
++        format!("IFS= read -r request; printf '%s' '{response}'"),
++    ])?;
++    Ok(helper.resolve().await?)
++}
++
++fn manager_with_local_requirements(
++    home: &Path,
++    contents: &str,
++    cloud_config_bundle: CloudConfigBundleLoader,
++) -> Result<(ConfigManager, std::path::PathBuf)> {
++    let requirements = home.join("system-requirements.toml");
++    std::fs::write(&requirements, contents)?;
++    let manager = ConfigManager::new_for_tests(
++        home.to_path_buf(),
++        Vec::new(),
++        LoaderOverrides {
++            system_requirements_path: Some(requirements.clone()),
++            ..LoaderOverrides::without_managed_config_for_tests()
++        },
++        cloud_config_bundle,
++    );
++    Ok((manager, requirements))
++}
++
++fn assert_local_network_restrictions(manager: &ConfigManager) -> Result<()> {
++    let policy = manager.network_policy.policy();
++    assert_eq!(
++        policy
++            .acquire(&"https://allowed.example".parse()?)
++            .map(|_| ()),
++        Ok(()),
++    );
++    assert_eq!(
++        policy
++            .acquire(&"https://blocked.example".parse()?)
++            .map(|_| ()),
++        Err(NetworkPolicyDenied::Destination),
++    );
++    assert_eq!(
++        policy.acquire_for_unsupported_sdk().map(|_| ()),
++        Err(NetworkPolicyDenied::UnsupportedTransport),
++    );
++    Ok(())
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn personal_owner_refresh_restores_local_network_restrictions() -> Result<()> {
++    let home = tempdir()?;
++    let cloud_loads = Arc::new(AtomicUsize::new(0));
++    let cloud_config_bundle = CloudConfigBundleLoader::from_getter({
++        let cloud_loads = Arc::clone(&cloud_loads);
++        move || {
++            let cloud_loads = Arc::clone(&cloud_loads);
++            async move {
++                cloud_loads.fetch_add(1, Ordering::SeqCst);
++                Ok(None)
++            }
++        }
++    });
++    let (manager, _) = manager_with_local_requirements(
++        home.path(),
++        "[application.network.domains]\n'allowed.example' = 'allow'",
++        cloud_config_bundle,
++    )?;
++    manager.refresh_application_network_policy().await?;
++    assert_eq!(cloud_loads.load(Ordering::SeqCst), 1);
++    let auth = rotate_personal_auth().await?;
++
++    // Account ownership changes revoke the previous policy while leaving its
++    // cloud=None snapshot available to authorize a local-only reload.
++    manager.network_policy.policy().invalidate();
++    let revision = manager.network_policy.policy().revision();
++    manager
++        .refresh_personal_application_network_policy(&auth, revision)
++        .await?;
++
++    assert_eq!(cloud_loads.load(Ordering::SeqCst), 1);
++    assert_local_network_restrictions(&manager)?;
++    Ok(())
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn personal_owner_refresh_rejects_missing_or_managed_policy_snapshots() -> Result<()> {
++    let auth = rotate_personal_auth().await?;
++
++    let missing_home = tempdir()?;
++    let (missing, _) = manager_with_local_requirements(
++        missing_home.path(),
++        "[application.network.domains]\n'allowed.example' = 'allow'",
++        CloudConfigBundleLoader::default(),
++    )?;
++    let revision = missing.network_policy.policy().revision();
++    assert!(
++        missing
++            .refresh_personal_application_network_policy(&auth, revision)
++            .await
++            .is_err()
++    );
++    assert_eq!(
++        missing
++            .network_policy
++            .policy()
++            .acquire(&"https://allowed.example".parse()?)
++            .map(|_| ()),
++        Err(NetworkPolicyDenied::Unavailable),
++    );
++
++    let managed_home = tempdir()?;
++    let (managed, _) = manager_with_local_requirements(
++        managed_home.path(),
++        "[application.network.domains]\n'allowed.example' = 'allow'",
++        CloudConfigBundleFixture::loader_with_enterprise_requirement("[application.network]"),
++    )?;
++    managed.refresh_application_network_policy().await?;
++    managed.network_policy.policy().invalidate();
++    let revision = managed.network_policy.policy().revision();
++    assert!(
++        managed
++            .refresh_personal_application_network_policy(&auth, revision)
++            .await
++            .is_err()
++    );
++    assert_eq!(
++        managed
++            .network_policy
++            .policy()
++            .acquire(&"https://allowed.example".parse()?)
++            .map(|_| ()),
++        Err(NetworkPolicyDenied::Unavailable),
++    );
++    Ok(())
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn personal_owner_refresh_keeps_policy_unavailable_after_local_requirements_failure()
++-> Result<()> {
++    let home = tempdir()?;
++    let (manager, requirements) = manager_with_local_requirements(
++        home.path(),
++        "[application.network.domains]\n'allowed.example' = 'allow'",
++        CloudConfigBundleLoader::default(),
++    )?;
++    manager.refresh_application_network_policy().await?;
++    std::fs::write(&requirements, "[malformed")?;
++    manager.network_policy.policy().invalidate();
++    let revision = manager.network_policy.policy().revision();
++
++    let auth = rotate_personal_auth().await?;
++    assert!(
++        manager
++            .refresh_personal_application_network_policy(&auth, revision)
++            .await
++            .is_err()
++    );
++    assert_eq!(
++        manager
++            .network_policy
++            .policy()
++            .acquire(&"https://allowed.example".parse()?)
++            .map(|_| ()),
++        Err(NetworkPolicyDenied::Unavailable),
++    );
++    assert_eq!(
++        manager
++            .network_policy
++            .policy()
++            .acquire_for_unsupported_sdk()
++            .map(|_| ()),
++        Err(NetworkPolicyDenied::Unavailable),
++    );
++    Ok(())
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn personal_owner_refresh_does_not_publish_after_admission_revision_goes_stale() -> Result<()>
++{
++    let home = tempdir()?;
++    let (manager, _) = manager_with_local_requirements(
++        home.path(),
++        "[application.network.domains]\n'allowed.example' = 'allow'",
++        CloudConfigBundleLoader::default(),
++    )?;
++    manager.refresh_application_network_policy().await?;
++    let auth = rotate_personal_auth().await?;
++
++    let reload_permit = Arc::clone(&manager.network_policy_reload)
++        .acquire_owned()
++        .await?;
++    manager.network_policy.policy().invalidate();
++    let admitted_revision = manager.network_policy.policy().revision();
++    let refresh = tokio::spawn({
++        let manager = manager.clone();
++        async move {
++            manager
++                .refresh_personal_application_network_policy(&auth, admitted_revision)
++                .await
++        }
++    });
++    let mut refresh = refresh;
++    assert!(
++        timeout(Duration::from_millis(100), &mut refresh)
++            .await
++            .is_err(),
++        "refresh should wait for the held policy reload permit"
++    );
++
++    manager.network_policy.policy().invalidate();
++    drop(reload_permit);
++    let stale = refresh.await?.unwrap_err();
++    assert_eq!(
++        stale.get_ref().and_then(|error| error.downcast_ref()),
++        Some(&NetworkPolicyDenied::Revoked),
++    );
++    assert_eq!(
++        manager
++            .network_policy
++            .policy()
++            .acquire(&"https://allowed.example".parse()?)
++            .map(|_| ()),
++        Err(NetworkPolicyDenied::Unavailable),
++    );
++    assert_eq!(
++        manager
++            .network_policy
++            .policy()
++            .acquire_for_unsupported_sdk()
++            .map(|_| ()),
++        Err(NetworkPolicyDenied::Unavailable),
++    );
++    Ok(())
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn personal_owner_refresh_rejects_auth_without_rotate_identity() -> Result<()> {
++    let home = tempdir()?;
++    let (manager, _) = manager_with_local_requirements(
++        home.path(),
++        "[application.network.domains]\n'allowed.example' = 'allow'",
++        CloudConfigBundleLoader::default(),
++    )?;
++    manager.refresh_application_network_policy().await?;
++    let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
++
++    assert!(
++        manager
++            .refresh_personal_application_network_policy(
++                &auth,
++                manager.network_policy.policy().revision(),
++            )
++            .await
++            .is_err()
++    );
++    assert_local_network_restrictions(&manager)?;
++    Ok(())
++}
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
 index fc0fb1d9d0..75b01af294 100644
 --- a/codex-rs/app-server/src/lib.rs
@@ -17,10 +453,51 @@ index fc0fb1d9d0..75b01af294 100644
      if let Some(path) = test_user_config_file {
          let path = AbsolutePathBuf::from_absolute_path(path).map_err(|err| {
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index c316d7bd8e..ed4c732625 100644
+index c316d7bd8e..9ff8af524a 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1208,7 +1208,7 @@ impl MessageProcessor {
+@@ -139,6 +139,8 @@ fn reject_removed_permission_profile(request: &JSONRPCRequest) -> Result<(), JSO
+ 
+ pub(crate) struct MessageProcessor {
+     pub(crate) turn_admission: TurnAdmission,
++    // Keeps the weak target used by the auth callback alive without creating a cycle.
++    _config_manager_owner: Arc<ConfigManager>,
+     user_verification: Arc<crate::user_verification::Service>,
+     outgoing: Arc<OutgoingMessageSender>,
+     models_refresh_worker: ModelsRefreshWorker,
+@@ -290,6 +292,23 @@ impl MessageProcessor {
+             remote_control_handle,
+             plugin_startup_tasks,
+         } = args;
++        let config_manager_owner = Arc::new(config_manager.clone());
++        let weak_config_manager = Arc::downgrade(&config_manager_owner);
++        if let Err(error) = auth_manager.set_application_network_policy_refresh_callback(
++            move |auth, expected_revision| {
++                let config_manager = weak_config_manager.clone();
++                async move {
++                    let config_manager = config_manager.upgrade().ok_or_else(|| {
++                        std::io::Error::other("application network policy owner is unavailable")
++                    })?;
++                    config_manager
++                        .refresh_personal_application_network_policy(&auth, expected_revision)
++                        .await
++                }
++            },
++        ) {
++            tracing::warn!(%error, "failed to register Codex Rotate application network policy refresh");
++        }
+         // Startup credential reads must not open a browser before initialize selects the policy.
+         let gateway_login_control =
+             codex_login::GatewayLoginControl::for_runtime(&auth_manager.runtime_config());
+@@ -583,6 +602,7 @@ impl MessageProcessor {
+ 
+         Self {
+             turn_admission,
++            _config_manager_owner: config_manager_owner,
+             user_verification,
+             outgoing,
+             models_refresh_worker,
+@@ -1208,7 +1228,7 @@ impl MessageProcessor {
                  .clients_revoke(params)
                  .await
                  .map(|response| Some(response.into())),
@@ -29,7 +506,7 @@ index c316d7bd8e..ed4c732625 100644
                  .config_processor
                  .config_requirements_read()
                  .await
-@@ -1267,7 +1267,7 @@ impl MessageProcessor {
+@@ -1267,7 +1287,7 @@ impl MessageProcessor {
                  .unwatch(connection_id, params)
                  .await
                  .map(|response| Some(response.into())),
@@ -38,7 +515,7 @@ index c316d7bd8e..ed4c732625 100644
                  .config_processor
                  .model_provider_capabilities_read()
                  .await
-@@ -1678,7 +1678,7 @@ impl MessageProcessor {
+@@ -1678,7 +1698,7 @@ impl MessageProcessor {
              ClientRequest::ThreadTimelineList { params, .. } => {
                  self.thread_processor.thread_timeline_list(params).await
              }
@@ -2045,10 +2522,10 @@ index bb5a1e8bed..a07821206d 100644
              session_telemetry,
 diff --git a/codex-rs/core/src/session/rotate_step.rs b/codex-rs/core/src/session/rotate_step.rs
 new file mode 100644
-index 0000000000..bea4f12df2
+index 0000000000..c9f7af6ad4
 --- /dev/null
 +++ b/codex-rs/core/src/session/rotate_step.rs
-@@ -0,0 +1,291 @@
+@@ -0,0 +1,295 @@
 +//! Personal account admission before any account-dependent step preparation.
 +//!
 +//! Managed cloud configuration is deliberately outside this personal adapter.
@@ -2265,6 +2742,10 @@ index 0000000000..bea4f12df2
 +                        ));
 +                    }
 +                }
++                manager
++                    .refresh_application_network_policy_for_request(auth)
++                    .or_cancel(cancellation_token)
++                    .await??;
 +                let plugins = &self.services.plugins_manager;
 +                let plugins_config = turn_context.config.plugins_config_input();
 +                if plugins_config.plugins_enabled
@@ -3117,6 +3598,25 @@ index 1624e777fd..e2c11bfd25 100644
      );
      let args = json!({
          "cmd": command,
+diff --git a/codex-rs/http-client/src/network_policy.rs b/codex-rs/http-client/src/network_policy.rs
+index 4c3ce3e5f0..3f88d07ad6 100644
+--- a/codex-rs/http-client/src/network_policy.rs
++++ b/codex-rs/http-client/src/network_policy.rs
+@@ -219,6 +219,14 @@ impl NetworkPolicy {
+         self.state.is_some()
+     }
+ 
++    /// Whether a policy is loaded for this account; destinations still require a permit.
++    pub fn is_available(&self) -> bool {
++        self.state.as_ref().is_none_or(|state| {
++            let state = lock_state(state);
++            state.policy.is_some() && self.account.is_none_or(|account| account == state.account)
++        })
++    }
++
+     /// Watches effective changes; unmanaged callers have no application policy owner.
+     pub fn changes(&self) -> Option<watch::Receiver<()>> {
+         self.state
 diff --git a/codex-rs/login/src/auth/auth_tests.rs b/codex-rs/login/src/auth/auth_tests.rs
 index 9927a604a1..590c0ae676 100644
 --- a/codex-rs/login/src/auth/auth_tests.rs
@@ -3254,10 +3754,19 @@ index ae509a4a73..a43018614c 100644
      std::env::var("CODEX_SANDBOX").as_deref() == Ok("seatbelt")
  }
 diff --git a/codex-rs/login/src/auth/manager.rs b/codex-rs/login/src/auth/manager.rs
-index 14cfee9221..778952a48e 100644
+index 14cfee9221..1ede19d2af 100644
 --- a/codex-rs/login/src/auth/manager.rs
 +++ b/codex-rs/login/src/auth/manager.rs
-@@ -43,6 +43,11 @@ use super::change_state::AuthChangeState;
+@@ -1,5 +1,8 @@
+ mod workspace_routing;
+ 
++#[cfg(test)]
++mod application_network_refresh_tests;
++
+ use chrono::Utc;
+ use http::StatusCode;
+ use serde::Deserialize;
+@@ -43,6 +46,11 @@ use super::change_state::AuthChangeState;
  use super::change_state::same_owner;
  use super::external_bearer::BearerTokenRefresher;
  use super::revoke::revoke_auth_tokens;
@@ -3269,7 +3778,7 @@ index 14cfee9221..778952a48e 100644
  use super::workload_identity::WorkloadIdentityExternalAuth;
  use super::workload_identity::WorkloadIdentitySessionError;
  use crate::auth::AuthHeaders;
-@@ -187,6 +192,7 @@ pub struct ApiKeyAuth {
+@@ -187,6 +195,7 @@ pub struct ApiKeyAuth {
  pub struct ChatgptAuth {
      state: ChatgptAuthState,
      storage: Arc<dyn AuthStorageBackend>,
@@ -3277,7 +3786,7 @@ index 14cfee9221..778952a48e 100644
  }
  
  #[derive(Debug, Clone)]
-@@ -216,6 +222,10 @@ pub const REVOKE_TOKEN_URL_OVERRIDE_ENV_VAR: &str = "CODEX_REVOKE_TOKEN_URL_OVER
+@@ -216,6 +225,10 @@ pub const REVOKE_TOKEN_URL_OVERRIDE_ENV_VAR: &str = "CODEX_REVOKE_TOKEN_URL_OVER
  pub const CLIENT_ID_OVERRIDE_ENV_VAR: &str = "CODEX_APP_SERVER_LOGIN_CLIENT_ID";
  static NEXT_DUMMY_AUTH_ID: AtomicU64 = AtomicU64::new(1);
  
@@ -3288,7 +3797,7 @@ index 14cfee9221..778952a48e 100644
  #[derive(Debug, Error)]
  pub enum RefreshTokenError {
      #[error("{0}")]
-@@ -273,6 +283,15 @@ pub struct ExternalAuthRefreshContext {
+@@ -273,6 +286,15 @@ pub struct ExternalAuthRefreshContext {
  ///
  /// Implementations own the current auth value and any source-specific refresh mechanism.
  pub trait ExternalAuth: Send + Sync {
@@ -3304,7 +3813,7 @@ index 14cfee9221..778952a48e 100644
      /// Returns the provider's current auth value.
      fn resolve(&self) -> ExternalAuthFuture<'_, CodexAuth>;
  
-@@ -420,7 +439,11 @@ impl CodexAuth {
+@@ -420,7 +442,11 @@ impl CodexAuth {
                      storage_mode,
                      keyring_backend_kind,
                  );
@@ -3317,7 +3826,7 @@ index 14cfee9221..778952a48e 100644
              }
              AuthMode::ChatgptAuthTokens => Ok(Self::ChatgptAuthTokens(ChatgptAuthTokens { state })),
              AuthMode::ApiKey => unreachable!("api key mode is handled above"),
-@@ -841,7 +864,11 @@ impl CodexAuth {
+@@ -841,7 +867,11 @@ impl CodexAuth {
              AuthCredentialsStoreMode::Ephemeral,
              AuthKeyringBackendKind::default(),
          );
@@ -3330,7 +3839,7 @@ index 14cfee9221..778952a48e 100644
      }
  
      /// Constructs in-memory ChatGPT auth from externally managed tokens.
-@@ -867,6 +894,112 @@ impl CodexAuth {
+@@ -867,6 +897,112 @@ impl CodexAuth {
              api_key: api_key.to_owned(),
          })
      }
@@ -3443,7 +3952,7 @@ index 14cfee9221..778952a48e 100644
  }
  
  impl ManagedChatGptAgentIdentityBinding {
-@@ -1180,6 +1313,7 @@ pub fn load_auth_dot_json(
+@@ -1180,6 +1316,7 @@ pub fn load_auth_dot_json(
  
  #[derive(Debug, Clone, PartialEq, Eq)]
  pub struct AuthConfig {
@@ -3451,7 +3960,7 @@ index 14cfee9221..778952a48e 100644
      pub codex_home: PathBuf,
      pub auth_credentials_store_mode: AuthCredentialsStoreMode,
      pub keyring_backend_kind: AuthKeyringBackendKind,
-@@ -1228,6 +1362,54 @@ impl AuthConfig {
+@@ -1228,6 +1365,54 @@ impl AuthConfig {
          &self,
          enable_codex_api_key_env: bool,
      ) -> std::io::Result<Option<CodexAuth>> {
@@ -3506,7 +4015,7 @@ index 14cfee9221..778952a48e 100644
          let allowed_login_methods = self.allowed_login_methods();
          let workspaces = self.effective_chatgpt_workspaces();
          let agent_identity_authapi_base_url =
-@@ -1760,7 +1942,8 @@ impl AuthDotJson {
+@@ -1760,7 +1945,8 @@ impl AuthDotJson {
          })
      }
  
@@ -3516,7 +4025,30 @@ index 14cfee9221..778952a48e 100644
          if let Some(mode) = self.auth_mode {
              return mode;
          }
-@@ -2068,6 +2251,11 @@ pub struct AuthManager {
+@@ -2031,6 +2217,13 @@ impl UnauthorizedRecovery {
+     }
+ }
+ 
++type ApplicationNetworkPolicyRefreshCallback = dyn Fn(
++        CodexAuth,
++        codex_http_client::NetworkPolicyRevision,
++    ) -> Pin<Box<dyn Future<Output = std::io::Result<()>> + Send>>
++    + Send
++    + Sync;
++
+ /// Central manager providing a single source of truth for auth.json derived
+ /// authentication data. It loads once (or on preference change) and then
+ /// hands out cloned `CodexAuth` values so the rest of the program has a
+@@ -2045,6 +2238,8 @@ pub struct AuthManager {
+     auth_change_tx: watch::Sender<u64>,
+     auth_change_state_tx: watch::Sender<AuthChangeState>,
+     workspace_routing_resolver: OnceLock<Weak<dyn WorkspaceRoutingResolver>>,
++    application_network_policy_refresh:
++        RwLock<Option<Arc<ApplicationNetworkPolicyRefreshCallback>>>,
+     enable_codex_api_key_env: bool,
+     auth_credentials_store_mode: AuthCredentialsStoreMode,
+     keyring_backend_kind: AuthKeyringBackendKind,
+@@ -2068,6 +2263,11 @@ pub struct AuthManager {
  /// `codex_core::config::Config`, but this trait keeps `codex-login` independent
  /// from `codex-core`.
  pub trait AuthManagerConfig {
@@ -3528,7 +4060,93 @@ index 14cfee9221..778952a48e 100644
      /// Returns the Codex home directory used for auth storage.
      fn codex_home(&self) -> PathBuf;
  
-@@ -2163,6 +2351,7 @@ impl AuthManager {
+@@ -2133,6 +2333,85 @@ fn default_agent_identity_authapi_base_url() -> Option<String> {
+ }
+ 
+ impl AuthManager {
++    /// Registers the configuration owner's synchronous request-admission refresh.
++    pub fn set_application_network_policy_refresh_callback<F, Fut>(
++        &self,
++        callback: F,
++    ) -> std::io::Result<()>
++    where
++        F: Fn(CodexAuth, codex_http_client::NetworkPolicyRevision) -> Fut + Send + Sync + 'static,
++        Fut: Future<Output = std::io::Result<()>> + Send + 'static,
++    {
++        *self
++            .application_network_policy_refresh
++            .write()
++            .map_err(|_| {
++                std::io::Error::other("application network policy refresh lock poisoned")
++            })? = Some(Arc::new(move |auth, revision| {
++            Box::pin(callback(auth, revision))
++        }));
++        Ok(())
++    }
++
++    fn request_network_policy_revision(
++        &self,
++        auth: &CodexAuth,
++    ) -> std::io::Result<codex_http_client::NetworkPolicyRevision> {
++        // set_cached_auth invalidates the policy while holding this same auth lock.
++        // Read the identity and revision together, without holding a lock across I/O.
++        let current = self
++            .inner
++            .read()
++            .map_err(|_| std::io::Error::other("cached auth lock poisoned"))?;
++        let matches = same_owner(current.auth.as_ref(), Some(auth))
++            && current
++                .auth
++                .as_ref()
++                .and_then(CodexAuth::rotate_identity)
++                .zip(auth.rotate_identity())
++                .is_some_and(|(current, requested)| {
++                    current.account_key == requested.account_key
++                        && current.selection_epoch == requested.selection_epoch
++                });
++        if !matches {
++            return Err(std::io::Error::other(
++                codex_http_client::NetworkPolicyDenied::Revoked,
++            ));
++        }
++        Ok(self.application_network_policy().revision())
++    }
++
++    /// Restores the admitted personal account's policy before any account-dependent I/O.
++    pub async fn refresh_application_network_policy_for_request(
++        &self,
++        auth: &CodexAuth,
++    ) -> std::io::Result<()> {
++        let policy = self.application_network_policy();
++        if !policy.is_managed() {
++            return Ok(());
++        }
++        let revision = self.request_network_policy_revision(auth)?;
++        // The configuration owner also validates that a background refresh did not
++        // publish a cached managed bundle, even when a policy is already available.
++        let refresh = self
++            .application_network_policy_refresh
++            .read()
++            .map_err(|_| {
++                std::io::Error::other("application network policy refresh lock poisoned")
++            })?
++            .clone()
++            .ok_or_else(|| {
++                std::io::Error::other("application network policy refresh is unavailable")
++            })?;
++        refresh(auth.clone(), revision).await?;
++        if self.request_network_policy_revision(auth)? != revision || !policy.is_available() {
++            return Err(std::io::Error::other(
++                codex_http_client::NetworkPolicyDenied::Revoked,
++            ));
++        }
++        Ok(())
++    }
++
+     /// Returns the application policy associated with this account owner.
+     pub fn application_network_policy(&self) -> codex_http_client::NetworkPolicy {
+         self.auth_route_config
+@@ -2163,6 +2442,7 @@ impl AuthManager {
      ) -> Self {
          Self::new_from_auth_config(
              AuthConfig {
@@ -3536,7 +4154,7 @@ index 14cfee9221..778952a48e 100644
                  codex_home,
                  auth_credentials_store_mode,
                  keyring_backend_kind,
-@@ -2179,11 +2368,12 @@ impl AuthManager {
+@@ -2179,11 +2459,12 @@ impl AuthManager {
  
      async fn new_from_auth_config(auth_config: AuthConfig, enable_codex_api_key_env: bool) -> Self {
          let managed_auth = auth_config
@@ -3550,7 +4168,47 @@ index 14cfee9221..778952a48e 100644
              codex_home,
              auth_credentials_store_mode,
              keyring_backend_kind,
-@@ -2360,6 +2550,9 @@ impl AuthManager {
+@@ -2205,6 +2486,7 @@ impl AuthManager {
+             auth_change_tx,
+             auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
+             workspace_routing_resolver: OnceLock::new(),
++            application_network_policy_refresh: RwLock::new(None),
+             enable_codex_api_key_env,
+             auth_credentials_store_mode,
+             keyring_backend_kind,
+@@ -2241,6 +2523,7 @@ impl AuthManager {
+             auth_change_tx,
+             auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
+             workspace_routing_resolver: OnceLock::new(),
++            application_network_policy_refresh: RwLock::new(None),
+             enable_codex_api_key_env: false,
+             auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+             keyring_backend_kind: AuthKeyringBackendKind::default(),
+@@ -2271,6 +2554,7 @@ impl AuthManager {
+             auth_change_tx,
+             auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
+             workspace_routing_resolver: OnceLock::new(),
++            application_network_policy_refresh: RwLock::new(None),
+             enable_codex_api_key_env: false,
+             auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+             keyring_backend_kind: AuthKeyringBackendKind::default(),
+@@ -2305,6 +2589,7 @@ impl AuthManager {
+             auth_change_tx,
+             auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
+             workspace_routing_resolver: OnceLock::new(),
++            application_network_policy_refresh: RwLock::new(None),
+             enable_codex_api_key_env: false,
+             auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+             keyring_backend_kind: AuthKeyringBackendKind::default(),
+@@ -2337,6 +2622,7 @@ impl AuthManager {
+             auth_change_tx,
+             auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
+             workspace_routing_resolver: OnceLock::new(),
++            application_network_policy_refresh: RwLock::new(None),
+             enable_codex_api_key_env: false,
+             auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+             keyring_backend_kind: AuthKeyringBackendKind::default(),
+@@ -2360,6 +2646,9 @@ impl AuthManager {
  
      /// Current cached auth (clone) without attempting a refresh.
      pub fn auth_cached(&self) -> Option<CodexAuth> {
@@ -3560,7 +4218,7 @@ index 14cfee9221..778952a48e 100644
          self.inner
              .read()
              .ok()
-@@ -2391,6 +2584,15 @@ impl AuthManager {
+@@ -2391,6 +2680,15 @@ impl AuthManager {
      /// a guarded reload and then refreshes only if the on-disk auth is unchanged.
      #[instrument(level = "trace", skip_all)]
      pub async fn auth(&self) -> Option<CodexAuth> {
@@ -3576,7 +4234,7 @@ index 14cfee9221..778952a48e 100644
          if self.has_external_auth() {
              self.reload().await;
              return self.auth_cached();
-@@ -2422,6 +2624,17 @@ impl AuthManager {
+@@ -2422,6 +2720,17 @@ impl AuthManager {
          let Some(auth) = self.auth().await else {
              return Ok(None);
          };
@@ -3594,7 +4252,7 @@ index 14cfee9221..778952a48e 100644
          if policy == AgentIdentityAuthPolicy::ChatGptAuth && matches!(auth, CodexAuth::Chatgpt(_)) {
              let _bootstrap_permit = self
                  .agent_identity_lock
-@@ -2430,7 +2643,7 @@ impl AuthManager {
+@@ -2430,7 +2739,7 @@ impl AuthManager {
                  .map_err(std::io::Error::other)?;
              let effective_chatgpt_workspaces = self.effective_chatgpt_workspaces();
              let cooldown_key = ManagedChatGptAgentIdentityBinding::from_auth(
@@ -3603,7 +4261,7 @@ index 14cfee9221..778952a48e 100644
                  effective_chatgpt_workspaces.clone(),
              )
              .and_then(|binding| {
-@@ -2664,11 +2877,20 @@ impl AuthManager {
+@@ -2664,11 +2973,20 @@ impl AuthManager {
          &self,
          external_auth: Arc<dyn ExternalAuth>,
      ) -> Result<(), RefreshTokenError> {
@@ -3625,7 +4283,7 @@ index 14cfee9221..778952a48e 100644
          self.install_external_auth(external_auth).await
      }
  
-@@ -2689,7 +2911,11 @@ impl AuthManager {
+@@ -2689,7 +3007,11 @@ impl AuthManager {
      }
  
      pub fn clear_external_auth(&self) {
@@ -3638,7 +4296,7 @@ index 14cfee9221..778952a48e 100644
              return;
          }
          if let Ok(mut external_auth) = self.external_auth.write()
-@@ -2739,6 +2965,12 @@ impl AuthManager {
+@@ -2739,6 +3061,12 @@ impl AuthManager {
          self.external_auth_provider().is_some()
      }
  
@@ -3651,7 +4309,7 @@ index 14cfee9221..778952a48e 100644
      pub fn is_workload_identity_selected(&self) -> bool {
          self.workload_identity_selected
      }
-@@ -2799,6 +3031,13 @@ impl AuthManager {
+@@ -2799,6 +3127,13 @@ impl AuthManager {
          enable_codex_api_key_env: bool,
      ) -> Result<Arc<Self>, AuthManagerInitializationError> {
          let external_auth = WorkloadIdentityExternalAuth::from_process_config(&auth_config)?;
@@ -3665,7 +4323,7 @@ index 14cfee9221..778952a48e 100644
          let mut manager = Self::new_from_auth_config(auth_config, enable_codex_api_key_env).await;
          manager.workload_identity_selected = external_auth.is_some();
          let manager = Arc::new(manager);
-@@ -2807,9 +3046,202 @@ impl AuthManager {
+@@ -2807,9 +3142,203 @@ impl AuthManager {
                  .install_external_auth(Arc::new(external_auth))
                  .await?;
          }
@@ -3779,6 +4437,7 @@ index 14cfee9221..778952a48e 100644
 +            auth_change_tx: watch::channel(0).0,
 +            auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
 +            workspace_routing_resolver: OnceLock::new(),
++            application_network_policy_refresh: RwLock::new(None),
 +            enable_codex_api_key_env: false,
 +            auth_credentials_store_mode: self.auth_credentials_store_mode,
 +            keyring_backend_kind: self.keyring_backend_kind,
@@ -3868,7 +4527,7 @@ index 14cfee9221..778952a48e 100644
      pub fn unauthorized_recovery(self: &Arc<Self>) -> UnauthorizedRecovery {
          UnauthorizedRecovery::new(Arc::clone(self))
      }
-@@ -2939,12 +3371,41 @@ impl AuthManager {
+@@ -2939,12 +3468,41 @@ impl AuthManager {
          result
      }
  
@@ -3914,7 +4573,7 @@ index 14cfee9221..778952a48e 100644
          let removed = logout_all_stores(
              &self.codex_home,
              self.auth_credentials_store_mode,
-@@ -2958,6 +3419,9 @@ impl AuthManager {
+@@ -2958,6 +3516,9 @@ impl AuthManager {
  
      pub async fn logout_with_revoke(&self) -> std::io::Result<bool> {
          self.ensure_logout_allowed()?;
@@ -3924,7 +4583,7 @@ index 14cfee9221..778952a48e 100644
          let auth_dot_json = self
              .auth_cached()
              .and_then(|auth| auth.get_current_auth_json());
-@@ -2977,6 +3441,14 @@ impl AuthManager {
+@@ -2977,6 +3538,14 @@ impl AuthManager {
      }
  
      fn ensure_logout_allowed(&self) -> std::io::Result<()> {
@@ -3939,7 +4598,7 @@ index 14cfee9221..778952a48e 100644
          if self.workload_identity_selected {
              return Err(std::io::Error::new(
                  std::io::ErrorKind::PermissionDenied,
-@@ -3002,6 +3474,9 @@ impl AuthManager {
+@@ -3002,6 +3571,9 @@ impl AuthManager {
      }
  
      fn should_refresh_proactively(auth: &CodexAuth) -> bool {
@@ -3949,7 +4608,7 @@ index 14cfee9221..778952a48e 100644
          let chatgpt_auth = match auth {
              CodexAuth::Chatgpt(chatgpt_auth) => chatgpt_auth,
              _ => return false,
-@@ -3094,6 +3569,11 @@ impl AuthManager {
+@@ -3094,6 +3666,11 @@ impl AuthManager {
          auth: &ChatgptAuth,
          refresh_token: String,
      ) -> Result<(), RefreshTokenError> {
@@ -3961,7 +4620,7 @@ index 14cfee9221..778952a48e 100644
          let refresh_response = request_chatgpt_token_refresh(refresh_token, auth.client()).await?;
  
          persist_tokens(
-@@ -3111,6 +3591,7 @@ impl AuthManager {
+@@ -3111,6 +3688,7 @@ impl AuthManager {
  
  fn auth_config_from(config: &impl AuthManagerConfig) -> AuthConfig {
      AuthConfig {
@@ -3969,6 +4628,216 @@ index 14cfee9221..778952a48e 100644
          codex_home: config.codex_home(),
          auth_credentials_store_mode: config.cli_auth_credentials_store_mode(),
          keyring_backend_kind: config.auth_keyring_backend_kind(),
+diff --git a/codex-rs/login/src/auth/manager/application_network_refresh_tests.rs b/codex-rs/login/src/auth/manager/application_network_refresh_tests.rs
+new file mode 100644
+index 0000000000..34b7a55962
+--- /dev/null
++++ b/codex-rs/login/src/auth/manager/application_network_refresh_tests.rs
+@@ -0,0 +1,204 @@
++use super::*;
++use base64::Engine;
++use base64::engine::general_purpose::URL_SAFE_NO_PAD;
++use codex_http_client::DestinationPolicy;
++use codex_http_client::NetworkPolicyController;
++use pretty_assertions::assert_eq;
++use serde_json::json;
++use std::sync::Arc;
++use std::sync::atomic::AtomicBool;
++use std::sync::atomic::Ordering;
++use tokio::sync::Notify;
++use tokio::sync::mpsc;
++
++fn rotate_auth(account: &str, credential_revision: u64) -> CodexAuth {
++    let claims = json!({
++        "https://api.openai.com/auth": {
++            "chatgpt_account_id": account,
++            "chatgpt_user_id": "synthetic-user",
++            "chatgpt_plan_type": "pro"
++        }
++    });
++    let id_token = format!(
++        "e30.{}.signature",
++        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap())
++    );
++    let snapshot = serde_json::from_value(json!({
++        "account_key": account,
++        "account_id": account,
++        "selection_epoch": 7,
++        "credential_revision": credential_revision,
++        "id_token": id_token,
++        "access_token": "synthetic-access",
++        "expires_at": chrono::Utc::now().timestamp() + 3600
++    }))
++    .unwrap();
++    CodexAuth::from_rotate_snapshot(snapshot, None).unwrap()
++}
++
++fn managed_manager(
++    auth: CodexAuth,
++) -> (
++    Arc<AuthManager>,
++    NetworkPolicyController,
++    codex_http_client::NetworkPolicy,
++) {
++    let mut manager = AuthManager::from_auth_for_testing(auth);
++    let controller = NetworkPolicyController::default();
++    let policy = controller.policy();
++    Arc::get_mut(&mut manager)
++        .expect("test manager should not have been cloned")
++        .auth_route_config = AuthRouteConfig::from_http_client_factory(
++        manager
++            .http_client_factory()
++            .with_network_policy(policy.clone()),
++    );
++    (manager, controller, policy)
++}
++
++#[tokio::test]
++async fn request_waits_for_application_network_policy_refresh() {
++    let auth = rotate_auth("account-a", 3);
++    let (manager, controller, policy) = managed_manager(auth.clone());
++    let (callback_tx, mut callback_rx) = mpsc::unbounded_channel();
++    let callback_gate = Arc::new(Notify::new());
++    let callback_gate_for_refresh = Arc::clone(&callback_gate);
++    manager
++        .set_application_network_policy_refresh_callback(move |callback_auth, revision| {
++            let callback_tx = callback_tx.clone();
++            let callback_gate = Arc::clone(&callback_gate_for_refresh);
++            let controller = controller.clone();
++            async move {
++                callback_tx
++                    .send((callback_auth, revision))
++                    .map_err(std::io::Error::other)?;
++                callback_gate.notified().await;
++                if !controller.publish(revision, DestinationPolicy::Unrestricted) {
++                    return Err(std::io::Error::other("policy revision changed"));
++                }
++                Ok(())
++            }
++        })
++        .unwrap();
++
++    let request_manager = Arc::clone(&manager);
++    let request_auth = auth.clone();
++    let request = tokio::spawn(async move {
++        request_manager
++            .refresh_application_network_policy_for_request(&request_auth)
++            .await
++    });
++
++    let (callback_auth, callback_revision) =
++        tokio::time::timeout(std::time::Duration::from_secs(1), callback_rx.recv())
++            .await
++            .expect("refresh callback should start")
++            .expect("refresh callback should report its request");
++    assert_eq!(callback_auth.rotate_identity(), auth.rotate_identity());
++    assert_eq!(callback_auth.get_account_id(), Some("account-a".into()));
++    assert_eq!(callback_revision, policy.revision());
++    assert!(!policy.is_available());
++    assert!(
++        !request.is_finished(),
++        "request admission must wait for policy publication"
++    );
++
++    callback_gate.notify_one();
++    request
++        .await
++        .expect("policy refresh task should finish")
++        .expect("policy refresh should succeed");
++    assert!(policy.is_available());
++}
++
++#[tokio::test]
++async fn application_network_policy_callback_error_keeps_policy_unavailable() {
++    let auth = rotate_auth("account-a", 1);
++    let (manager, _controller, policy) = managed_manager(auth.clone());
++    manager
++        .set_application_network_policy_refresh_callback(|_, _| async {
++            Err(std::io::Error::other("synthetic refresh failure"))
++        })
++        .unwrap();
++
++    let error = manager
++        .refresh_application_network_policy_for_request(&auth)
++        .await
++        .unwrap_err();
++
++    assert_eq!(error.to_string(), "synthetic refresh failure");
++    assert!(!policy.is_available());
++}
++
++#[tokio::test]
++async fn owner_change_revokes_a_waiting_policy_refresh() {
++    let auth = rotate_auth("account-a", 1);
++    let (manager, controller, policy) = managed_manager(auth.clone());
++    let (callback_tx, mut callback_rx) = mpsc::unbounded_channel();
++    let callback_gate = Arc::new(Notify::new());
++    let callback_gate_for_refresh = Arc::clone(&callback_gate);
++    let stale_publish_succeeded = Arc::new(AtomicBool::new(false));
++    let stale_publish_succeeded_for_refresh = Arc::clone(&stale_publish_succeeded);
++    manager
++        .set_application_network_policy_refresh_callback(move |_, revision| {
++            let callback_tx = callback_tx.clone();
++            let callback_gate = Arc::clone(&callback_gate_for_refresh);
++            let stale_publish_succeeded = Arc::clone(&stale_publish_succeeded_for_refresh);
++            let controller = controller.clone();
++            async move {
++                callback_tx.send(revision).map_err(std::io::Error::other)?;
++                callback_gate.notified().await;
++                stale_publish_succeeded.store(
++                    controller.publish(revision, DestinationPolicy::Unrestricted),
++                    Ordering::SeqCst,
++                );
++                Ok(())
++            }
++        })
++        .unwrap();
++
++    let request_manager = Arc::clone(&manager);
++    let request_auth = auth.clone();
++    let request = tokio::spawn(async move {
++        request_manager
++            .refresh_application_network_policy_for_request(&request_auth)
++            .await
++    });
++    let old_revision = tokio::time::timeout(std::time::Duration::from_secs(1), callback_rx.recv())
++        .await
++        .expect("refresh callback should start")
++        .expect("refresh callback should report its revision");
++    assert_eq!(old_revision, policy.revision());
++
++    manager.set_cached_auth(Some(rotate_auth("account-b", 1)));
++    assert!(!policy.is_available());
++    callback_gate.notify_one();
++
++    let error = request
++        .await
++        .expect("policy refresh task should finish")
++        .expect_err("old owner refresh must be rejected");
++    assert_eq!(
++        error.to_string(),
++        codex_http_client::NetworkPolicyDenied::Revoked.to_string()
++    );
++    assert!(!stale_publish_succeeded.load(Ordering::SeqCst));
++    assert!(!policy.is_available());
++}
++
++#[tokio::test]
++async fn missing_application_network_policy_callback_fails_closed() {
++    let auth = rotate_auth("account-a", 1);
++    let (manager, _controller, policy) = managed_manager(auth.clone());
++
++    let error = manager
++        .refresh_application_network_policy_for_request(&auth)
++        .await
++        .unwrap_err();
++
++    assert_eq!(
++        error.to_string(),
++        "application network policy refresh is unavailable"
++    );
++    assert!(!policy.is_available());
++}
 diff --git a/codex-rs/login/src/auth/mod.rs b/codex-rs/login/src/auth/mod.rs
 index 226255f39e..68619b1f55 100644
 --- a/codex-rs/login/src/auth/mod.rs

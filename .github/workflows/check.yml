@@ -167,7 +167,8 @@ jobs:
             -p codex-app-server-protocol \
             -p codex-app-server \
             -p codex-protocol \
-            -p codex-model-provider
+            -p codex-model-provider \
+            -p codex-http-client
 
       - name: Check the public core API sample
         working-directory: staging/openai-codex/codex-rs
