@@ -162,13 +162,15 @@ jobs:
           # TLS fallback fixtures require the platform's default TLS backend.
           # A custom CA environment selects rustls before those fixtures run;
           # custom-CA tests supply their own explicit environment independently.
+          # Invoke nextest directly: Cargo's own OpenSSL initialization can
+          # reintroduce SSL_CERT_FILE before launching `cargo nextest` on Linux.
           for name in CODEX_CA_CERTIFICATE SSL_CERT_FILE; do
             if [[ -n "${!name:-}" ]]; then
               echo "Isolating inherited ${name} from unit test fixtures"
             fi
           done
           env -u CODEX_CA_CERTIFICATE -u SSL_CERT_FILE \
-            cargo nextest run --no-fail-fast --test-threads 2 --lib \
+            cargo-nextest nextest run --no-fail-fast --test-threads 2 --lib \
             -p codex-tui \
             -p codex-api \
             -p codex-login \
