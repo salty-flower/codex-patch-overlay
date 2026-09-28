@@ -1917,10 +1917,10 @@ index 0000000000..ce3714fa15
 +}
 diff --git a/codex-rs/tui/src/status_line_command/mod.rs b/codex-rs/tui/src/status_line_command/mod.rs
 new file mode 100644
-index 0000000000..c91fef4031
+index 0000000000..b476c13c82
 --- /dev/null
 +++ b/codex-rs/tui/src/status_line_command/mod.rs
-@@ -0,0 +1,339 @@
+@@ -0,0 +1,340 @@
 +//! Safe command-backed status-line execution and its stable stdin contract.
 +
 +mod ansi;
@@ -2025,8 +2025,9 @@ index 0000000000..c91fef4031
 +    pub(crate) count: usize,
 +    /// Key that opens the warnings viewer, or `None` when only `/warnings` is bound.
 +    pub(crate) shortcut: Option<String>,
-+    /// Columns at the right edge of the last output row that the warning notice paints over.
-+    /// Output there is clipped; keep it within `terminal.columns - reserved_columns`.
++    /// Columns at the right edge of the last output row taken by the warning notice.
++    /// Codex prefixes each row with a 2-column indent, so the last row's output must fit in
++    /// `terminal.columns - 2 - reserved_columns` columns; anything wider is clipped.
 +    pub(crate) reserved_columns: u16,
 +}
 +
