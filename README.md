@@ -20,7 +20,7 @@ for macOS (`aarch64-apple-darwin`) and Linux (`x86_64-unknown-linux-musl`), each
 `.sha256` checksum. No Nix required:
 
 ```sh
-tag=codex-0.157.0-patch.2
+tag=codex-0.157.1-patch.2
 target=aarch64-apple-darwin   # or x86_64-unknown-linux-musl
 base=https://github.com/salty-flower/codex-patch-overlay/releases/download/$tag
 curl -fsSL -O "$base/$tag-$target.tar.gz"
@@ -130,6 +130,22 @@ reasoning_display = "persistent"
 command = ["/path/to/status-line-helper"]
 refresh_interval_ms = 1000
 ```
+
+### Status-line command contract
+
+Codex runs the command directly, without a shell, and writes one JSON snapshot to its stdin.
+`COLUMNS` and `LINES` hold the terminal size.
+The snapshot has `schema_version = 1` and carries workspace, model, effort, permission and approval modes, turn state, context window, rate limits, session, version, git branch, `terminal`, and `warnings`.
+Fields have been added without a version bump (`warnings` arrived in `codex-0.157.1-patch.2`), so ignore unknown fields.
+
+The command prints at most two rows; SGR colors are kept and other escape sequences are dropped.
+While it succeeds, its rows replace the built-in `tui.status_line`, including the separate row the fullscreen transcript reserves for it.
+The built-in line returns only while the command has not yet succeeded for the current thread.
+
+Codex indents each row by two columns, so a row fits in `terminal.columns - 2` columns.
+When warnings exist, the `⚠ N warnings` notice takes the right end of the last row.
+`warnings.reserved_columns` is its width, so the last row fits in `terminal.columns - 2 - warnings.reserved_columns` columns.
+`warnings.count` and `warnings.shortcut` (the key that opens the viewer, or `null`) let the command show warnings itself.
 
 ## Layout
 
