@@ -737,10 +737,26 @@ index 158c39f1c7..a9ba1083a3 100644
      fn footer_flash_expires_and_falls_back_to_hint_override() {
          let (tx, _rx) = unbounded_channel::<AppEvent>();
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs b/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
-index fe4a6dc186..403c39b419 100644
+index fe4a6dc186..eb6efb3886 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
-@@ -213,6 +213,7 @@ pub(super) struct FooterState {
+@@ -130,9 +130,14 @@ impl super::ChatComposer {
+     }
+ 
+     pub(super) fn footer_hint_height(&self, width: u16, options: ComposerRenderOptions<'_>) -> u16 {
+-        if self.show_warning_notice(options) || self.shortcuts_above_composer(options) {
++        if self.shortcuts_above_composer(options) {
+             return 1;
+         }
++        if self.show_warning_notice(options) {
++            // Command-backed rows keep their height, so a warning shares their last row instead
++            // of dropping the others.
++            return self.custom_footer_height().unwrap_or(1).max(1);
++        }
+         options
+             .footer
+             .map_or_else(
+@@ -213,6 +218,7 @@ pub(super) struct FooterState {
      pub(super) goal_status_indicator: Option<GoalStatusIndicator>,
      pub(super) ide_context_active: bool,
      pub(super) status_line_value: Option<Line<'static>>,
