@@ -1,5 +1,5 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 69de698259..2fcac15b79 100644
+index f250ad62af..9ea7c6ad1b 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
 @@ -773,6 +773,38 @@ pub struct ModelAvailabilityNuxConfig {
@@ -59,7 +59,7 @@ index 69de698259..2fcac15b79 100644
      /// Defaults to `true`.
      #[serde(default = "default_true")]
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 149e662b03..72d2872606 100644
+index c17f4b3f61..d9b5458e7c 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -4022,6 +4022,40 @@
@@ -331,7 +331,7 @@ index 6f70881fdb..39ed85c921 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 308ce8b2e5..c3913745e9 100644
+index f386619ee9..398fbf9b51 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
 @@ -239,6 +239,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
@@ -424,7 +424,7 @@ index d1974eb49b..10241d6067 100644
      StatusLineSetup {
          items: Vec<StatusLineItem>,
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer.rs b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-index 158c39f1c7..84f93d9e1f 100644
+index 158c39f1c7..a9ba1083a3 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer.rs
 @@ -276,6 +276,7 @@ use crate::key_hint::KeyBinding;
@@ -479,7 +479,7 @@ index 158c39f1c7..84f93d9e1f 100644
      }
  
      pub(crate) fn sync_popups(&mut self) {
-@@ -4402,6 +4417,17 @@ impl ChatComposer {
+@@ -4402,6 +4417,64 @@ impl ChatComposer {
          true
      }
  
@@ -494,10 +494,57 @@ index 158c39f1c7..84f93d9e1f 100644
 +        true
 +    }
 +
++    pub(crate) fn warnings_shortcut_label(&self) -> Option<String> {
++        self.footer
++            .show_warnings_key
++            .map(ShortcutHint::display_label)
++    }
++
++    /// Columns at the right edge of a `width`-wide passive footer row that the warning notice
++    /// covers: the notice itself, its clear edge cell, and one separating column.
++    pub(crate) fn status_line_warning_reserved_columns(&self, count: usize, width: u16) -> u16 {
++        if count == 0 {
++            return 0;
++        }
++        // Mirrors `warning_notice_layout` for a passive row with no competing hint.
++        let available = inset_footer_hint_area(Rect::new(0, 0, width, 1))
++            .width
++            .saturating_sub(/*rhs*/ 1);
++        let budget = (available / 2).max(/*other*/ 14).min(available);
++        (self.warning_notice(count, budget).width() as u16).saturating_add(/*rhs*/ 2)
++    }
++
++    /// Clip command-backed rows to the full footer width. Only the row that shares space with
++    /// the warning notice ends before it; upstream narrows every hint row instead.
++    fn status_line_command_render_lines(
++        lines: &[Line<'static>],
++        footer_rect: Rect,
++        warning_area: Option<Rect>,
++    ) -> Vec<Line<'static>> {
++        let content_x = footer_rect.x.saturating_add(FOOTER_INDENT_COLS as u16);
++        let available_width = footer_rect.width.saturating_sub(FOOTER_INDENT_COLS as u16);
++        lines
++            .iter()
++            .enumerate()
++            .map(|(row, line)| {
++                let y = footer_rect.y.saturating_add(row as u16);
++                let width = match warning_area {
++                    Some(area) if area.y == y => area
++                        .x
++                        .saturating_sub(content_x)
++                        .saturating_sub(/*gap*/ 1)
++                        .min(available_width),
++                    _ => available_width,
++                };
++                clip_status_line(line, usize::from(width))
++            })
++            .collect()
++    }
++
      pub(crate) fn set_status_line_hyperlink(&mut self, url: Option<String>) -> bool {
          if self.footer.status_line_hyperlink_url == url {
              return false;
-@@ -4840,7 +4866,23 @@ impl ChatComposer {
+@@ -4840,7 +4913,20 @@ impl ChatComposer {
                      if let Some((summary_left, _)) = single_line_layout {
                          match summary_left {
                              SummaryLeft::Default => {
@@ -506,43 +553,39 @@ index 158c39f1c7..84f93d9e1f 100644
 +                                    && let Some(lines) =
 +                                        self.footer.status_line_command_lines.as_ref()
 +                                {
-+                                    let available_width = hint_rect
-+                                        .width
-+                                        .saturating_sub(FOOTER_INDENT_COLS as u16)
-+                                        as usize;
 +                                    render_footer_lines(
-+                                        hint_rect,
++                                        footer_rect,
 +                                        buf,
-+                                        lines
-+                                            .iter()
-+                                            .map(|line| clip_status_line(line, available_width))
-+                                            .collect(),
++                                        Self::status_line_command_render_lines(
++                                            lines,
++                                            footer_rect,
++                                            warning_area,
++                                        ),
 +                                    );
 +                                } else if status_line_active {
                                      if let Some(line) = truncated_status_line.clone() {
                                          render_footer_line(hint_rect, buf, line);
                                      } else {
-@@ -4877,6 +4919,19 @@ impl ChatComposer {
+@@ -4877,6 +4963,18 @@ impl ChatComposer {
                          }
                      } else if let Some(items) = active_footer_hint_override {
                          render_footer_hint_items(hint_rect, buf, items);
 +                    } else if shows_passive_footer_line(&footer_props)
 +                        && let Some(lines) = self.footer.status_line_command_lines.as_ref()
 +                    {
-+                        let available_width =
-+                            hint_rect.width.saturating_sub(FOOTER_INDENT_COLS as u16) as usize;
 +                        render_footer_lines(
-+                            hint_rect,
++                            footer_rect,
 +                            buf,
-+                            lines
-+                                .iter()
-+                                .map(|line| clip_status_line(line, available_width))
-+                                .collect(),
++                            Self::status_line_command_render_lines(
++                                lines,
++                                footer_rect,
++                                warning_area,
++                            ),
 +                        );
                      } else if status_line_active {
                          if let Some(line) = truncated_status_line {
                              render_footer_line(hint_rect, buf, line);
-@@ -5222,6 +5277,89 @@ mod tests {
+@@ -5222,6 +5320,150 @@ mod tests {
          );
      }
  
@@ -629,6 +672,67 @@ index 158c39f1c7..84f93d9e1f 100644
 +        assert!(restored.contains("CUSTOM TWO"));
 +    }
 +
++    #[test]
++    fn command_status_line_replaces_separate_builtin_row_and_yields_only_the_warning_row() {
++        let (mut composer, _rx) = new_test_composer();
++        composer.footer.show_warnings_key = Some(crate::key_hint::plain(KeyCode::F(2)).into());
++        composer.set_status_line_enabled(/*enabled*/ true);
++        composer.set_status_line(Some(Line::from("BUILTIN")));
++        let width: u16 = 60;
++        let content = usize::from(width) - FOOTER_INDENT_COLS;
++        let first = format!("{}END1", "a".repeat(content - 4));
++        let second = format!("LEFT{}RIGHT", " ".repeat(content - 9));
++        composer.set_status_line_command_lines(Some(vec![
++            Line::from(first.clone()),
++            Line::from(second),
++        ]));
++
++        let options = composer.resolve_render_options(ComposerRenderOptions {
++            separate_status_line: true,
++            warning_count: 2,
++            command_popup_placement: CommandPopupPlacement::Overlay,
++            ..Default::default()
++        });
++        let area = Rect::new(
++            0,
++            0,
++            width,
++            composer.desired_height_with_options(width, options),
++        );
++        let mut buf = Buffer::empty(area);
++        composer.render_with_options(area, &mut buf, /*mask_char*/ None, options);
++        let rows = (0..area.height)
++            .map(|y| {
++                (0..area.width)
++                    .map(|x| buf[(x, y)].symbol())
++                    .collect::<String>()
++            })
++            .collect::<Vec<_>>();
++
++        assert!(rows.iter().any(|row| row.contains(&first)));
++        assert!(!rows.iter().any(|row| row.contains("BUILTIN")));
++        let warning_row = rows
++            .iter()
++            .find(|row| row.contains("LEFT"))
++            .expect("second command row");
++        assert!(warning_row.contains("⚠ 2 warnings · f2 to view"));
++        assert!(!warning_row.contains("RIGHT"));
++        let notice_col = warning_row
++            .chars()
++            .position(|ch| ch == '⚠')
++            .expect("warning notice");
++        assert_eq!(warning_row.chars().nth(notice_col - 1), Some(' '));
++        assert_eq!(
++            composer.status_line_warning_reserved_columns(/*count*/ 2, width),
++            usize::from(width) as u16 - notice_col as u16 + 1
++        );
++        assert_eq!(
++            composer.status_line_warning_reserved_columns(/*count*/ 0, width),
++            0
++        );
++        assert_eq!(composer.warnings_shortcut_label().as_deref(), Some("f2"));
++    }
++
      #[test]
      fn footer_flash_expires_and_falls_back_to_hint_override() {
          let (tx, _rx) = unbounded_channel::<AppEvent>();
@@ -644,6 +748,24 @@ index fe4a6dc186..403c39b419 100644
      pub(super) status_line_hyperlink_url: Option<String>,
      pub(super) status_line_enabled: bool,
      pub(super) side_conversation_context_label: Option<String>,
+diff --git a/codex-rs/tui/src/bottom_pane/chat_composer/status_surface.rs b/codex-rs/tui/src/bottom_pane/chat_composer/status_surface.rs
+index 14fe0a9dbc..6fbea4c6c1 100644
+--- a/codex-rs/tui/src/bottom_pane/chat_composer/status_surface.rs
++++ b/codex-rs/tui/src/bottom_pane/chat_composer/status_surface.rs
+@@ -6,7 +6,12 @@ use super::*;
+ 
+ impl ChatComposer {
+     pub(super) fn status_surface_height(&self, options: ComposerRenderOptions<'_>) -> u16 {
+-        u16::from(options.separate_status_line && self.footer.status_line_enabled)
++        // Command-backed rows replace the built-in line, so they must not reserve its row too.
++        u16::from(
++            options.separate_status_line
++                && self.footer.status_line_enabled
++                && self.footer.status_line_command_lines.is_none(),
++        )
+     }
+ 
+     pub(super) fn hint_footer_props(&self, options: ComposerRenderOptions<'_>) -> FooterProps {
 diff --git a/codex-rs/tui/src/bottom_pane/footer.rs b/codex-rs/tui/src/bottom_pane/footer.rs
 index b81f2c3151..955c88dbb6 100644
 --- a/codex-rs/tui/src/bottom_pane/footer.rs
@@ -663,10 +785,10 @@ index b81f2c3151..955c88dbb6 100644
          " ".repeat(FOOTER_INDENT_COLS).into(),
      ))
 diff --git a/codex-rs/tui/src/bottom_pane/mod.rs b/codex-rs/tui/src/bottom_pane/mod.rs
-index 3f16d118e1..9716864b78 100644
+index 3f16d118e1..f4c533c8a7 100644
 --- a/codex-rs/tui/src/bottom_pane/mod.rs
 +++ b/codex-rs/tui/src/bottom_pane/mod.rs
-@@ -2277,6 +2277,12 @@ impl BottomPane {
+@@ -2277,6 +2277,21 @@ impl BottomPane {
          }
      }
  
@@ -674,6 +796,15 @@ index 3f16d118e1..9716864b78 100644
 +        if self.composer.set_status_line_command_lines(lines) {
 +            self.request_redraw();
 +        }
++    }
++
++    pub(crate) fn warnings_shortcut_label(&self) -> Option<String> {
++        self.composer.warnings_shortcut_label()
++    }
++
++    pub(crate) fn status_line_warning_reserved_columns(&self, count: usize, width: u16) -> u16 {
++        self.composer
++            .status_line_warning_reserved_columns(count, width)
 +    }
 +
      pub(crate) fn set_status_line_hyperlink(&mut self, url: Option<String>) {
@@ -750,10 +881,10 @@ index 53ae2d41aa..822ae37b54 100644
      assert_eq!(
 diff --git a/codex-rs/tui/src/chatwidget/status_line_command.rs b/codex-rs/tui/src/chatwidget/status_line_command.rs
 new file mode 100644
-index 0000000000..98ba068613
+index 0000000000..f80cd45a36
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/status_line_command.rs
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,222 @@
 +//! Snapshot construction and orchestration for the command-backed status line.
 +
 +use super::rate_limits::get_limits_duration;
@@ -768,6 +899,7 @@ index 0000000000..98ba068613
 +use crate::status_line_command::StatusLineRateLimitWindowV1;
 +use crate::status_line_command::StatusLineRateLimitsV1;
 +use crate::status_line_command::StatusLineTerminalV1;
++use crate::status_line_command::StatusLineWarningsV1;
 +use crate::status_line_command::StatusLineWorkspaceV1;
 +use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
 +use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_READ_ONLY;
@@ -838,6 +970,7 @@ index 0000000000..98ba068613
 +        let remaining = self.status_line_context_remaining_percent().unwrap_or(100) as f64;
 +        let used = (100.0 - remaining).clamp(0.0, 100.0);
 +        let terminal = self.status_line_command.terminal();
++        let warning_count = self.warning_display_state.count;
 +
 +        StatusLineCommandInputV1 {
 +            schema_version: 1,
@@ -897,6 +1030,13 @@ index 0000000000..98ba068613
 +            terminal: StatusLineTerminalV1 {
 +                columns: terminal.width,
 +                rows: terminal.height,
++            },
++            warnings: StatusLineWarningsV1 {
++                count: warning_count,
++                shortcut: self.bottom_pane.warnings_shortcut_label(),
++                reserved_columns: self
++                    .bottom_pane
++                    .status_line_warning_reserved_columns(warning_count, terminal.width),
 +            },
 +        }
 +    }
@@ -1761,10 +1901,10 @@ index 0000000000..ce3714fa15
 +}
 diff --git a/codex-rs/tui/src/status_line_command/mod.rs b/codex-rs/tui/src/status_line_command/mod.rs
 new file mode 100644
-index 0000000000..0255926ff6
+index 0000000000..c91fef4031
 --- /dev/null
 +++ b/codex-rs/tui/src/status_line_command/mod.rs
-@@ -0,0 +1,328 @@
+@@ -0,0 +1,339 @@
 +//! Safe command-backed status-line execution and its stable stdin contract.
 +
 +mod ansi;
@@ -1804,6 +1944,7 @@ index 0000000000..0255926ff6
 +    pub(crate) version: String,
 +    pub(crate) git_branch: Option<String>,
 +    pub(crate) terminal: StatusLineTerminalV1,
++    pub(crate) warnings: StatusLineWarningsV1,
 +}
 +
 +#[derive(Clone, Debug, PartialEq, Serialize)]
@@ -1861,6 +2002,16 @@ index 0000000000..0255926ff6
 +pub(crate) struct StatusLineTerminalV1 {
 +    pub(crate) columns: u16,
 +    pub(crate) rows: u16,
++}
++
++#[derive(Clone, Debug, PartialEq, Serialize)]
++pub(crate) struct StatusLineWarningsV1 {
++    pub(crate) count: usize,
++    /// Key that opens the warnings viewer, or `None` when only `/warnings` is bound.
++    pub(crate) shortcut: Option<String>,
++    /// Columns at the right edge of the last output row that the warning notice paints over.
++    /// Output there is clipped; keep it within `terminal.columns - reserved_columns`.
++    pub(crate) reserved_columns: u16,
 +}
 +
 +#[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2230,10 +2381,10 @@ index 0000000000..1354ce415a
 +}
 diff --git a/codex-rs/tui/src/status_line_command/status_line_command_tests.rs b/codex-rs/tui/src/status_line_command/status_line_command_tests.rs
 new file mode 100644
-index 0000000000..3ca160bcb1
+index 0000000000..4c1f07a20f
 --- /dev/null
 +++ b/codex-rs/tui/src/status_line_command/status_line_command_tests.rs
-@@ -0,0 +1,553 @@
+@@ -0,0 +1,563 @@
 +use std::path::PathBuf;
 +use std::time::Duration;
 +use std::time::Instant;
@@ -2305,6 +2456,11 @@ index 0000000000..3ca160bcb1
 +        terminal: StatusLineTerminalV1 {
 +            columns: 120,
 +            rows: 40,
++        },
++        warnings: StatusLineWarningsV1 {
++            count: 2,
++            shortcut: Some("f2".to_string()),
++            reserved_columns: 27,
 +        },
 +    }
 +}
@@ -2385,6 +2541,11 @@ index 0000000000..3ca160bcb1
 +  "terminal": {
 +    "columns": 120,
 +    "rows": 40
++  },
++  "warnings": {
++    "count": 2,
++    "shortcut": "f2",
++    "reserved_columns": 27
 +  }
 +}"#
 +    );
