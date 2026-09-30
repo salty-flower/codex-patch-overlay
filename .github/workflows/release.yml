@@ -555,6 +555,7 @@ jobs:
           } > release-notes.md
 
       - uses: softprops/action-gh-release@v3
+        id: publish-release
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: ${{ env.RELEASE_TAG }}
@@ -574,10 +575,23 @@ jobs:
         id: release-metadata
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
+          RELEASE_ID: ${{ steps.publish-release.outputs.id }}
         run: |
           set -euo pipefail
-          prerelease="$(gh release view "${RELEASE_TAG}" --json isPrerelease --jq .isPrerelease)"
+          test -n "$RELEASE_ID"
+          # A release created moments ago may not be discoverable by tag yet.
+          # Query the published ID with the same token and allow propagation.
+          for attempt in 1 2 3 4 5; do
+            if prerelease="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" --jq .prerelease)"; then
+              break
+            fi
+            if [[ "$attempt" -eq 5 ]]; then
+              exit 1
+            fi
+            sleep 2
+          done
+          [[ "$prerelease" == true || "$prerelease" == false ]]
           echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/install-nix
