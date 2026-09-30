@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 9ea7c6ad1b..1a757c5103 100644
+index ae53be35f3..b49844fcc7 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -806,6 +806,19 @@ pub struct StatusLineCommandConfig {
+@@ -863,6 +863,19 @@ pub struct StatusLineCommandConfig {
      pub refresh_interval_ms: u64,
  }
  
@@ -22,7 +22,7 @@ index 9ea7c6ad1b..1a757c5103 100644
  /// Collection of settings that are specific to the TUI.
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
  #[schemars(deny_unknown_fields)]
-@@ -864,6 +877,12 @@ pub struct Tui {
+@@ -921,6 +934,12 @@ pub struct Tui {
      #[serde(default)]
      pub raw_output_mode: bool,
  
@@ -36,10 +36,10 @@ index 9ea7c6ad1b..1a757c5103 100644
      ///
      /// When set to `"plan"`, the TUI launches in Plan mode instead of the
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 87cd4adcbe..0c674b604c 100644
+index 4cd2a4f48b..affac66b90 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -4572,6 +4572,15 @@
+@@ -4726,6 +4726,15 @@
            "description": "Start the TUI in raw scrollback mode for copy-friendly transcript output. Defaults to `false`.",
            "type": "boolean"
          },
@@ -55,7 +55,7 @@ index 87cd4adcbe..0c674b604c 100644
          "rendering": {
            "allOf": [
              {
-@@ -5747,6 +5756,32 @@
+@@ -5910,6 +5919,32 @@
          }
        ]
      },
@@ -88,7 +88,7 @@ index 87cd4adcbe..0c674b604c 100644
      "TuiRendering": {
        "additionalProperties": false,
        "description": "Optional rich renderers. Disabled renderers preserve the original source.",
-@@ -7636,4 +7671,4 @@
+@@ -7805,4 +7840,4 @@
    },
    "title": "ConfigToml",
    "type": "object"
@@ -96,7 +96,7 @@ index 87cd4adcbe..0c674b604c 100644
 +}
 \ No newline at end of file
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index fd596b2db8..ce373ddf37 100644
+index c233c9c44e..6113c494aa 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
 @@ -69,6 +69,7 @@ use codex_config::types::Tui;
@@ -107,23 +107,23 @@ index fd596b2db8..ce373ddf37 100644
  use codex_config::types::WindowsSandboxModeToml;
  use codex_config::types::WindowsToml;
  use codex_exec_server::LOCAL_FS;
-@@ -1264,6 +1265,7 @@ fn config_toml_deserializes_model_availability_nux() {
+@@ -1270,6 +1271,7 @@ fn config_toml_deserializes_model_availability_nux() {
              vim_mode_default: false,
              question_esc_back: true,
              raw_output_mode: false,
 +            reasoning_display: TuiReasoningDisplay::StatusOnly,
              fullscreen_transcript: true,
-             alternate_screen: AltScreenMode::default(),
-             status_line: None,
-@@ -4485,6 +4487,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+             copy_on_select: Default::default(),
+             right_click_paste: Default::default(),
+@@ -4493,6 +4495,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
              vim_mode_default: false,
              question_esc_back: true,
              raw_output_mode: false,
 +            reasoning_display: TuiReasoningDisplay::StatusOnly,
              fullscreen_transcript: true,
-             alternate_screen: AltScreenMode::Auto,
-             status_line: None,
-@@ -4503,6 +4506,82 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+             copy_on_select: Default::default(),
+             right_click_paste: Default::default(),
+@@ -4513,6 +4516,82 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
      );
  }
  
@@ -207,10 +207,10 @@ index fd596b2db8..ce373ddf37 100644
  async fn runtime_config_resolves_disable_paste_burst() -> anyhow::Result<()> {
      for (toml, expected) in [
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index ed25308534..fdec62a5f7 100644
+index 1fbfe0c1e8..b7ecc05341 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -59,6 +59,7 @@ use codex_config::types::ToolSuggestDiscoverable;
+@@ -60,6 +60,7 @@ use codex_config::types::ToolSuggestDiscoverable;
  use codex_config::types::TuiKeymap;
  use codex_config::types::TuiNotificationSettings;
  use codex_config::types::TuiPetAnchor;
@@ -218,7 +218,7 @@ index ed25308534..fdec62a5f7 100644
  use codex_config::types::UriBasedFileOpener;
  use codex_config::types::WindowsSandboxModeToml;
  use codex_core_plugins::PluginLoadOutcome;
-@@ -788,6 +789,10 @@ pub struct Config {
+@@ -792,6 +793,10 @@ pub struct Config {
      /// Start the TUI in raw scrollback mode for copy-friendly transcript output.
      pub tui_raw_output_mode: bool,
  
@@ -229,7 +229,7 @@ index ed25308534..fdec62a5f7 100644
      /// Own the fullscreen transcript when the alternate screen is enabled.
      pub tui_fullscreen_transcript: bool,
  
-@@ -4524,6 +4529,11 @@ impl Config {
+@@ -4556,6 +4561,11 @@ impl Config {
                  .as_ref()
                  .map(|t| t.raw_output_mode)
                  .unwrap_or(false),
@@ -242,10 +242,10 @@ index ed25308534..fdec62a5f7 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 59bae56081..3e08b809e9 100644
+index 58109bf294..a26fb291cc 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -244,6 +244,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
+@@ -296,6 +296,7 @@ async fn new_config(
          tui_terminal_title: None,
          tui_theme: None,
          tui_raw_output_mode: false,
@@ -254,10 +254,10 @@ index 59bae56081..3e08b809e9 100644
          tui_pet: None,
          tui_pet_anchor: TuiPetAnchor::Composer,
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 1e29e91e35..688d34b9b2 100644
+index 8bc579c23b..dec129eabf 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -2027,9 +2027,11 @@ impl ChatWidget {
+@@ -1964,9 +1964,11 @@ impl ChatWidget {
      /// tick are unchanged. Stable sources still require a revision bump when their content changes.
      pub(crate) fn active_cell_transcript_key(&self) -> Option<ActiveCellTranscriptKey> {
          let cell = self.transcript.active_cell.as_ref();
@@ -269,7 +269,7 @@ index 1e29e91e35..688d34b9b2 100644
              && self
                  .realtime_conversation
                  .live_transcript_cells()
-@@ -2040,8 +2042,9 @@ impl ChatWidget {
+@@ -1977,8 +1979,9 @@ impl ChatWidget {
          {
              return None;
          }
@@ -280,7 +280,7 @@ index 1e29e91e35..688d34b9b2 100644
              rate_limit_reset_hint.map(|cell| cell as &dyn HistoryCell),
          ];
          Some(ActiveCellTranscriptKey {
-@@ -2062,6 +2065,7 @@ impl ChatWidget {
+@@ -1999,6 +2002,7 @@ impl ChatWidget {
                  .unwrap_or(/*default*/ false),
              animation_tick: cell
                  .and_then(|cell| cell.transcript_animation_tick())
@@ -314,10 +314,10 @@ index ba0d2e4061..655b5965a8 100644
              }
              ServerNotification::ReasoningSummaryPartAdded(notification) => {
 diff --git a/codex-rs/tui/src/chatwidget/rendering.rs b/codex-rs/tui/src/chatwidget/rendering.rs
-index e4047f3409..d924a47f07 100644
+index 36c873351f..42a5edb516 100644
 --- a/codex-rs/tui/src/chatwidget/rendering.rs
 +++ b/codex-rs/tui/src/chatwidget/rendering.rs
-@@ -161,9 +161,10 @@ impl ChatWidget {
+@@ -169,9 +169,10 @@ impl ChatWidget {
          let mut flex = FlexRenderable::new();
          flex.push(/*flex*/ 1, active_cell_renderable);
          for cell in self
@@ -330,7 +330,7 @@ index e4047f3409..d924a47f07 100644
              .chain(self.realtime_conversation.live_transcript_cells())
          {
              flex.push(
-@@ -268,6 +269,7 @@ impl ChatWidget {
+@@ -280,6 +281,7 @@ impl ChatWidget {
              .active_cell
              .as_deref()
              .into_iter()
@@ -681,10 +681,10 @@ index d1d17f8cd5..03bbc74083 100644
  
      pub(super) fn on_stream_error(&mut self, message: String, additional_details: Option<String>) {
 diff --git a/codex-rs/tui/src/chatwidget/tests.rs b/codex-rs/tui/src/chatwidget/tests.rs
-index c0ec4ad648..4280baf4e9 100644
+index 3dabfdc058..8a5531c148 100644
 --- a/codex-rs/tui/src/chatwidget/tests.rs
 +++ b/codex-rs/tui/src/chatwidget/tests.rs
-@@ -279,6 +279,8 @@ mod plugin_catalog;
+@@ -278,6 +278,8 @@ mod plugin_catalog;
  mod popups_and_settings;
  #[path = "tests/rate_limit_recovery_tests.rs"]
  mod rate_limit_recovery_tests;
@@ -1448,7 +1448,7 @@ index 72489d49d5..713b71fab5 100644
      pub(super) dynamic_calls:
          std::collections::HashMap<String, crate::history_cell::DynamicToolCallCell>,
 diff --git a/codex-rs/tui/src/chatwidget/turn_runtime.rs b/codex-rs/tui/src/chatwidget/turn_runtime.rs
-index bad721b9ca..ca674a8c0c 100644
+index 137220567c..18d50ba335 100644
 --- a/codex-rs/tui/src/chatwidget/turn_runtime.rs
 +++ b/codex-rs/tui/src/chatwidget/turn_runtime.rs
 @@ -104,6 +104,7 @@ impl ChatWidget {
@@ -1481,7 +1481,7 @@ index bad721b9ca..ca674a8c0c 100644
          self.flush_interrupt_activity();
          self.finish_dynamic_activity();
 diff --git a/codex-rs/tui/src/history_cell/messages.rs b/codex-rs/tui/src/history_cell/messages.rs
-index 07676e3d21..74ddbdf63d 100644
+index f80f311c75..65b634f954 100644
 --- a/codex-rs/tui/src/history_cell/messages.rs
 +++ b/codex-rs/tui/src/history_cell/messages.rs
 @@ -1,5 +1,5 @@
@@ -1491,7 +1491,7 @@ index 07676e3d21..74ddbdf63d 100644
  
  use super::markdown_render_cache::MarkdownRenderCache;
  use super::*;
-@@ -745,6 +745,47 @@ pub(crate) fn new_reasoning_summary_block(
+@@ -746,6 +746,47 @@ pub(crate) fn new_reasoning_summary_block(
      ))
  }
  
@@ -1540,10 +1540,10 @@ index 07676e3d21..74ddbdf63d 100644
  pub(crate) fn split_reasoning_summary_parts(reasoning_parts: &[String]) -> (String, String) {
      let mut leading_empty_part_header = None;
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 5ce4b76560..b6a7d6039b 100644
+index 03c953fad7..6e73bf6350 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -2767,6 +2767,8 @@ fn reasoning_summary_block() {
+@@ -2724,6 +2724,8 @@ fn reasoning_summary_block() {
          &test_cwd(),
      );
  
@@ -1552,7 +1552,7 @@ index 5ce4b76560..b6a7d6039b 100644
      let rendered_display = render_lines(&cell.display_lines(/*width*/ 80));
      assert_eq!(rendered_display, Vec::<String>::new());
  
-@@ -2774,6 +2776,129 @@ fn reasoning_summary_block() {
+@@ -2731,6 +2733,129 @@ fn reasoning_summary_block() {
      assert_eq!(rendered_transcript, vec!["• Detailed reasoning goes here."]);
  }
  
@@ -1683,19 +1683,19 @@ index 5ce4b76560..b6a7d6039b 100644
  fn reasoning_summary_height_matches_wrapped_rendering_for_url_like_content() {
      let summary = "example.test/api/v1/projects/alpha-team/releases/2026-02-17/builds/1234567890/artifacts/reports/performance/summary/detail/with/a/very/long/path/that/keeps/going";
 diff --git a/codex-rs/tui/src/local_settings.rs b/codex-rs/tui/src/local_settings.rs
-index 42d559c74e..04a6f36f8b 100644
+index f9dd6d6d17..f2f3e0efd1 100644
 --- a/codex-rs/tui/src/local_settings.rs
 +++ b/codex-rs/tui/src/local_settings.rs
-@@ -73,6 +73,7 @@ impl LocalSettings {
+@@ -76,6 +76,7 @@ impl LocalSettings {
                  vim_mode_default: config.tui_vim_mode_default,
                  question_esc_back: config.tui_question_esc_back,
                  raw_output_mode: config.tui_raw_output_mode,
 +                reasoning_display: config.tui_reasoning_display,
                  fullscreen_transcript: config.tui_fullscreen_transcript,
-                 alternate_screen: config.tui_alternate_screen,
-                 status_line: config.tui_status_line.clone(),
+                 copy_on_select: config.tui_copy_on_select,
+                 right_click_paste: config.tui_right_click_paste,
 diff --git a/codex-rs/tui/src/resume_picker.rs b/codex-rs/tui/src/resume_picker.rs
-index 5a976e468d..2d8aa12585 100644
+index cc04b6e551..d51f4fb981 100644
 --- a/codex-rs/tui/src/resume_picker.rs
 +++ b/codex-rs/tui/src/resume_picker.rs
 @@ -26,7 +26,7 @@ use crate::terminal_palette::default_bg;
@@ -1707,7 +1707,7 @@ index 5a976e468d..2d8aa12585 100644
  use crate::tui::FrameRequester;
  use crate::tui::Tui;
  use crate::tui::TuiEvent;
-@@ -474,6 +474,7 @@ async fn run_resume_picker_with_launch_context(
+@@ -476,6 +476,7 @@ async fn run_resume_picker_with_launch_context(
              archive_request_handle,
              include_non_interactive,
              raw_reasoning_visibility(config),
@@ -1715,7 +1715,7 @@ index 5a976e468d..2d8aa12585 100644
              (!uses_remote_workspace).then(|| config.clone()),
              bg_tx,
          ),
-@@ -533,6 +534,7 @@ pub async fn run_fork_picker_with_app_server(
+@@ -536,6 +537,7 @@ pub async fn run_fork_picker_with_app_server(
              archive_request_handle,
              /*include_non_interactive*/ false,
              raw_reasoning_visibility(config),
@@ -1723,7 +1723,7 @@ index 5a976e468d..2d8aa12585 100644
              (!uses_remote_workspace).then(|| config.clone()),
              bg_tx,
          ),
-@@ -687,6 +689,7 @@ fn spawn_app_server_page_loader(
+@@ -692,6 +694,7 @@ fn spawn_app_server_page_loader(
      archive_request_handle: AppServerRequestHandle,
      include_non_interactive: bool,
      raw_reasoning_visibility: RawReasoningVisibility,
@@ -1731,7 +1731,7 @@ index 5a976e468d..2d8aa12585 100644
      config: Option<Config>,
      bg_tx: mpsc::UnboundedSender<BackgroundEvent>,
  ) -> PickerLoader {
-@@ -733,10 +736,11 @@ fn spawn_app_server_page_loader(
+@@ -738,10 +741,11 @@ fn spawn_app_server_page_loader(
                      cancellation,
                  } => {
                      tokio::select! {
@@ -1744,7 +1744,7 @@ index 5a976e468d..2d8aa12585 100644
                              config.as_ref(),
                          ) => {
                              let _ = bg_tx.send(BackgroundEvent::Transcript {
-@@ -3822,6 +3826,7 @@ mod tests {
+@@ -3833,6 +3837,7 @@ mod tests {
              request_handle,
              /*include_non_interactive*/ false,
              RawReasoningVisibility::Hidden,

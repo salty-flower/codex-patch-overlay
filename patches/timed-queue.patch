@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index 9349649f24..494180291c 100644
+index de47e41f7b..853922eec4 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -1052,6 +1052,13 @@ impl App {
+@@ -1034,6 +1034,13 @@ impl App {
              _ => {}
          }
  
@@ -17,10 +17,10 @@ index 9349649f24..494180291c 100644
              let _ = self
                  .handle_backtrack_overlay_event(tui, app_server, event)
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 7fc9161a24..620a0edf62 100644
+index 4a97366d41..0cb3be5e82 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -2877,6 +2877,30 @@ impl App {
+@@ -2906,6 +2906,30 @@ impl App {
                  self.chat_widget
                      .submit_user_message_with_mode(text, collaboration_mode);
              }
@@ -52,10 +52,10 @@ index 7fc9161a24..620a0edf62 100644
                  self.chat_widget.handle_manage_skills_closed();
              }
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 4dbdc87bf5..d1974eb49b 100644
+index 982c3ecb5a..31a845191e 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -1439,6 +1439,20 @@ pub(crate) enum AppEvent {
+@@ -1452,6 +1452,20 @@ pub(crate) enum AppEvent {
          collaboration_mode: CollaborationModeMask,
      },
  
@@ -89,10 +89,10 @@ index a46aed6b7c..1f9180ae32 100644
  /new - start a new chat during a conversation
  /archive - archive this session
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 984a9582cc..deb62fe783 100644
+index eb9c9cdfa2..5c781273c0 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -344,6 +344,7 @@ mod input_queue;
+@@ -283,6 +283,7 @@ mod input_queue;
  mod reconnect;
  use self::input_queue::InputQueueState;
  mod image_submission;
@@ -100,15 +100,15 @@ index 984a9582cc..deb62fe783 100644
  mod input_flow;
  mod input_restore;
  mod input_submission;
-@@ -365,6 +366,7 @@ mod copy_picker;
- mod hook_lifecycle;
+@@ -306,6 +307,7 @@ mod hook_lifecycle;
  mod hooks;
  mod interaction;
+ pub(crate) use interaction::KeyEventAction;
 +mod scheduled_input;
  mod skills;
  mod slash_dispatch;
  mod worktree_picker;
-@@ -739,6 +741,8 @@ pub(crate) struct ChatWidget {
+@@ -680,6 +682,8 @@ pub(crate) struct ChatWidget {
      // order.
      suppress_initial_user_message_submit: bool,
      input_queue: InputQueueState,
@@ -118,10 +118,10 @@ index 984a9582cc..deb62fe783 100644
      safety_buffering_source: UserMessageSource,
      /// Main chat-surface bindings resolved from `tui.keymap.chat`.
 diff --git a/codex-rs/tui/src/chatwidget/constructor.rs b/codex-rs/tui/src/chatwidget/constructor.rs
-index 1c8c63ec78..21d31ef7a4 100644
+index fb4575ab0d..8096197272 100644
 --- a/codex-rs/tui/src/chatwidget/constructor.rs
 +++ b/codex-rs/tui/src/chatwidget/constructor.rs
-@@ -236,6 +236,8 @@ impl ChatWidget {
+@@ -234,6 +234,8 @@ impl ChatWidget {
              forked_from: None,
              interrupted_turn_notice_mode: InterruptedTurnNoticeMode::Default,
              input_queue: InputQueueState::default(),
@@ -450,7 +450,7 @@ index 4ef1fe6e12..789af1520e 100644
      fn clear_resets_all_input_queues() {
          let mut state = InputQueueState::default();
 diff --git a/codex-rs/tui/src/chatwidget/input_restore.rs b/codex-rs/tui/src/chatwidget/input_restore.rs
-index 114118f711..02ea1a21d8 100644
+index 3c47f6dcfa..dbb80b7ed7 100644
 --- a/codex-rs/tui/src/chatwidget/input_restore.rs
 +++ b/codex-rs/tui/src/chatwidget/input_restore.rs
 @@ -181,21 +181,14 @@ impl ChatWidget {
@@ -479,7 +479,7 @@ index 114118f711..02ea1a21d8 100644
          } else {
              // Reply envelopes must remain separate messages so other clients can read them.
              let count = self
-@@ -354,7 +347,10 @@ impl ChatWidget {
+@@ -362,7 +355,10 @@ impl ChatWidget {
                          .rejected_steer_history_records
                          .push_back(pending.history_record);
                  }
@@ -1133,7 +1133,7 @@ index 4fe2ed057b..40e523b955 100644
              | SlashCommand::Recap
              | SlashCommand::TestApproval => QueueDrain::Continue,
 diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index 7302a40670..f827c65d39 100644
+index 0646bb1bf6..0f9bfca43e 100644
 --- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 @@ -391,6 +391,10 @@ async fn parent_owned_thread_preserves_queued_input_before_draining() {
@@ -1148,23 +1148,22 @@ index 7302a40670..f827c65d39 100644
      let history_record = UserMessageHistoryRecord::UserMessageText;
      chat.input_queue
 diff --git a/codex-rs/tui/src/chatwidget/tests/questions_tests.rs b/codex-rs/tui/src/chatwidget/tests/questions_tests.rs
-index fcb5a6cbb0..10b5dadaf2 100644
+index a7cd7a2d2e..6c38fc9787 100644
 --- a/codex-rs/tui/src/chatwidget/tests/questions_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/questions_tests.rs
-@@ -1017,7 +1017,10 @@ async fn retried_question_answers_keep_separate_envelopes_and_order() {
+@@ -1089,7 +1089,9 @@ async fn retried_question_answers_keep_separate_envelopes_and_order() {
                  assert!(chat.enqueue_rejected_steer());
              }
          }
 -        while let Some((message, _)) = chat.pop_next_queued_user_message() {
-+        while let Some((message, _)) = chat.pop_next_ready_queued_user_message(
-+            std::time::Instant::now(),
-+            chrono::Local::now(),
-+        ) {
++        while let Some((message, _)) =
++            chat.pop_next_ready_queued_user_message(std::time::Instant::now(), chrono::Local::now())
++        {
              retried.push(message.text.clone());
          }
          assert_eq!(retried, original);
 diff --git a/codex-rs/tui/src/chatwidget/user_messages.rs b/codex-rs/tui/src/chatwidget/user_messages.rs
-index 533e0eaf02..fdb0c3ff72 100644
+index 84756b682f..3994be34d5 100644
 --- a/codex-rs/tui/src/chatwidget/user_messages.rs
 +++ b/codex-rs/tui/src/chatwidget/user_messages.rs
 @@ -10,6 +10,10 @@ use std::collections::HashSet;

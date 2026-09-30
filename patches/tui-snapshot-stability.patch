@@ -1,9 +1,9 @@
 diff --git a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
-index 683e8fc461..cea5350f9a 100644
+index 36f1054bdb..62664a2358 100644
 --- a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
 +++ b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
 @@ -621,9 +621,10 @@ async fn reconnect_exhaustion_and_unknown_initial_thread_stay_offline() -> Resul
-     assert!((15..=65).contains(&start.elapsed().as_secs()));
+     assert_eq!(start.elapsed().as_secs(), 120);
      app.begin_reconnect();
      app.chat_widget.reconnect_failed();
 +    app.chat_widget.freeze_status_timer_for_snapshot_for_test();
@@ -36,10 +36,10 @@ index b47efa4265..3108be4fde 100644
      );
      let mut keymap = codex_config::types::TuiKeymap::default();
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index bcf42c427d..1e29e91e35 100644
+index c2320df0e0..8bc579c23b 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1790,6 +1790,13 @@ impl ChatWidget {
+@@ -1727,6 +1727,13 @@ impl ChatWidget {
          self.bottom_pane.is_task_running()
      }
  
@@ -54,10 +54,10 @@ index bcf42c427d..1e29e91e35 100644
          let enabled = self.bottom_pane.toggle_vim_enabled();
          let message = if enabled {
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-index efa06b930a..b8b98715b5 100644
+index 9e6c59c76e..9196ca2231 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-@@ -839,7 +839,7 @@ async fn exec_end_without_begin_does_not_flush_unrelated_running_exploring_cell(
+@@ -842,7 +842,7 @@ async fn exec_end_without_begin_does_not_flush_unrelated_running_exploring_cell(
          orphan_blob.contains("• Ran echo repro-marker"),
          "expected orphan end to render a standalone entry: {orphan_blob:?}"
      );
@@ -66,7 +66,7 @@ index efa06b930a..b8b98715b5 100644
      assert!(
          active.contains("• Exploring"),
          "expected unrelated exploring call to remain active: {active:?}"
-@@ -908,7 +908,7 @@ async fn overlapping_exploring_exec_end_is_not_misclassified_as_orphan() {
+@@ -911,7 +911,7 @@ async fn overlapping_exploring_exec_end_is_not_misclassified_as_orphan() {
          cells.is_empty(),
          "tracked end inside an exploring cell should not render as an orphan"
      );
@@ -75,7 +75,7 @@ index efa06b930a..b8b98715b5 100644
      assert!(
          active.contains("List ls -la"),
          "expected first command still grouped: {active:?}"
-@@ -996,7 +996,7 @@ async fn unified_exec_unknown_end_with_active_exploring_cell_snapshot() {
+@@ -999,7 +999,7 @@ async fn unified_exec_unknown_end_with_active_exploring_cell_snapshot() {
          .iter()
          .map(|lines| lines_to_single_string(lines))
          .collect::<String>();
@@ -174,7 +174,7 @@ index b57de7f58b..9ffd239c50 100644
  }
  
 diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-index 1c2308a4d1..373f229b4b 100644
+index c3aa1ba65d..de6537f325 100644
 --- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
 @@ -5429,6 +5429,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
