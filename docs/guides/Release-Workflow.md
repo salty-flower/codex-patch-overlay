@@ -46,8 +46,13 @@ Before compiling, it installs both carried compressed app-server schema exports,
 matching the test workflow and Nix `postPatch`; these payloads are embedded in the binary.
 It writes the upstream package metadata, including the upstream version and target,
 and runs the upstream layout validator before archiving each package.
-The Nix overlay installs the same metadata and pinned zsh helper,
-with links to Nix's ripgrep and Linux bubblewrap at the package resource paths.
+The Nix overlay installs the same metadata and copies the pinned zsh helper,
+Nix's ripgrep, and Linux bubblewrap into the package resource paths.
+Helper executables must be regular files: the daemon installer rejects links that escape the package root.
+The overlay disables nixpkgs' ripgrep PATH wrapper because Codex adds `codex-path` itself,
+and the daemon requires the packaged entrypoint to match the running executable.
+The `package-layout` flake check verifies helper execution, rejects escaping links and directory links,
+and starts and stops a daemon in an isolated home with automatic updates disabled.
 Upstream's Linux zsh helper requires glibc 2.38 and `libtinfo.so.6` despite the archive's musl target name.
 The Nix overlay patches this helper's loader and library paths in a separate derivation.
 Binary archives preserve the upstream helper; musl-only systems cannot enable `shell_zsh_fork`.

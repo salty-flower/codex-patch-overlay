@@ -151,6 +151,7 @@ in
       preVersionCheck = ''
         version=${upstreamVersion}
       '';
+      postFixup = "";
       versionCheckKeepEnvironment = (old.versionCheckKeepEnvironment or [ ]) ++ [
         "CODEX_HOME"
         "TMPDIR"
@@ -207,7 +208,7 @@ in
           if final.stdenv.hostPlatform.isLinux then
             ''
               mkdir -p "$out/codex-resources/zsh/bin"
-              ln -s ${linuxZshRuntime}/bin/zsh "$out/codex-resources/zsh/bin/zsh"
+              install -m755 ${linuxZshRuntime}/bin/zsh "$out/codex-resources/zsh/bin/zsh"
             ''
           else
             ''
@@ -215,9 +216,9 @@ in
               chmod 0755 "$out/codex-resources/zsh/bin/zsh"
             ''
         }
-        ln -s ${lib.getExe final.ripgrep} "$out/codex-path/rg"
+        install -m755 ${lib.getExe final.ripgrep} "$out/codex-path/rg"
         ${lib.optionalString final.stdenv.hostPlatform.isLinux ''
-          ln -s ${lib.getExe final.bubblewrap} "$out/codex-resources/bwrap"
+          install -m755 ${lib.getExe final.bubblewrap} "$out/codex-resources/bwrap"
         ''}
         for binary in codex codex-responses-api-proxy codex-code-mode-host; do
           test -x "$out/bin/$binary"

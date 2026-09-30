@@ -52,6 +52,44 @@
         in
         {
           codex-patched = pkgs.codex-patched;
+          package-layout =
+            pkgs.runCommand "codex-package-layout-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.fd
+                  pkgs.coreutils
+                  pkgs.jq
+                  pkgs.procps
+                ];
+              }
+              ''
+                package=${pkgs.codex-patched}
+                while IFS= read -r -d "" link; do
+                  resolved="$(realpath "$link")"
+                  case "$resolved" in
+                    "$package"/*) test ! -d "$link" ;;
+                    *) echo "package link escapes its root: $link" >&2; exit 1 ;;
+                  esac
+                done < <(fd --hidden --no-ignore --type symlink --print0 . "$package")
+                for helper in codex-path/rg codex-resources/zsh/bin/zsh ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "codex-resources/bwrap"}; do
+                  test -f "$package/$helper"
+                  test -x "$package/$helper"
+                  test ! -L "$package/$helper"
+                  "$package/$helper" --version
+                done
+                export CODEX_HOME="$NIX_BUILD_TOP/codex-home"
+                export TMPDIR="$NIX_BUILD_TOP/codex-tmp"
+                unset CODEX_SQLITE_HOME
+                mkdir -p "$CODEX_HOME/app-server-daemon" "$TMPDIR"
+                printf '%s\n' '{"updater":{"autoUpdateEnabled":false},"shutdownGraceSeconds":0}' > "$CODEX_HOME/app-server-daemon/settings.json"
+                trap '"$package/bin/codex" app-server daemon stop' EXIT
+                "$package/bin/codex" app-server daemon start
+                "$package/bin/codex" app-server daemon version > daemon-version.json
+                jq -e '.status == "running" and .appServerVersion == .cliVersion and .managedCodexVersion == .cliVersion' daemon-version.json
+                "$package/bin/codex" app-server daemon stop
+                trap - EXIT
+                touch "$out"
+              '';
           manifest = pkgs.runCommand "codex-patch-manifest-check" { } ''
             test -f ${./patches/manifest.toml}
             ${pkgs.yq-go}/bin/yq -o=json ${./patches/manifest.toml} > /dev/null
