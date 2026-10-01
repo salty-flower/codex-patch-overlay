@@ -17,6 +17,13 @@ produces a correct single patch when exactly that one patch is applied to stagin
 the full enabled set applied (the normal state), it silently absorbs every other
 patch's changes too. The guide has the PRE/TARGET worktree procedure that avoids this.
 
+## Local Test Runs
+
+Upstream tests give each case a temporary `CODEX_HOME`, but an inherited `CODEX_SQLITE_HOME` overrides it.
+Codex sessions launched by machine-state already keep that variable out of tool shells.
+From Claude Code or a plain terminal, unset `CODEX_SQLITE_HOME` and `NO_COLOR` before `cargo test` or `cargo nextest`,
+otherwise fixture threads land in the caller's real SQLite home.
+
 ## Release and CI
 
 Follow [docs/guides/Release-Workflow.md](docs/guides/Release-Workflow.md) for release
