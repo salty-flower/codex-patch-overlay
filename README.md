@@ -20,7 +20,7 @@ for macOS (`aarch64-apple-darwin`) and Linux (`x86_64-unknown-linux-musl`), each
 `.sha256` checksum. No Nix required:
 
 ```sh
-tag=codex-0.159.2-patch.1
+tag=codex-0.160.0-patch.1
 target=aarch64-apple-darwin   # or x86_64-unknown-linux-musl
 base=https://github.com/salty-flower/codex-patch-overlay/releases/download/$tag
 curl -fsSL -O "$base/$tag-$target.tar.gz"

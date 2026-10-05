@@ -893,10 +893,10 @@ index f5ac495337..7b8020cf4f 100644
          let needs_new = self.websocket_session.connection.is_none() || reset_reason.is_some();
          // Resolving an external auth provider can change ownership during client setup.
 diff --git a/codex-rs/core/src/responses_retry.rs b/codex-rs/core/src/responses_retry.rs
-index 64f5112382..9dc5135047 100644
+index c8edc8b9d4..bc0f5bf5e1 100644
 --- a/codex-rs/core/src/responses_retry.rs
 +++ b/codex-rs/core/src/responses_retry.rs
-@@ -17,6 +17,7 @@ use tracing::warn;
+@@ -21,6 +21,7 @@ use tracing::warn;
  
  const INITIAL_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(5);
  const MAX_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(60);
@@ -904,7 +904,7 @@ index 64f5112382..9dc5135047 100644
  
  #[derive(Debug, Clone, Copy)]
  pub(crate) enum ResponsesStreamRequest {
-@@ -121,7 +122,12 @@ pub(crate) async fn handle_response_stream_error(
+@@ -142,7 +143,12 @@ pub(crate) async fn handle_response_stream_error(
          // transient reconnect messages. In debug builds, keep full visibility for diagnosis.
          let report_error = retry_count > 1
              || cfg!(debug_assertions)
@@ -1124,3 +1124,91 @@ index c6345c160d..1f2e81d75c 100755
  #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
  async fn responses_websocket_creates_on_non_prefix() {
      skip_if_no_network!();
+diff --git a/codex-rs/core/tests/suite/realtime_conversation.rs b/codex-rs/core/tests/suite/realtime_conversation.rs
+index 745439ebf3..6305426f74 100644
+--- a/codex-rs/core/tests/suite/realtime_conversation.rs
++++ b/codex-rs/core/tests/suite/realtime_conversation.rs
+@@ -273,7 +273,10 @@ async fn conversation_start_audio_text_close_round_trip() -> Result<()> {
+     skip_if_no_network!(Ok(()));
+ 
+     let server = start_websocket_server(vec![
+-        vec![],
++        vec![vec![
++            responses::ev_response_created("warm-1"),
++            responses::ev_completed("warm-1"),
++        ]],
+         vec![
+             vec![json!({
+                 "type": "session.updated",
+@@ -2498,7 +2501,10 @@ async fn conversation_second_start_replaces_runtime() -> Result<()> {
+     skip_if_no_network!(Ok(()));
+ 
+     let server = start_websocket_server(vec![
+-        vec![],
++        vec![vec![
++            responses::ev_response_created("warm-1"),
++            responses::ev_completed("warm-1"),
++        ]],
+         vec![vec![json!({
+             "type": "session.updated",
+             "session": { "id": "sess_old", "instructions": "old" }
+@@ -2730,7 +2736,10 @@ async fn conversation_uses_default_realtime_backend_prompt() -> Result<()> {
+     skip_if_no_network!(Ok(()));
+ 
+     let server = start_websocket_server(vec![
+-        vec![],
++        vec![vec![
++            responses::ev_response_created("warm-1"),
++            responses::ev_completed("warm-1"),
++        ]],
+         vec![vec![json!({
+             "type": "session.updated",
+             "session": { "id": "sess_default", "instructions": "default" }
+@@ -2808,7 +2817,10 @@ async fn conversation_uses_empty_instructions_for_null_or_empty_prompt() -> Resu
+     skip_if_no_network!(Ok(()));
+ 
+     let server = start_websocket_server(vec![
+-        vec![],
++        vec![vec![
++            responses::ev_response_created("warm-1"),
++            responses::ev_completed("warm-1"),
++        ]],
+         vec![vec![json!({
+             "type": "session.updated",
+             "session": { "id": "sess_null", "instructions": "" }
+@@ -2898,7 +2910,10 @@ async fn conversation_uses_explicit_start_voice() -> Result<()> {
+     skip_if_no_network!(Ok(()));
+ 
+     let server = start_websocket_server(vec![
+-        vec![],
++        vec![vec![
++            responses::ev_response_created("warm-1"),
++            responses::ev_completed("warm-1"),
++        ]],
+         vec![vec![json!({
+             "type": "session.updated",
+             "session": { "id": "sess_voice", "instructions": "backend prompt" }
+@@ -2965,7 +2980,10 @@ async fn conversation_uses_configured_realtime_voice() -> Result<()> {
+     skip_if_no_network!(Ok(()));
+ 
+     let server = start_websocket_server(vec![
+-        vec![],
++        vec![vec![
++            responses::ev_response_created("warm-1"),
++            responses::ev_completed("warm-1"),
++        ]],
+         vec![vec![json!({
+             "type": "session.updated",
+             "session": { "id": "sess_config_voice", "instructions": "backend prompt" }
+@@ -3081,7 +3099,10 @@ async fn conversation_uses_experimental_realtime_ws_backend_prompt_override() ->
+     skip_if_no_network!(Ok(()));
+ 
+     let server = start_websocket_server(vec![
+-        vec![],
++        vec![vec![
++            responses::ev_response_created("warm-1"),
++            responses::ev_completed("warm-1"),
++        ]],
+         vec![vec![json!({
+             "type": "session.updated",
+             "session": { "id": "sess_override", "instructions": "prompt from config" }

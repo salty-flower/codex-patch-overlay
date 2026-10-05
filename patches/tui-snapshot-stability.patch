@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
-index 36f1054bdb..62664a2358 100644
+index 8f9c547618..b0d577a5a7 100644
 --- a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
 +++ b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
-@@ -621,9 +621,10 @@ async fn reconnect_exhaustion_and_unknown_initial_thread_stay_offline() -> Resul
+@@ -633,9 +633,10 @@ async fn reconnect_exhaustion_and_unknown_initial_thread_stay_offline() -> Resul
      assert_eq!(start.elapsed().as_secs(), 120);
      app.begin_reconnect();
      app.chat_widget.reconnect_failed();
@@ -15,7 +15,7 @@ index 36f1054bdb..62664a2358 100644
      tokio::time::resume();
      Ok(())
 diff --git a/codex-rs/tui/src/app/tests/disconnect_tests.rs b/codex-rs/tui/src/app/tests/disconnect_tests.rs
-index b47efa4265..3108be4fde 100644
+index b7150740b2..eff8558226 100644
 --- a/codex-rs/tui/src/app/tests/disconnect_tests.rs
 +++ b/codex-rs/tui/src/app/tests/disconnect_tests.rs
 @@ -111,6 +111,7 @@ async fn lost_mutation_reply_preserves_work_without_resubmitting() -> Result<()>
@@ -36,10 +36,10 @@ index b47efa4265..3108be4fde 100644
      );
      let mut keymap = codex_config::types::TuiKeymap::default();
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index c2320df0e0..8bc579c23b 100644
+index 44e5f17272..d38e4f512e 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1727,6 +1727,13 @@ impl ChatWidget {
+@@ -1741,6 +1741,13 @@ impl ChatWidget {
          self.bottom_pane.is_task_running()
      }
  
@@ -174,10 +174,10 @@ index b57de7f58b..9ffd239c50 100644
  }
  
 diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-index c3aa1ba65d..de6537f325 100644
+index abe4b6667f..8a03be837d 100644
 --- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-@@ -5429,6 +5429,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5388,6 +5388,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          ),
      );
      reveal_running_hooks(&mut chat);
@@ -185,7 +185,7 @@ index c3aa1ba65d..de6537f325 100644
      let exec_and_hook_running = hook_status_frame(&chat, /*width*/ 80);
  
      end_exec(&mut chat, begin, "done", "", /*exit_code*/ 0);
-@@ -5436,6 +5437,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5395,6 +5396,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          .iter()
          .map(|lines| lines_to_single_string(lines))
          .collect::<String>();
@@ -193,7 +193,7 @@ index c3aa1ba65d..de6537f325 100644
      let hook_running_after_exec = hook_status_frame(&chat, /*width*/ 80);
  
      handle_hook_completed(
-@@ -5448,6 +5450,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5407,6 +5409,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          ),
      );
      assert!(drain_insert_history(&mut rx).is_empty());
@@ -201,7 +201,7 @@ index c3aa1ba65d..de6537f325 100644
      let quiet_hook_completed = hook_status_frame(&chat, /*width*/ 80);
      expire_quiet_hook_linger(&mut chat);
      assert!(chat.active_hook_cell.is_none());
-@@ -5457,6 +5460,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5416,6 +5419,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          format!(
              "exec running:\n{exec_running}\nexec and hook running:\n{exec_and_hook_running}\nhistory after exec:\n{history_after_exec}\nhook running after exec:\n{hook_running_after_exec}\nquiet hook completed:\n{quiet_hook_completed}"
          )

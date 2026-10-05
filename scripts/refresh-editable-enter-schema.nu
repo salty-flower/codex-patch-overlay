@@ -3,7 +3,7 @@
 def main [
   --stage: string = "staging/openai-codex"
 ] {
-  let protocol_root = ([$stage "codex-rs/app-server-protocol"] | path join)
+  let protocol_root = ([$stage "codex-rs/app-server-protocol"] | path join | path expand)
   let schema_root = ([$protocol_root "schema"] | path join)
   if not ($protocol_root | path exists) {
     error make { msg: $"missing patched upstream checkout: ($protocol_root)" }
