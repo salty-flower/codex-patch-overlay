@@ -116,7 +116,7 @@ upstream_issue = "local-request"
 status = "carried"
 risk = "low"
 owner = "local"
-notes = "Use the stable Rust channel in rust-toolchain.toml so rustc, Cargo, rustfmt, and Clippy track the latest stable release. CI selects the same channel."
+notes = "Use the stable Rust channel in rust-toolchain.toml so rustc, Cargo, rustfmt, and Clippy track the latest stable release. CI selects the same channel. Carries snapshots whose `Debug` output depends on the toolchain's Unicode tables: Rust 1.99 no longer escapes halfwidth sound marks (U+FF9E, U+FF9F), so the request-user-input truncation snapshot shows them literally."
 
 [[patches]]
 name = "chatgpt-recursion-limit"
