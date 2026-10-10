@@ -1,8 +1,8 @@
 diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-index 7f3ebd7aac..4771f913a7 100644
+index 4e041ab0a5..8efddc57aa 100644
 --- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 +++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-@@ -26,7 +26,10 @@ use serde_json::Value;
+@@ -27,7 +27,10 @@ use serde_json::Value;
  use serde_json::map::Map as JsonMap;
  use std::sync::Arc;
  use std::sync::OnceLock;
@@ -13,7 +13,7 @@ index 7f3ebd7aac..4771f913a7 100644
  use tokio::sync::Mutex;
  use tokio::sync::mpsc;
  use tokio::sync::oneshot;
-@@ -57,62 +60,218 @@ enum WsCommand {
+@@ -58,62 +61,218 @@ enum WsCommand {
          message: Message,
          tx_result: oneshot::Sender<Result<(), WsError>>,
      },
@@ -28,8 +28,8 @@ index 7f3ebd7aac..4771f913a7 100644
 +    Message(Option<Result<Message, WsError>>),
 +    ProbeTimeout,
 +    ClockTick,
-+}
-+
+ }
+ 
 +#[derive(Clone, Copy)]
 +struct WsLivenessConfig {
 +    heartbeat_interval: Duration,
@@ -53,8 +53,8 @@ index 7f3ebd7aac..4771f913a7 100644
 +    payload: Vec<u8>,
 +    deadline: Instant,
 +    waiters: Vec<oneshot::Sender<Result<(), String>>>,
- }
- 
++}
++
 +const DEFAULT_LIVENESS_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 +const WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE: &str = "websocket liveness probe timed out";
 +const WEBSOCKET_LIVENESS_RESUMED_MESSAGE: &str =
@@ -266,7 +266,7 @@ index 7f3ebd7aac..4771f913a7 100644
                  }
              }
          });
-@@ -145,11 +304,125 @@ impl WsStream {
+@@ -146,11 +305,125 @@ impl WsStream {
              .await
      }
  
@@ -392,7 +392,7 @@ index 7f3ebd7aac..4771f913a7 100644
  impl Drop for WsStream {
      fn drop(&mut self) {
          self.pump_task.abort();
-@@ -227,7 +500,18 @@ impl ResponsesWebsocketConnection {
+@@ -228,7 +501,18 @@ impl ResponsesWebsocketConnection {
              .lock()
              .await
              .as_ref()
@@ -412,7 +412,7 @@ index 7f3ebd7aac..4771f913a7 100644
      }
  
      #[instrument(
-@@ -928,6 +1212,7 @@ mod tests {
+@@ -930,6 +1214,7 @@ mod tests {
      use super::*;
      use crate::common::ResponseCreateWsRequest;
      use crate::common::ResponsesApiRequest;
@@ -420,7 +420,7 @@ index 7f3ebd7aac..4771f913a7 100644
      use codex_protocol::ResponseItemId;
      use codex_protocol::models::ContentItem;
      use codex_protocol::models::ResponseItem;
-@@ -938,6 +1223,61 @@ mod tests {
+@@ -940,6 +1225,61 @@ mod tests {
      use serde_json::value::to_raw_value;
      use std::collections::HashMap;
      use std::sync::Arc;
@@ -482,7 +482,7 @@ index 7f3ebd7aac..4771f913a7 100644
  
      #[test]
      fn direct_serialization_preserves_websocket_request_payload() {
-@@ -1007,6 +1347,389 @@ mod tests {
+@@ -1011,6 +1351,389 @@ mod tests {
          assert!(config.extensions.permessage_deflate.is_some());
      }
  
@@ -873,10 +873,10 @@ index 7f3ebd7aac..4771f913a7 100644
      fn parse_wrapped_websocket_error_event_maps_to_transport_http() {
          let payload = json!({
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index f5ac495337..7b8020cf4f 100644
+index 24f2964ffe..19d61bb61f 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
-@@ -1567,7 +1567,14 @@ impl ModelClientSession {
+@@ -1584,7 +1584,14 @@ impl ModelClientSession {
                  Some("other")
              }
              Some(conn) if conn.is_closed().await => Some("connection_closed"),
@@ -893,10 +893,10 @@ index f5ac495337..7b8020cf4f 100644
          let needs_new = self.websocket_session.connection.is_none() || reset_reason.is_some();
          // Resolving an external auth provider can change ownership during client setup.
 diff --git a/codex-rs/core/src/responses_retry.rs b/codex-rs/core/src/responses_retry.rs
-index c8edc8b9d4..bc0f5bf5e1 100644
+index 048a68bfc9..21af02efcb 100644
 --- a/codex-rs/core/src/responses_retry.rs
 +++ b/codex-rs/core/src/responses_retry.rs
-@@ -21,6 +21,7 @@ use tracing::warn;
+@@ -22,6 +22,7 @@ use tracing::warn;
  
  const INITIAL_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(5);
  const MAX_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(60);
@@ -904,7 +904,7 @@ index c8edc8b9d4..bc0f5bf5e1 100644
  
  #[derive(Debug, Clone, Copy)]
  pub(crate) enum ResponsesStreamRequest {
-@@ -142,7 +143,12 @@ pub(crate) async fn handle_response_stream_error(
+@@ -146,7 +147,12 @@ pub(crate) async fn handle_response_stream_error(
          // transient reconnect messages. In debug builds, keep full visibility for diagnosis.
          let report_error = retry_count > 1
              || cfg!(debug_assertions)
@@ -919,7 +919,7 @@ index c8edc8b9d4..bc0f5bf5e1 100644
              // Surface retry information to any UI/front-end so the user understands what is
              // happening instead of staring at a seemingly frozen screen.
 diff --git a/codex-rs/core/tests/common/responses.rs b/codex-rs/core/tests/common/responses.rs
-index 842bd19dc3..7df2128ba2 100644
+index de8507feb2..03f1dea3b3 100644
 --- a/codex-rs/core/tests/common/responses.rs
 +++ b/codex-rs/core/tests/common/responses.rs
 @@ -1324,14 +1324,22 @@ pub async fn start_websocket_server_with_headers(
@@ -1062,7 +1062,7 @@ index 842bd19dc3..7df2128ba2 100644
      match message {
          Message::Text(text) => serde_json::from_str(&text).ok(),
 diff --git a/codex-rs/core/tests/suite/client_websockets.rs b/codex-rs/core/tests/suite/client_websockets.rs
-index c6345c160d..1f2e81d75c 100755
+index 6659bba1f4..15c76f2d6b 100755
 --- a/codex-rs/core/tests/suite/client_websockets.rs
 +++ b/codex-rs/core/tests/suite/client_websockets.rs
 @@ -59,6 +59,7 @@ use core_test_support::responses::WebSocketTestServer;
@@ -1073,7 +1073,7 @@ index c6345c160d..1f2e81d75c 100755
  use core_test_support::responses::start_websocket_server;
  use core_test_support::responses::start_websocket_server_with_headers;
  use core_test_support::responses_metadata as test_responses_metadata;
-@@ -2243,6 +2244,50 @@ async fn responses_websocket_uses_previous_response_id_when_prefix_after_complet
+@@ -2240,6 +2241,50 @@ async fn responses_websocket_uses_previous_response_id_when_prefix_after_complet
      server.shutdown().await;
  }
  
@@ -1124,91 +1124,3 @@ index c6345c160d..1f2e81d75c 100755
  #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
  async fn responses_websocket_creates_on_non_prefix() {
      skip_if_no_network!();
-diff --git a/codex-rs/core/tests/suite/realtime_conversation.rs b/codex-rs/core/tests/suite/realtime_conversation.rs
-index 745439ebf3..6305426f74 100644
---- a/codex-rs/core/tests/suite/realtime_conversation.rs
-+++ b/codex-rs/core/tests/suite/realtime_conversation.rs
-@@ -273,7 +273,10 @@ async fn conversation_start_audio_text_close_round_trip() -> Result<()> {
-     skip_if_no_network!(Ok(()));
- 
-     let server = start_websocket_server(vec![
--        vec![],
-+        vec![vec![
-+            responses::ev_response_created("warm-1"),
-+            responses::ev_completed("warm-1"),
-+        ]],
-         vec![
-             vec![json!({
-                 "type": "session.updated",
-@@ -2498,7 +2501,10 @@ async fn conversation_second_start_replaces_runtime() -> Result<()> {
-     skip_if_no_network!(Ok(()));
- 
-     let server = start_websocket_server(vec![
--        vec![],
-+        vec![vec![
-+            responses::ev_response_created("warm-1"),
-+            responses::ev_completed("warm-1"),
-+        ]],
-         vec![vec![json!({
-             "type": "session.updated",
-             "session": { "id": "sess_old", "instructions": "old" }
-@@ -2730,7 +2736,10 @@ async fn conversation_uses_default_realtime_backend_prompt() -> Result<()> {
-     skip_if_no_network!(Ok(()));
- 
-     let server = start_websocket_server(vec![
--        vec![],
-+        vec![vec![
-+            responses::ev_response_created("warm-1"),
-+            responses::ev_completed("warm-1"),
-+        ]],
-         vec![vec![json!({
-             "type": "session.updated",
-             "session": { "id": "sess_default", "instructions": "default" }
-@@ -2808,7 +2817,10 @@ async fn conversation_uses_empty_instructions_for_null_or_empty_prompt() -> Resu
-     skip_if_no_network!(Ok(()));
- 
-     let server = start_websocket_server(vec![
--        vec![],
-+        vec![vec![
-+            responses::ev_response_created("warm-1"),
-+            responses::ev_completed("warm-1"),
-+        ]],
-         vec![vec![json!({
-             "type": "session.updated",
-             "session": { "id": "sess_null", "instructions": "" }
-@@ -2898,7 +2910,10 @@ async fn conversation_uses_explicit_start_voice() -> Result<()> {
-     skip_if_no_network!(Ok(()));
- 
-     let server = start_websocket_server(vec![
--        vec![],
-+        vec![vec![
-+            responses::ev_response_created("warm-1"),
-+            responses::ev_completed("warm-1"),
-+        ]],
-         vec![vec![json!({
-             "type": "session.updated",
-             "session": { "id": "sess_voice", "instructions": "backend prompt" }
-@@ -2965,7 +2980,10 @@ async fn conversation_uses_configured_realtime_voice() -> Result<()> {
-     skip_if_no_network!(Ok(()));
- 
-     let server = start_websocket_server(vec![
--        vec![],
-+        vec![vec![
-+            responses::ev_response_created("warm-1"),
-+            responses::ev_completed("warm-1"),
-+        ]],
-         vec![vec![json!({
-             "type": "session.updated",
-             "session": { "id": "sess_config_voice", "instructions": "backend prompt" }
-@@ -3081,7 +3099,10 @@ async fn conversation_uses_experimental_realtime_ws_backend_prompt_override() ->
-     skip_if_no_network!(Ok(()));
- 
-     let server = start_websocket_server(vec![
--        vec![],
-+        vec![vec![
-+            responses::ev_response_created("warm-1"),
-+            responses::ev_completed("warm-1"),
-+        ]],
-         vec![vec![json!({
-             "type": "session.updated",
-             "session": { "id": "sess_override", "instructions": "prompt from config" }

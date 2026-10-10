@@ -6,6 +6,10 @@
 final: prev:
 let
   lib = prev.lib;
+  codexRustPlatform = final.makeRustPlatform {
+    cargo = final.codex-rust-toolchain;
+    rustc = final.codex-rust-toolchain;
+  };
   enabledPatches = lib.filter (patch: patch.enabled or false) patchManifest.patches;
   patchPaths = map (patch: patchRoot + "/${patch.file}") enabledPatches;
   hasEditableEnterQueue = lib.any (
@@ -23,7 +27,10 @@ let
   };
 in
 {
-  codex-patched = prev.codex.overrideAttrs (
+  codex-rust-toolchain = final.rust-bin.stable.latest.default.override {
+    extensions = [ "rust-src" ];
+  };
+  codex-patched = (prev.codex.override { rustPlatform = codexRustPlatform; }).overrideAttrs (
     old:
     let
       # Codex 0.147.0 moved to rusty_v8 150.4.0 and enabled the sandbox
@@ -135,14 +142,15 @@ in
       __intentionallyOverridingVersion = true;
       version = "${upstreamVersion}-${patchSuffix}";
       src = upstreamSrc;
-      cargoDeps = final.rustPlatform.fetchCargoVendor {
+      cargoDeps = codexRustPlatform.fetchCargoVendor {
         pname = "codex";
         version = upstreamVersion;
         src = upstreamSrc;
         sourceRoot = "${upstreamSrc.name}/codex-rs";
         hash = upstream.cargo_hash;
       };
-      patches = (old.patches or [ ]) ++ patchPaths;
+      # Match release tarballs: the manifest owns patches for this upstream pin.
+      patches = patchPaths;
       patchFlags = [ "-p2" ];
       cargoBuildFlags = (old.cargoBuildFlags or [ ]) ++ [
         "--package"

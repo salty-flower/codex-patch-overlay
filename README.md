@@ -20,7 +20,7 @@ for macOS (`aarch64-apple-darwin`) and Linux (`x86_64-unknown-linux-musl`), each
 `.sha256` checksum. No Nix required:
 
 ```sh
-tag=codex-0.160.0-patch.1
+tag=codex-0.162.1-patch.1
 target=aarch64-apple-darwin   # or x86_64-unknown-linux-musl
 base=https://github.com/salty-flower/codex-patch-overlay/releases/download/$tag
 curl -fsSL -O "$base/$tag-$target.tar.gz"
@@ -88,6 +88,9 @@ See the [account-transition verification record](docs/records/2026-09-13-codex-r
 - **Tracking**: `patches/manifest.toml` for carried patches, `docs/backlog/` for candidates.
 
 ## Quick Start
+
+Nix builds and the development shell share the latest stable Rust provided by the locked `rust-overlay` input.
+Run `nix flake update rust-overlay` to update that toolchain, then reload the development shell.
 
 ```sh
 nix flake check --all-systems
