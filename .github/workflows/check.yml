@@ -176,6 +176,10 @@ jobs:
 
       - uses: taiki-e/install-action@nextest
 
+      - name: Build unit-test helper
+        working-directory: staging/openai-codex/codex-rs
+        run: cargo build -p codex-rmcp-client --bin test_stdio_server
+
       - name: Test patched crates
         working-directory: staging/openai-codex/codex-rs
         shell: bash

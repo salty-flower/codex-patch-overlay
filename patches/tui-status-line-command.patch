@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 669855cc95..ae53be35f3 100644
+index ec83c7b651..173b9bbb7f 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -830,6 +830,38 @@ pub struct ModelAvailabilityNuxConfig {
+@@ -851,6 +851,38 @@ pub struct ModelAvailabilityNuxConfig {
  
  /// Fallback resize-reflow row cap when Codex cannot identify a terminal-specific scrollback size.
  pub const DEFAULT_TERMINAL_RESIZE_REFLOW_FALLBACK_MAX_ROWS: usize = 1_000;
@@ -41,7 +41,7 @@ index 669855cc95..ae53be35f3 100644
  
  /// Collection of settings that are specific to the TUI.
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
-@@ -935,6 +967,16 @@ pub struct Tui {
+@@ -962,6 +994,16 @@ pub struct Tui {
      #[serde(default)]
      pub status_line: Option<Vec<String>>,
  
@@ -59,10 +59,10 @@ index 669855cc95..ae53be35f3 100644
      /// Defaults to `true`.
      #[serde(default = "default_true")]
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 58588b0159..992b16d4b4 100644
+index e3b6f77ed6..8a04031d79 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -4183,6 +4183,40 @@
+@@ -4321,6 +4321,40 @@
          }
        ]
      },
@@ -103,7 +103,7 @@ index 58588b0159..992b16d4b4 100644
      "ThreadStoreToml": {
        "oneOf": [
          {
-@@ -4771,6 +4805,15 @@
+@@ -4946,6 +4980,15 @@
            },
            "type": "array"
          },
@@ -120,7 +120,7 @@ index 58588b0159..992b16d4b4 100644
            "default": true,
            "description": "Color status line items with colors derived from the active syntax theme. Defaults to `true`.",
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index b1139b2035..736b66724c 100644
+index 639cd5257d..534bac50fc 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
 @@ -62,6 +62,7 @@ use codex_config::types::ResumeCwdMode;
@@ -131,7 +131,7 @@ index b1139b2035..736b66724c 100644
  use codex_config::types::ToolSuggestDisabledTool;
  use codex_config::types::ToolSuggestDiscoverableType;
  use codex_config::types::Tui;
-@@ -1274,6 +1275,7 @@ fn config_toml_deserializes_model_availability_nux() {
+@@ -1275,6 +1276,7 @@ fn config_toml_deserializes_model_availability_nux() {
              right_click_paste: Default::default(),
              alternate_screen: AltScreenMode::default(),
              status_line: None,
@@ -139,7 +139,7 @@ index b1139b2035..736b66724c 100644
              status_line_use_colors: true,
              terminal_title: None,
              theme: None,
-@@ -1309,6 +1311,86 @@ status_line_use_colors = false
+@@ -1311,6 +1313,86 @@ status_line_use_colors = false
      );
  }
  
@@ -226,7 +226,7 @@ index b1139b2035..736b66724c 100644
  #[test]
  fn config_toml_deserializes_terminal_resize_reflow_config() {
      let toml = r#"
-@@ -4416,6 +4498,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+@@ -4419,6 +4501,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
              right_click_paste: Default::default(),
              alternate_screen: AltScreenMode::Auto,
              status_line: None,
@@ -235,7 +235,7 @@ index b1139b2035..736b66724c 100644
              terminal_title: None,
              theme: None,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 0b6dee0763..4c32393375 100644
+index 8714dece4d..a43614051a 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
 @@ -42,6 +42,9 @@ use codex_config::types::ApprovalsReviewer;
@@ -256,7 +256,7 @@ index 0b6dee0763..4c32393375 100644
  use codex_config::types::ToolSuggestConfig;
  use codex_config::types::ToolSuggestDisabledTool;
  use codex_config::types::ToolSuggestDiscoverable;
-@@ -821,6 +825,9 @@ pub struct Config {
+@@ -832,6 +836,9 @@ pub struct Config {
      /// When unset, the TUI defaults to: `model-with-reasoning` and `current-dir`.
      pub tui_status_line: Option<Vec<String>>,
  
@@ -266,7 +266,7 @@ index 0b6dee0763..4c32393375 100644
      /// Whether to color status line items with colors from the active syntax theme.
      pub tui_status_line_use_colors: bool,
  
-@@ -3148,6 +3155,43 @@ fn validate_multi_agent_v2_wait_timeout(label: &str, value: i64) -> std::io::Res
+@@ -3166,6 +3173,43 @@ fn validate_multi_agent_v2_wait_timeout(label: &str, value: i64) -> std::io::Res
      Ok(())
  }
  
@@ -310,7 +310,7 @@ index 0b6dee0763..4c32393375 100644
  fn validate_multi_agent_v2_tool_namespace(namespace: Option<&str>) -> std::io::Result<()> {
      const LABEL: &str = "features.multi_agent_v2.tool_namespace";
      const MAX_LEN: usize = 64;
-@@ -3803,6 +3847,11 @@ impl Config {
+@@ -3822,6 +3866,11 @@ impl Config {
              })
              .unwrap_or_default();
          let terminal_resize_reflow = resolve_terminal_resize_reflow_config(&cfg);
@@ -322,7 +322,7 @@ index 0b6dee0763..4c32393375 100644
  
          let agent_roles =
              load_agent_roles(fs, &cfg, &config_layer_stack, &mut startup_warnings).await?;
-@@ -4543,6 +4592,7 @@ impl Config {
+@@ -4579,6 +4628,7 @@ impl Config {
                  .map(|t| t.alternate_screen)
                  .unwrap_or_default(),
              tui_status_line: cfg.tui.as_ref().and_then(|t| t.status_line.clone()),
@@ -331,10 +331,10 @@ index 0b6dee0763..4c32393375 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index b63bc80f39..eeae907489 100644
+index 55d61e88ac..5c4de95bf1 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -293,6 +293,7 @@ async fn new_config(
+@@ -296,6 +296,7 @@ async fn new_config(
          tui_right_click_paste: Default::default(),
          tui_alternate_screen: AltScreenMode::Auto,
          tui_status_line: None,
@@ -343,10 +343,10 @@ index b63bc80f39..eeae907489 100644
          tui_terminal_title: None,
          tui_theme: None,
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index e78c03ee95..958e52ba2b 100644
+index 96e60d4103..cdfbfe1cbb 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -3058,6 +3058,11 @@ impl App {
+@@ -3249,6 +3249,11 @@ impl App {
                      tui.frame_requester().schedule_frame();
                  }
              }
@@ -359,10 +359,10 @@ index e78c03ee95..958e52ba2b 100644
                  self.chat_widget.cancel_status_line_setup();
              }
 diff --git a/codex-rs/tui/src/app/input.rs b/codex-rs/tui/src/app/input.rs
-index 0ab8d14e06..6e063ddeb2 100644
+index 2a8938dd3d..5d5061e474 100644
 --- a/codex-rs/tui/src/app/input.rs
 +++ b/codex-rs/tui/src/app/input.rs
-@@ -232,6 +232,7 @@ impl App {
+@@ -250,6 +250,7 @@ impl App {
      }
  
      pub(super) async fn launch_external_editor(&mut self, tui: &mut tui::Tui) {
@@ -370,7 +370,7 @@ index 0ab8d14e06..6e063ddeb2 100644
          self.chat_widget
              .empty_state_animation
              .borrow_mut()
-@@ -273,6 +274,7 @@ impl App {
+@@ -291,6 +292,7 @@ impl App {
              })
              .await;
          self.reset_external_editor_state(tui);
@@ -416,10 +416,10 @@ index 070cfe534a..246337141e 100644
          assert!(remaining > WORKING_DELAY - Duration::from_secs(elapsed + 1));
      }
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 1d08ce5b6d..5d44a1d5b6 100644
+index 6f0c53a2b5..821621e9f8 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -66,6 +66,7 @@ use codex_protocol::models::ActivePermissionProfile;
+@@ -68,6 +68,7 @@ use codex_protocol::models::ActivePermissionProfile;
  use codex_realtime_webrtc::StartedRealtimeWebrtcSession;
  
  use crate::history_cell::HistoryCell;
@@ -427,7 +427,7 @@ index 1d08ce5b6d..5d44a1d5b6 100644
  
  /// Global voice controls always apply to the one call's owner.
  #[derive(Clone, Copy, Debug)]
-@@ -1526,6 +1527,8 @@ pub(crate) enum AppEvent {
+@@ -1604,6 +1605,8 @@ pub(crate) enum AppEvent {
          request_id: u64,
          result: Result<crate::workspace_messages::WorkspaceHeadlineFetchResult, String>,
      },
@@ -437,10 +437,10 @@ index 1d08ce5b6d..5d44a1d5b6 100644
      StatusLineSetup {
          items: Vec<StatusLineItem>,
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer.rs b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-index 72722559fc..d6455e2c6a 100644
+index c919e31c92..66eaf72075 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-@@ -283,6 +283,7 @@ use crate::key_hint::KeyBinding;
+@@ -279,6 +279,7 @@ use crate::key_hint::KeyBinding;
  use crate::key_hint::ShortcutHint;
  use crate::key_hint::has_ctrl_or_alt;
  use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
@@ -448,7 +448,7 @@ index 72722559fc..d6455e2c6a 100644
  use crate::ui_consts::FOOTER_INDENT_COLS;
  use codex_message_history::HistoryBatchCursor;
  use crossterm::event::KeyCode;
-@@ -338,7 +339,9 @@ use super::footer::render_context_right;
+@@ -333,7 +334,9 @@ use super::footer::render_context_right;
  use super::footer::render_footer_from_props;
  use super::footer::render_footer_hint_items;
  use super::footer::render_footer_line;
@@ -458,7 +458,7 @@ index 72722559fc..d6455e2c6a 100644
  use super::footer::side_conversation_context_line;
  use super::footer::single_line_footer_layout;
  use super::footer::status_line_right_indicator_line;
-@@ -750,6 +753,7 @@ impl ChatComposer {
+@@ -745,6 +748,7 @@ impl ChatComposer {
                  goal_status_indicator: None,
                  ide_context_active: false,
                  status_line_value: None,
@@ -466,33 +466,7 @@ index 72722559fc..d6455e2c6a 100644
                  status_line_hyperlink_url: None,
                  status_line_enabled: false,
                  side_conversation_context_label: None,
-@@ -3923,13 +3927,24 @@ impl ChatComposer {
-     }
- 
-     fn custom_footer_height(&self) -> Option<u16> {
-+        let footer_props = self.footer_props();
-         if self.draft.textarea.vim_query().is_some() || self.footer.flash_visible() {
-             return Some(1);
-         }
--        self.footer
-+        if let Some(height) = self
-+            .footer
-             .hint_override
-             .as_ref()
-             .map(|items| if items.is_empty() { 0 } else { 1 })
-+        {
-+            return Some(height);
-+        }
-+        if shows_passive_footer_line(&footer_props)
-+            && let Some(lines) = self.footer.status_line_command_lines.as_ref()
-+        {
-+            return Some(lines.len() as u16);
-+        }
-+        None
-     }
- 
-     pub(crate) fn sync_popups(&mut self) {
-@@ -4410,6 +4425,64 @@ impl ChatComposer {
+@@ -4288,6 +4292,64 @@ impl ChatComposer {
          true
      }
  
@@ -557,7 +531,7 @@ index 72722559fc..d6455e2c6a 100644
      pub(crate) fn set_status_line_hyperlink(&mut self, url: Option<String>) -> bool {
          if self.footer.status_line_hyperlink_url == url {
              return false;
-@@ -4848,7 +4921,20 @@ impl ChatComposer {
+@@ -4726,7 +4788,20 @@ impl ChatComposer {
                      if let Some((summary_left, _)) = single_line_layout {
                          match summary_left {
                              SummaryLeft::Default => {
@@ -579,7 +553,7 @@ index 72722559fc..d6455e2c6a 100644
                                      if let Some(line) = truncated_status_line.clone() {
                                          render_footer_line(hint_rect, buf, line);
                                      } else {
-@@ -4885,6 +4971,18 @@ impl ChatComposer {
+@@ -4763,6 +4838,18 @@ impl ChatComposer {
                          }
                      } else if let Some(items) = active_footer_hint_override {
                          render_footer_hint_items(hint_rect, buf, items);
@@ -598,7 +572,7 @@ index 72722559fc..d6455e2c6a 100644
                      } else if status_line_active {
                          if let Some(line) = truncated_status_line {
                              render_footer_line(hint_rect, buf, line);
-@@ -5230,6 +5328,150 @@ mod tests {
+@@ -5146,6 +5233,150 @@ mod tests {
          );
      }
  
@@ -750,10 +724,36 @@ index 72722559fc..d6455e2c6a 100644
      fn footer_flash_expires_and_falls_back_to_hint_override() {
          let (tx, _rx) = unbounded_channel::<AppEvent>();
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs b/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
-index 1a22fd5ed2..a3435fd464 100644
+index 5b8784a4fa..e4f443af7c 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
-@@ -133,9 +133,14 @@ impl super::ChatComposer {
+@@ -207,13 +207,24 @@ impl super::ChatComposer {
+     }
+ 
+     pub(super) fn custom_footer_height(&self) -> Option<u16> {
++        let footer_props = self.footer_props();
+         if self.draft.textarea.vim_query().is_some() || self.footer.flash_visible() {
+             return Some(1);
+         }
+-        self.footer
++        if let Some(height) = self
++            .footer
+             .hint_override
+             .as_ref()
+             .map(|items| if items.is_empty() { 0 } else { 1 })
++        {
++            return Some(height);
++        }
++        if shows_passive_footer_line(&footer_props)
++            && let Some(lines) = self.footer.status_line_command_lines.as_ref()
++        {
++            return Some(lines.len() as u16);
++        }
++        None
+     }
+ 
+     pub(crate) fn empty_state_composer(
+@@ -274,9 +285,14 @@ impl super::ChatComposer {
      }
  
      pub(super) fn footer_hint_height(&self, width: u16, options: ComposerRenderOptions<'_>) -> u16 {
@@ -769,7 +769,7 @@ index 1a22fd5ed2..a3435fd464 100644
          options
              .footer
              .map_or_else(
-@@ -216,6 +221,7 @@ pub(super) struct FooterState {
+@@ -357,6 +373,7 @@ pub(super) struct FooterState {
      pub(super) goal_status_indicator: Option<GoalStatusIndicator>,
      pub(super) ide_context_active: bool,
      pub(super) status_line_value: Option<Line<'static>>,
@@ -796,10 +796,10 @@ index 60ee2e0fa9..a42affa6fd 100644
  
      pub(super) fn hint_footer_props(&self, options: ComposerRenderOptions<'_>) -> FooterProps {
 diff --git a/codex-rs/tui/src/bottom_pane/footer.rs b/codex-rs/tui/src/bottom_pane/footer.rs
-index b81f2c3151..955c88dbb6 100644
+index f0b809ce50..7e1013f207 100644
 --- a/codex-rs/tui/src/bottom_pane/footer.rs
 +++ b/codex-rs/tui/src/bottom_pane/footer.rs
-@@ -267,8 +267,12 @@ pub(crate) fn footer_height(props: &FooterProps, width: u16) -> u16 {
+@@ -269,8 +269,12 @@ pub(crate) fn footer_height(props: &FooterProps, width: u16) -> u16 {
  
  /// Render a single precomputed footer line.
  pub(crate) fn render_footer_line(area: Rect, buf: &mut Buffer, line: Line<'static>) {
@@ -814,10 +814,10 @@ index b81f2c3151..955c88dbb6 100644
          " ".repeat(FOOTER_INDENT_COLS).into(),
      ))
 diff --git a/codex-rs/tui/src/bottom_pane/mod.rs b/codex-rs/tui/src/bottom_pane/mod.rs
-index 912880eed1..de6b1baaed 100644
+index c0e390289e..bab6423a5b 100644
 --- a/codex-rs/tui/src/bottom_pane/mod.rs
 +++ b/codex-rs/tui/src/bottom_pane/mod.rs
-@@ -2333,6 +2333,21 @@ impl BottomPane {
+@@ -2383,6 +2383,21 @@ impl BottomPane {
          }
      }
  
@@ -840,7 +840,7 @@ index 912880eed1..de6b1baaed 100644
          if self.composer.set_status_line_hyperlink(url) {
              self.request_redraw();
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index db8a336868..3e7fad41b1 100644
+index 9fbfba53d5..323c2854c6 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
 @@ -380,6 +380,7 @@ mod settings;
@@ -851,7 +851,7 @@ index db8a336868..3e7fad41b1 100644
  mod status_state;
  mod windows_sandbox_prompts;
  use self::status_state::StatusIndicatorState;
-@@ -768,6 +769,8 @@ pub(crate) struct ChatWidget {
+@@ -771,6 +772,8 @@ pub(crate) struct ChatWidget {
      status_line_workspace_headline_last_requested_at: Option<Instant>,
      // Set after the backend reports the workspace-message feature gate is disabled.
      status_line_workspace_messages_disabled: bool,
@@ -860,7 +860,7 @@ index db8a336868..3e7fad41b1 100644
      // Cached backend-estimated cost and bounded refresh state for the current thread.
      thread_usage: thread_usage::ThreadUsageState,
      // Current thread-goal status shown in the status line when plan mode is inactive.
-@@ -1181,6 +1184,7 @@ impl ChatWidget {
+@@ -1184,6 +1187,7 @@ impl ChatWidget {
              self.refresh_terminal_title();
          }
          self.refresh_status_line_if_workspace_headline_due();
@@ -868,7 +868,7 @@ index db8a336868..3e7fad41b1 100644
          self.refresh_thread_usage_if_settlement_due();
      }
  
-@@ -1688,7 +1692,12 @@ impl ChatWidget {
+@@ -1691,7 +1695,12 @@ impl ChatWidget {
      ///
      /// Live stream wrapping stays consistent with the current viewport while finalized transcript
      /// rebuilding runs through app-level resize reflow.
@@ -883,10 +883,10 @@ index db8a336868..3e7fad41b1 100644
          self.last_rendered_width.set(Some(width));
          let stream_width = self.current_stream_width(/*reserved_cols*/ 2);
 diff --git a/codex-rs/tui/src/chatwidget/constructor.rs b/codex-rs/tui/src/chatwidget/constructor.rs
-index db5b91fd01..af0484e90d 100644
+index f71bb5a2ab..eeb61b5be8 100644
 --- a/codex-rs/tui/src/chatwidget/constructor.rs
 +++ b/codex-rs/tui/src/chatwidget/constructor.rs
-@@ -280,6 +280,7 @@ impl ChatWidget {
+@@ -281,6 +281,7 @@ impl ChatWidget {
              next_status_line_workspace_headline_request_id: 0,
              status_line_workspace_headline_last_requested_at: None,
              status_line_workspace_messages_disabled: false,
@@ -895,7 +895,7 @@ index db5b91fd01..af0484e90d 100644
              current_goal_status_indicator: None,
              current_goal_status: None,
 diff --git a/codex-rs/tui/src/chatwidget/realtime/recording_controls_tests.rs b/codex-rs/tui/src/chatwidget/realtime/recording_controls_tests.rs
-index 53ae2d41aa..822ae37b54 100644
+index cbe21174ae..3c2dbdcdbe 100644
 --- a/codex-rs/tui/src/chatwidget/realtime/recording_controls_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/realtime/recording_controls_tests.rs
 @@ -162,7 +162,8 @@ async fn voice_meters_do_not_sample_again_on_early_redraws() {
@@ -1408,7 +1408,7 @@ index 0000000000..f737dc12a3
 +    );
 +}
 diff --git a/codex-rs/tui/src/chatwidget/status_surfaces.rs b/codex-rs/tui/src/chatwidget/status_surfaces.rs
-index 616dd6df1e..b2dff33942 100644
+index 46727cfc32..f3a3d33094 100644
 --- a/codex-rs/tui/src/chatwidget/status_surfaces.rs
 +++ b/codex-rs/tui/src/chatwidget/status_surfaces.rs
 @@ -100,6 +100,7 @@ impl StatusSurfaceSelections {
@@ -1506,7 +1506,7 @@ index 616dd6df1e..b2dff33942 100644
      /// Produces the terminal-title `project` value.
      ///
      /// This prefers the cached project-root name and falls back to the current
-@@ -1201,7 +1218,7 @@ fn matches_window_label(window: &RateLimitWindowDisplay, label: &str) -> bool {
+@@ -1212,7 +1229,7 @@ fn matches_window_label(window: &RateLimitWindowDisplay, label: &str) -> bool {
          == Some(label)
  }
  
@@ -1515,7 +1515,7 @@ index 616dd6df1e..b2dff33942 100644
      let active_permission_profile = config.permissions.active_permission_profile();
      if let Some(active_permission_profile) = active_permission_profile.as_ref()
          && !active_permission_profile.id.starts_with(':')
-@@ -1232,7 +1249,7 @@ fn permissions_display(config: &Config) -> String {
+@@ -1243,7 +1260,7 @@ fn permissions_display(config: &Config) -> String {
      "Custom permissions".to_string()
  }
  
@@ -1525,7 +1525,7 @@ index 616dd6df1e..b2dff33942 100644
      if approval_policy == AskForApproval::OnRequest {
          return match config.approvals_reviewer {
 diff --git a/codex-rs/tui/src/chatwidget/tests/status_surface_previews.rs b/codex-rs/tui/src/chatwidget/tests/status_surface_previews.rs
-index 60c741562a..a01c2a00e1 100644
+index 8c9358de94..978da99d83 100644
 --- a/codex-rs/tui/src/chatwidget/tests/status_surface_previews.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/status_surface_previews.rs
 @@ -96,6 +96,7 @@ fn terminal_title_popup_snapshot(chat: &mut ChatWidget) -> String {
@@ -1537,10 +1537,10 @@ index 60c741562a..a01c2a00e1 100644
      });
  }
 diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
-index 2697cbabd8..27a803f7d3 100644
+index dc0fbd0547..87b864c923 100644
 --- a/codex-rs/tui/src/lib.rs
 +++ b/codex-rs/tui/src/lib.rs
-@@ -210,6 +210,7 @@ mod startup_presentation;
+@@ -214,6 +214,7 @@ mod startup_presentation;
  mod startup_recovery;
  mod status;
  mod status_indicator_widget;
@@ -1549,16 +1549,16 @@ index 2697cbabd8..27a803f7d3 100644
  mod style;
  mod subscription;
 diff --git a/codex-rs/tui/src/local_settings.rs b/codex-rs/tui/src/local_settings.rs
-index 21b86b2238..f9dd6d6d17 100644
+index 5446f3fcc3..30edc4951c 100644
 --- a/codex-rs/tui/src/local_settings.rs
 +++ b/codex-rs/tui/src/local_settings.rs
-@@ -63,6 +63,7 @@ impl LocalSettings {
+@@ -56,6 +56,7 @@ impl LocalSettings {
              ),
              tui: Tui {
                  default_collaboration_mode: config.tui_default_collaboration_mode,
 +                status_line_command: config.tui_status_line_command.clone(),
                  notification_settings: config.tui_notifications.clone(),
-                 animations: animations && system_motion == crate::motion::MotionMode::Animated,
+                 animations: config.animations,
                  screen_reader_detection_done: None,
 diff --git a/codex-rs/tui/src/status/rate_limits.rs b/codex-rs/tui/src/status/rate_limits.rs
 index c22868b621..c68b6a3bd8 100644
@@ -1604,7 +1604,7 @@ index c22868b621..c68b6a3bd8 100644
              }),
              credits: None,
 diff --git a/codex-rs/tui/src/status/tests.rs b/codex-rs/tui/src/status/tests.rs
-index d2016cabc5..b826f896fe 100644
+index c6e33d8fc8..1b442c02a2 100644
 --- a/codex-rs/tui/src/status/tests.rs
 +++ b/codex-rs/tui/src/status/tests.rs
 @@ -70,6 +70,7 @@ fn stale_monthly_limit_marks_fresh_rolling_snapshot_stale() {
@@ -1615,7 +1615,7 @@ index d2016cabc5..b826f896fe 100644
              window_minutes: Some(300),
          }),
          secondary: None,
-@@ -1874,11 +1875,13 @@ async fn transcript_overlay_remeasures_status_after_rate_limit_refresh() {
+@@ -1881,11 +1882,13 @@ async fn transcript_overlay_remeasures_status_after_rate_limit_refresh() {
              primary: Some(RateLimitWindowDisplay {
                  used_percent: 45.0,
                  resets_at: Some("soon".to_string()),

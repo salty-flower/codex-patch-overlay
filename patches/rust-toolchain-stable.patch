@@ -1,3 +1,55 @@
+diff --git a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
+index 0d2f453923..9b27e72f3d 100644
+--- a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
++++ b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
+@@ -153,7 +153,7 @@ impl SessionRuntime {
+     fn allocate_cell_id(&self) -> Result<CellId, Error> {
+         self.inner
+             .next_cell_id
+-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next_cell_id| {
++            .try_update(Ordering::Relaxed, Ordering::Relaxed, |next_cell_id| {
+                 next_cell_id.checked_add(1)
+             })
+             .map(|cell_id| CellId::new(cell_id.to_string()))
+diff --git a/codex-rs/core/src/tools/executed_tool_calls.rs b/codex-rs/core/src/tools/executed_tool_calls.rs
+index 636d3cbd92..08bd15cf2e 100644
+--- a/codex-rs/core/src/tools/executed_tool_calls.rs
++++ b/codex-rs/core/src/tools/executed_tool_calls.rs
+@@ -382,7 +382,7 @@ impl ExecutedToolCalls {
+     fn reserve_direct_call(&self) -> Option<DirectCallPermit> {
+         let recording = Arc::downgrade(&self.lock_state().as_ref()?.recording);
+         self.pending_direct_calls
+-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |pending| {
++            .try_update(Ordering::Relaxed, Ordering::Relaxed, |pending| {
+                 (pending < MAX_PENDING_EXECUTED_TOOL_CALLS).then_some(pending + 1)
+             })
+             .ok()?;
+diff --git a/codex-rs/core/tests/common/apps_test_server.rs b/codex-rs/core/tests/common/apps_test_server.rs
+index 4ae5d8034a..5ac1f7ebd1 100644
+--- a/codex-rs/core/tests/common/apps_test_server.rs
++++ b/codex-rs/core/tests/common/apps_test_server.rs
+@@ -541,7 +541,7 @@ impl Respond for CodexAppsJsonRpcResponder {
+                     .as_ref()
+                     .is_some_and(|remaining| {
+                         remaining
+-                            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
++                            .try_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
+                                 remaining.checked_sub(1)
+                             })
+                             .is_ok()
+diff --git a/codex-rs/diagnostics/src/lib.rs b/codex-rs/diagnostics/src/lib.rs
+index a966e4aee5..91b878b390 100644
+--- a/codex-rs/diagnostics/src/lib.rs
++++ b/codex-rs/diagnostics/src/lib.rs
+@@ -32,7 +32,7 @@ impl Gauge {
+     pub fn decrement(&self) {
+         let _ = self
+             .value
+-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
++            .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                 Some(value.saturating_sub(1))
+             });
+     }
 diff --git a/codex-rs/rust-toolchain.toml b/codex-rs/rust-toolchain.toml
 index 910c65114e..67e3d88cb5 100644
 --- a/codex-rs/rust-toolchain.toml
@@ -7,6 +59,71 @@ index 910c65114e..67e3d88cb5 100644
 -channel = "1.95.0"
 +channel = "stable"
  components = ["clippy", "rustfmt", "rust-src"]
+diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
+index b7d6e2637e..a57c1578b2 100644
+--- a/codex-rs/tui/src/app/reconnect.rs
++++ b/codex-rs/tui/src/app/reconnect.rs
+@@ -118,7 +118,7 @@ pub(super) async fn reconnect(
+         }
+         // Transport errors can contain endpoint credentials. Do not render or log them.
+     }
+-    color_eyre::eyre::bail!("Server connection could not be restored")
++    color_eyre::eyre::bail!("Server connection could not be restored");
+ }
+ 
+ impl App {
+diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
+index 16862db0fa..04891650d9 100644
+--- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
++++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
+@@ -1184,7 +1184,7 @@ async fn command_center_new_checkout_and_worktree_preserve_source_and_default_br
+                     return Ok::<_, color_eyre::Report>(());
+                 }
+             }
+-            color_eyre::eyre::bail!("permissions menu event stream closed")
++            color_eyre::eyre::bail!("permissions menu event stream closed");
+         })
+         .await??;
+         app.chat_widget.handle_key_event(KeyCode::Up.into());
+diff --git a/codex-rs/tui/src/app/user_verification_tests.rs b/codex-rs/tui/src/app/user_verification_tests.rs
+index 64d1e97ced..6e4f8db3e9 100644
+--- a/codex-rs/tui/src/app/user_verification_tests.rs
++++ b/codex-rs/tui/src/app/user_verification_tests.rs
+@@ -152,7 +152,7 @@ async fn run_verification_rpc_scenario(scenario: RpcScenario) -> color_eyre::Res
+                 }
+             }
+         }
+-        color_eyre::eyre::bail!("connection closed before the elicitation response")
++        color_eyre::eyre::bail!("connection closed before the elicitation response");
+     });
+     let client = crate::connect_remote_app_server(endpoint).await?;
+     let mode = if scenario == RpcScenario::RemoteWorkspace {
+diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
+index f55b75c1bb..a1068571d7 100644
+--- a/codex-rs/tui/src/app_backtrack.rs
++++ b/codex-rs/tui/src/app_backtrack.rs
+@@ -602,7 +602,7 @@ pub(crate) fn backtrack_revert_before_turn_id(
+         }
+     }
+ 
+-    bail!("the selected prompt was not found in the persisted thread")
++    bail!("the selected prompt was not found in the persisted thread");
+ }
+ 
+ /// Returns whether a turn is the reconstructed inline-review child with duplicated prompt inputs.
+diff --git a/codex-rs/tui/src/app_server_connection.rs b/codex-rs/tui/src/app_server_connection.rs
+index ac3ab1cb2c..afa82e07f4 100644
+--- a/codex-rs/tui/src/app_server_connection.rs
++++ b/codex-rs/tui/src/app_server_connection.rs
+@@ -17,7 +17,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
+ pub(crate) async fn connect(target: &AppServerTarget) -> color_eyre::Result<AppServerClient> {
+     match target {
+         AppServerTarget::Embedded => {
+-            color_eyre::eyre::bail!("embedded sessions have no remote connection")
++            color_eyre::eyre::bail!("embedded sessions have no remote connection");
+         }
+         #[cfg(windows)]
+         AppServerTarget::LocalDaemon {
 diff --git a/codex-rs/tui/src/bottom_pane/request_user_input/snapshots/codex_tui__bottom_pane__request_user_input__render__tests__request_user_input_halfwidth_sound_marks_truncation.snap b/codex-rs/tui/src/bottom_pane/request_user_input/snapshots/codex_tui__bottom_pane__request_user_input__render__tests__request_user_input_halfwidth_sound_marks_truncation.snap
 index 4dc0fc13b7..1efcc1a62e 100644
 --- a/codex-rs/tui/src/bottom_pane/request_user_input/snapshots/codex_tui__bottom_pane__request_user_input__render__tests__request_user_input_halfwidth_sound_marks_truncation.snap
