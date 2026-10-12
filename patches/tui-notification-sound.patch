@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index e44f737c18..fd8acf5713 100644
+index fab6fb2e95..81551328ab 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -784,6 +784,40 @@ pub struct TuiNotificationSettings {
+@@ -805,6 +805,40 @@ pub struct TuiNotificationSettings {
      /// regardless of focus. Defaults to `unfocused`.
      #[serde(default, rename = "notification_condition")]
      pub condition: NotificationCondition,
@@ -44,10 +44,10 @@ index e44f737c18..fd8acf5713 100644
  
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index ac6171c01c..846007c8d5 100644
+index 5864a5df77..59ffef3fad 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -4646,6 +4646,18 @@
+@@ -4821,6 +4821,18 @@
            "default": "auto",
            "description": "Notification method to use for terminal notifications. Defaults to `auto`."
          },
@@ -66,7 +66,7 @@ index ac6171c01c..846007c8d5 100644
          "notifications": {
            "allOf": [
              {
-@@ -5722,6 +5734,25 @@
+@@ -5915,6 +5927,25 @@
        },
        "type": "object"
      },
@@ -93,10 +93,10 @@ index ac6171c01c..846007c8d5 100644
        "additionalProperties": false,
        "description": "Pager context keybindings for transcript and static overlays.",
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index b2a2dc45e8..bdf41d614e 100644
+index 806bd8082f..f16df072d3 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -13475,3 +13475,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
+@@ -13472,3 +13472,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
  
      Ok(())
  }
@@ -135,10 +135,10 @@ index b2a2dc45e8..bdf41d614e 100644
 +    assert_eq!(sound.command, None);
 +}
 diff --git a/codex-rs/tui/src/app/agents_overview.rs b/codex-rs/tui/src/app/agents_overview.rs
-index 89db4ec2dd..fe53856ebf 100644
+index f72a9caaa9..7913799379 100644
 --- a/codex-rs/tui/src/app/agents_overview.rs
 +++ b/codex-rs/tui/src/app/agents_overview.rs
-@@ -734,6 +734,7 @@ impl App {
+@@ -772,6 +772,7 @@ impl App {
              tui.set_notification_settings(
                  self.local_settings.tui.notification_settings.method,
                  self.local_settings.tui.notification_settings.condition,
@@ -147,10 +147,10 @@ index 89db4ec2dd..fe53856ebf 100644
              self.file_search
                  .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 5995bb7911..0e590a32ed 100644
+index 61550ab90b..63d5a50488 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -1358,6 +1358,7 @@ impl App {
+@@ -1384,6 +1384,7 @@ impl App {
          tui.set_notification_settings(
              self.local_settings.tui.notification_settings.method,
              self.local_settings.tui.notification_settings.condition,
@@ -159,10 +159,10 @@ index 5995bb7911..0e590a32ed 100644
          self.file_search
              .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index 37add4bcf6..ffccaad69f 100644
+index 69a4ff5f3e..979e10bb4a 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -228,6 +228,7 @@ impl App {
+@@ -267,6 +267,7 @@ impl App {
          tui.set_notification_settings(
              local_settings.tui.notification_settings.method,
              local_settings.tui.notification_settings.condition,
@@ -171,10 +171,10 @@ index 37add4bcf6..ffccaad69f 100644
  
          let harness_overrides =
 diff --git a/codex-rs/tui/src/app/working_directory.rs b/codex-rs/tui/src/app/working_directory.rs
-index 76187b34a3..8aa4eb326b 100644
+index db28e72c92..17d388211b 100644
 --- a/codex-rs/tui/src/app/working_directory.rs
 +++ b/codex-rs/tui/src/app/working_directory.rs
-@@ -551,7 +551,7 @@ impl App {
+@@ -586,7 +586,7 @@ impl App {
          self.file_search
              .update_search_dir(self.config.cwd.to_path_buf());
          let notify = &self.local_settings.tui.notification_settings;
@@ -773,7 +773,7 @@ index 0000000000..149efcb458
 +    }
 +}
 diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
-index 50b4e80e76..afd79d2258 100644
+index 9f49da4adb..e9caecf96f 100644
 --- a/codex-rs/tui/src/tui.rs
 +++ b/codex-rs/tui/src/tui.rs
 @@ -49,6 +49,7 @@ use crate::custom_terminal::Terminal as CustomTerminal;
@@ -792,7 +792,7 @@ index 50b4e80e76..afd79d2258 100644
  
  mod alternate_screen;
  mod event_stream;
-@@ -674,6 +676,7 @@ pub struct Tui {
+@@ -676,6 +678,7 @@ pub struct Tui {
      pub(crate) terminal_app_over_ssh: bool,
      notification_backend: Option<DesktopNotificationBackend>,
      notification_condition: NotificationCondition,
@@ -800,7 +800,7 @@ index 50b4e80e76..afd79d2258 100644
      scrollback: ScrollbackStrategy,
      // When false, overlays stay on the inline screen.
      alt_screen_enabled: bool,
-@@ -748,6 +751,7 @@ impl Tui {
+@@ -750,6 +753,7 @@ impl Tui {
              terminal_app_over_ssh: false,
              notification_backend: Some(detect_backend(NotificationMethod::default())),
              notification_condition: NotificationCondition::default(),
@@ -808,7 +808,7 @@ index 50b4e80e76..afd79d2258 100644
              scrollback,
              alt_screen_enabled: true,
              owned_screen: false,
-@@ -835,9 +839,11 @@ impl Tui {
+@@ -837,9 +841,11 @@ impl Tui {
          &mut self,
          method: NotificationMethod,
          condition: NotificationCondition,
@@ -820,7 +820,7 @@ index 50b4e80e76..afd79d2258 100644
      }
  
      pub(crate) fn is_terminal_focused(&self) -> bool {
-@@ -1012,7 +1018,7 @@ impl Tui {
+@@ -1014,7 +1020,7 @@ impl Tui {
          };
  
          let message = message.as_ref().to_string();

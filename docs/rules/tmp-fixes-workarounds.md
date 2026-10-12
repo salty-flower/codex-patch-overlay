@@ -13,12 +13,6 @@ The macOS release job selects Apple's classic linker while the default linker re
 This matches the verified local linker configuration and preserves unwind metadata.
 Remove the selection when the default Apple linker builds the complete release binaries without this warning.
 
-## Rust compiler query depth
-
-Carry `chatgpt-recursion-limit` while Rust 1.98 exceeds the default query-depth limit compiling `codex-chatgpt` with the enabled patches.
-The compiler reports a depth increase of 130 for `connectors::list_connectors`; the patch raises the crate limit from 128 to 256 without changing runtime behavior.
-Remove it when upstream raises the limit or the cumulative patch stack compiles on stable Rust with the default limit.
-
 ## OpenSSL installation metadata
 
 The musl release build applies the two CI-only patches under `scripts/ci/` to the pinned OpenSSL installer and its `mkinstallvars.pl` helper.
@@ -34,6 +28,12 @@ The dependency arrives through `age 0.11.2` and `i18n-embed-fl 0.9.4`.
 Keep the upstream dependency versions for this port; reconsider the waiver on the next upstream bump.
 This exception applies only to this known warning.
 
+## Stable Rust compatibility
+
+Carry the Rust 1.99 compatibility hunks in `rust-toolchain-stable` while upstream uses deprecated `Atomic::fetch_update` calls or diverging error macros in expression position.
+Use the renamed `try_update` calls and invoke error macros as statements; neither change alters runtime behavior.
+Remove these hunks when upstream incorporates equivalent changes.
+
 ## TUI snapshot timing
 
 Carry `tui-snapshot-stability` while the affected reconnect, disconnect, guardian, hook, and exec-flow fixtures render real-time status timers and spinner phases.
@@ -44,8 +44,8 @@ Remove it when upstream makes these fixtures deterministic.
 
 ## Integration-test import cleanup
 
-Carry `core-test-unused-import` while upstream's `openai_file_mcp` suite imports `wiremock::matchers::body_json` without using it.
-Remove it when upstream removes or uses that import.
+Carry `core-test-unused-import` while upstream's integration suites retain unused `body_json` or `ReasoningEffort` imports.
+Remove it when upstream removes or uses those imports.
 
 ## Shell-snapshot error formatting
 

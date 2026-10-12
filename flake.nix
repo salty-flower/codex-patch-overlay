@@ -3,6 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     systems.url = "github:nix-systems/default";
   };
 
@@ -10,6 +14,7 @@
     {
       self,
       nixpkgs,
+      rust-overlay,
       systems,
     }:
     let
@@ -19,11 +24,14 @@
       );
       manifest = builtins.fromTOML (builtins.readFile ./patches/manifest.toml);
       patchSuffix = manifest.release.patch_suffix;
-      overlay = import ./overlays/codex-patched.nix {
-        patchManifest = manifest;
-        patchRoot = ./.;
-        inherit patchSuffix;
-      };
+      overlay = nixpkgs.lib.composeManyExtensions [
+        rust-overlay.overlays.default
+        (import ./overlays/codex-patched.nix {
+          patchManifest = manifest;
+          patchRoot = ./.;
+          inherit patchSuffix;
+        })
+      ];
     in
     {
       overlays.default = overlay;
@@ -39,6 +47,7 @@
         {
           default = pkgs.codex-patched;
           codex-patched = pkgs.codex-patched;
+          rust-toolchain = pkgs.codex-rust-toolchain;
         }
       );
 
@@ -197,7 +206,10 @@
       devShells = eachSystem (
         system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ overlay ];
+          };
         in
         {
           default = pkgs.mkShell {
@@ -207,6 +219,7 @@
               pkgs.jq
               pkgs.nushell
               pkgs.ripgrep
+              pkgs.codex-rust-toolchain
               # For `cargo check` of the staged upstream tree.
               pkgs.pkg-config
               pkgs.openssl
