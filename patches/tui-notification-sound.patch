@@ -146,6 +146,18 @@ index ed8b8f0081..bf7100f054 100644
              );
              self.file_search
                  .update_search_dir(self.config.cwd.to_path_buf());
+diff --git a/codex-rs/tui/src/app/config_panel_tests.rs b/codex-rs/tui/src/app/config_panel_tests.rs
+index e5f1c349a0..f08ac469c1 100644
+--- a/codex-rs/tui/src/app/config_panel_tests.rs
++++ b/codex-rs/tui/src/app/config_panel_tests.rs
+@@ -272,6 +272,7 @@ async fn notification_test_delay_rejects_cancelled_and_rescheduled_timers() -> R
+     tui.set_notification_settings(
+         codex_config::types::NotificationMethod::Bel,
+         codex_config::types::NotificationCondition::Unfocused,
++        codex_config::types::TuiNotificationSoundConfig::default(),
+     );
+     app.chat_widget.open_config_panel();
+     app.chat_widget.handle_key_event(KeyCode::Right.into());
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
 index a4fff209ab..c972880750 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
