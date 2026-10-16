@@ -176,9 +176,11 @@ jobs:
 
       - uses: taiki-e/install-action@nextest
 
-      - name: Build unit-test helper
+      # Lib tests spawn these binaries from target/debug and never build them.
+      # codex-core's code_mode_host tests need the host from upstream 0.163.0.
+      - name: Build unit-test helpers
         working-directory: staging/openai-codex/codex-rs
-        run: cargo build -p codex-rmcp-client --bin test_stdio_server
+        run: cargo build -p codex-rmcp-client --bin test_stdio_server -p codex-code-mode-host --bin codex-code-mode-host
 
       - name: Test patched crates
         working-directory: staging/openai-codex/codex-rs

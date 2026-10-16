@@ -15,10 +15,10 @@ index 18fbde768d..6e114b2ce8 100644
      tokio::time::resume();
      Ok(())
 diff --git a/codex-rs/tui/src/app/tests/disconnect_tests.rs b/codex-rs/tui/src/app/tests/disconnect_tests.rs
-index 2daf07b457..4a4ea1d5a0 100644
+index 7828068a5b..dc99ac161a 100644
 --- a/codex-rs/tui/src/app/tests/disconnect_tests.rs
 +++ b/codex-rs/tui/src/app/tests/disconnect_tests.rs
-@@ -111,6 +111,7 @@ async fn lost_mutation_reply_preserves_work_without_resubmitting() -> Result<()>
+@@ -112,6 +112,7 @@ async fn lost_mutation_reply_preserves_work_without_resubmitting() -> Result<()>
          (history.session_id, history.text),
          (id.to_string(), "only once".into())
      );
@@ -26,7 +26,7 @@ index 2daf07b457..4a4ea1d5a0 100644
      assert_snapshot!(
          "offline_draft",
          format!(
-@@ -121,7 +122,7 @@ async fn lost_mutation_reply_preserves_work_without_resubmitting() -> Result<()>
+@@ -122,7 +123,7 @@ async fn lost_mutation_reply_preserves_work_without_resubmitting() -> Result<()>
                      .unwrap()
                      .display_lines(/*width*/ 80)
              ),
@@ -36,10 +36,10 @@ index 2daf07b457..4a4ea1d5a0 100644
      );
      let mut keymap = codex_config::types::TuiKeymap::default();
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 11b4ff9312..81411d0bb3 100644
+index c7af7ede3f..739083c07e 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1748,6 +1748,13 @@ impl ChatWidget {
+@@ -1765,6 +1765,13 @@ impl ChatWidget {
          self.bottom_pane.is_task_running()
      }
  
@@ -174,7 +174,7 @@ index b57de7f58b..9ffd239c50 100644
  }
  
 diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-index 307e1f5128..d728a347b4 100644
+index 301b55c2cc..22f904a81c 100644
 --- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
 @@ -5473,6 +5473,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {

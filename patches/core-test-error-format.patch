@@ -1,8 +1,8 @@
 diff --git a/codex-rs/core/src/shell_snapshot_sandbox_tests.rs b/codex-rs/core/src/shell_snapshot_sandbox_tests.rs
-index cea68a9a0f..c7a5311dc7 100644
+index 312b802b95..de5294fe47 100644
 --- a/codex-rs/core/src/shell_snapshot_sandbox_tests.rs
 +++ b/codex-rs/core/src/shell_snapshot_sandbox_tests.rs
-@@ -4,6 +4,8 @@ use pretty_assertions::assert_eq;
+@@ -5,6 +5,8 @@ use pretty_assertions::assert_eq;
  use tempfile::tempdir;
  use test_case::test_case;
  
@@ -11,7 +11,7 @@ index cea68a9a0f..c7a5311dc7 100644
  #[derive(Clone, Copy)]
  enum SnapshotFailure {
      Exit,
-@@ -72,7 +74,7 @@ async fn snapshot_failure_omits_credentials_and_stops_descendants(
+@@ -74,7 +76,7 @@ async fn snapshot_failure_omits_credentials_and_stops_descendants(
          vec![
              "/bin/sh".to_string(),
              "-c".to_string(),
@@ -20,7 +20,7 @@ index cea68a9a0f..c7a5311dc7 100644
          ],
          &cwd,
          std::env::vars().collect(),
-@@ -133,7 +135,11 @@ async fn snapshot_failure_omits_credentials_and_stops_descendants(
+@@ -135,7 +137,11 @@ async fn snapshot_failure_omits_credentials_and_stops_descendants(
                  unreachable!("dropped captures have no result")
              }
          };

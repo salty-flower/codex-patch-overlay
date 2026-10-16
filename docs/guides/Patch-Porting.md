@@ -8,6 +8,7 @@
 | Apply enabled patches | `nu scripts/apply-patches.nu` |
 | Edit staged source | `staging/openai-codex/` |
 | Refresh patch | `nu scripts/refresh-patch.nu <patch-name>` |
+| Refresh schema payloads | `gh workflow run refresh-editable-enter-schema.yml --ref <port-branch>` |
 | Verify release | `nu scripts/check-release.nu` |
 
 ## Porting Rules
@@ -16,6 +17,9 @@
 - Prefer current upstream architecture over exact historical patch replay.
 - Refresh one patch at a time.
 - Update `upstream_sha` after successful port.
+- Regenerate the carried `editable-enter-queue` schema payloads on the port branch whenever upstream changes its app-server protocol;
+  they replace upstream's precomputed exports at build time.
+  The workflow commits them with `GITHUB_TOKEN`, which does not trigger `check`, so push another commit afterwards.
 - Move abandoned candidates to `docs/records/`.
 
 ## Regenerating One Patch Mid-Stack

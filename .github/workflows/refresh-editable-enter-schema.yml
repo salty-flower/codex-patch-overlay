@@ -1,5 +1,7 @@
 name: refresh editable Enter schema
 
+# Dispatch on a port branch (`gh workflow run refresh-editable-enter-schema.yml --ref <branch>`)
+# to regenerate the carried payloads before that branch merges.
 on:
   workflow_dispatch:
 
@@ -7,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: refresh-editable-enter-schema
+  group: refresh-editable-enter-schema-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -15,8 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: main
       - uses: ./.github/actions/install-nix
       - name: Stage patched upstream
         run: |
@@ -25,6 +25,8 @@ jobs:
       - name: Generate schema payloads
         run: nix develop --command nu scripts/refresh-editable-enter-schema.nu
       - name: Commit generated payloads
+        env:
+          BRANCH: ${{ github.ref_name }}
         run: |
           if git diff --quiet -- patches/editable-enter-queue-app-server-exports-stable.json.zst patches/editable-enter-queue-app-server-exports-experimental.json.zst; then
             echo "Schema payloads are already current."
@@ -34,5 +36,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add patches/editable-enter-queue-app-server-exports-stable.json.zst patches/editable-enter-queue-app-server-exports-experimental.json.zst
           git commit -m "codex: refresh recall schema payloads"
-          git pull --rebase origin main
-          git push origin HEAD:main
+          git pull --rebase origin "${BRANCH}"
+          git push origin "HEAD:${BRANCH}"
