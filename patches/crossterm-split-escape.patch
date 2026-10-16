@@ -1,0 +1,73 @@
+diff --git a/src/event/source/unix/mio.rs b/src/event/source/unix/mio.rs
+index 054fb4d..96c78d8 100644
+--- a/src/event/source/unix/mio.rs
++++ b/src/event/source/unix/mio.rs
+@@ -110,7 +110,7 @@ impl EventSource for UnixInternalEventSource {
+                             match self.tty_fd.read(&mut self.tty_buffer) {
+                                 Ok(read_count) => {
+                                     if read_count > 0 {
+-                                        self.parser.advance(
++                                        self.parser.advance_with_escape_window(
+                                             &self.tty_buffer[..read_count],
+                                             read_count == TTY_BUFFER_SIZE,
+                                         );
+@@ -284,7 +284,15 @@ impl Parser {
+     }
+ 
+     fn buffer_external_input(&mut self, buffer: &[u8]) {
+-        self.advance(buffer, true);
++        self.advance_with_escape_window(buffer, true);
++    }
++
++    /// Advances over input, holding a trailing lone `ESC` for its ambiguity window.
++    ///
++    /// A read can end between an escape sequence's introducer and its body, as with a split
++    /// SGR mouse report. Emitting `Esc` at once would turn the body into typed text.
++    fn advance_with_escape_window(&mut self, buffer: &[u8], more: bool) {
++        self.advance(buffer, more || buffer.last() == Some(&b'\x1b'));
+         if self.buffer.as_slice() == b"\x1b" {
+             self.pending_escape_deadline = Some(Instant::now() + BUFFERED_ESCAPE_TIMEOUT);
+         }
+@@ -808,6 +816,42 @@ mod tests {
+         assert_eq!(parser.next(), None);
+     }
+ 
++    fn read_until_event(source: &mut UnixInternalEventSource) -> Option<InternalEvent> {
++        let deadline = Instant::now() + Duration::from_millis(500);
++        while Instant::now() < deadline {
++            if let Some(event) = source.try_read(Some(Duration::from_millis(50))).unwrap() {
++                return Some(event);
++            }
++        }
++        None
++    }
++
++    #[test]
++    fn mouse_report_split_after_its_escape_is_parsed_as_one_event() {
++        let (mut source, mut writer) = source_with_input();
++        writer.write_all(b"\x1b").unwrap();
++        assert_eq!(source.try_read(Some(Duration::ZERO)).unwrap(), None);
++
++        writer.write_all(b"[<65;113;25M").unwrap();
++        assert!(matches!(
++            read_until_event(&mut source),
++            Some(InternalEvent::Event(Event::Mouse(_)))
++        ));
++        assert_eq!(source.try_read(Some(Duration::ZERO)).unwrap(), None);
++    }
++
++    #[test]
++    fn escape_at_the_end_of_a_read_is_emitted_after_its_ambiguity_window() {
++        let (mut source, mut writer) = source_with_input();
++        writer.write_all(b"\x1b").unwrap();
++        assert_eq!(source.try_read(Some(Duration::ZERO)).unwrap(), None);
++
++        assert_eq!(
++            read_until_event(&mut source),
++            Some(InternalEvent::Event(Event::Key(KeyCode::Esc.into())))
++        );
++    }
++
+     #[test]
+     fn expired_buffered_escape_reads_already_available_continuation_first() {
+         let (mut source, mut writer) = source_with_input();
