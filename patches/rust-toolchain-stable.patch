@@ -12,10 +12,10 @@ index 0d2f453923..9b27e72f3d 100644
              })
              .map(|cell_id| CellId::new(cell_id.to_string()))
 diff --git a/codex-rs/core/src/tools/executed_tool_calls.rs b/codex-rs/core/src/tools/executed_tool_calls.rs
-index 636d3cbd92..08bd15cf2e 100644
+index 853c88a972..26c1eb72a8 100644
 --- a/codex-rs/core/src/tools/executed_tool_calls.rs
 +++ b/codex-rs/core/src/tools/executed_tool_calls.rs
-@@ -382,7 +382,7 @@ impl ExecutedToolCalls {
+@@ -369,7 +369,7 @@ impl ExecutedToolCalls {
      fn reserve_direct_call(&self) -> Option<DirectCallPermit> {
          let recording = Arc::downgrade(&self.lock_state().as_ref()?.recording);
          self.pending_direct_calls
@@ -25,10 +25,10 @@ index 636d3cbd92..08bd15cf2e 100644
              })
              .ok()?;
 diff --git a/codex-rs/core/tests/common/apps_test_server.rs b/codex-rs/core/tests/common/apps_test_server.rs
-index 4ae5d8034a..5ac1f7ebd1 100644
+index cde2ed74da..6771062f9a 100644
 --- a/codex-rs/core/tests/common/apps_test_server.rs
 +++ b/codex-rs/core/tests/common/apps_test_server.rs
-@@ -541,7 +541,7 @@ impl Respond for CodexAppsJsonRpcResponder {
+@@ -543,7 +543,7 @@ impl Respond for CodexAppsJsonRpcResponder {
                      .as_ref()
                      .is_some_and(|remaining| {
                          remaining
@@ -60,7 +60,7 @@ index 910c65114e..67e3d88cb5 100644
 +channel = "stable"
  components = ["clippy", "rustfmt", "rust-src"]
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index b7d6e2637e..a57c1578b2 100644
+index 97e8d65d11..9bbfde2f36 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
 @@ -118,7 +118,7 @@ pub(super) async fn reconnect(
@@ -73,10 +73,10 @@ index b7d6e2637e..a57c1578b2 100644
  
  impl App {
 diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-index 16862db0fa..04891650d9 100644
+index 438ce7605e..7bea7f1d60 100644
 --- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
 +++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-@@ -1184,7 +1184,7 @@ async fn command_center_new_checkout_and_worktree_preserve_source_and_default_br
+@@ -1213,7 +1213,7 @@ async fn command_center_new_checkout_and_worktree_preserve_source_and_default_br
                      return Ok::<_, color_eyre::Report>(());
                  }
              }
@@ -86,10 +86,10 @@ index 16862db0fa..04891650d9 100644
          .await??;
          app.chat_widget.handle_key_event(KeyCode::Up.into());
 diff --git a/codex-rs/tui/src/app/user_verification_tests.rs b/codex-rs/tui/src/app/user_verification_tests.rs
-index 64d1e97ced..6e4f8db3e9 100644
+index ed1cd6d0a0..797134fb54 100644
 --- a/codex-rs/tui/src/app/user_verification_tests.rs
 +++ b/codex-rs/tui/src/app/user_verification_tests.rs
-@@ -152,7 +152,7 @@ async fn run_verification_rpc_scenario(scenario: RpcScenario) -> color_eyre::Res
+@@ -194,7 +194,7 @@ async fn run_verification_rpc_scenario(scenario: RpcScenario) -> color_eyre::Res
                  }
              }
          }
@@ -99,10 +99,10 @@ index 64d1e97ced..6e4f8db3e9 100644
      let client = crate::connect_remote_app_server(endpoint).await?;
      let mode = if scenario == RpcScenario::RemoteWorkspace {
 diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
-index f55b75c1bb..a1068571d7 100644
+index f962f3ba8e..fb8babd3d1 100644
 --- a/codex-rs/tui/src/app_backtrack.rs
 +++ b/codex-rs/tui/src/app_backtrack.rs
-@@ -602,7 +602,7 @@ pub(crate) fn backtrack_revert_before_turn_id(
+@@ -616,7 +616,7 @@ pub(crate) fn backtrack_revert_before_turn_id(
          }
      }
  
