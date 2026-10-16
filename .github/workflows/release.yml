@@ -1,4 +1,6 @@
 name: release
+# auto-release matches this title to find an unfinished build of a tag, including dispatched ones.
+run-name: release ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 on:
   push:

@@ -193,6 +193,24 @@
               if ((release-patch-suffix "rust-v0.141.0" "rust-v0.141.0" "patch.3") != "patch.3") {
                 error make { msg: "same-upstream releases should keep the manifest patch suffix" }
               }
+
+              let tag = "codex-0.163.0-patch.2"
+              let runs = [
+                { status: "completed", headBranch: $tag, displayTitle: "codex: release" }
+                { status: "in_progress", headBranch: "codex-0.163.0-patch.1", displayTitle: "release codex-0.163.0-patch.1" }
+                { status: "queued", headBranch: "main", displayTitle: "release codex-0.163.0-patch.10" }
+              ]
+              if ((active-release-builds $runs $tag | length) != 0) {
+                error make { msg: "finished or other-tag builds should not block a retry" }
+              }
+              let pushed = ($runs | append { status: "in_progress", headBranch: $tag, displayTitle: "codex: release" })
+              if ((active-release-builds $pushed $tag | length) != 1) {
+                error make { msg: "a running tag-push build should block a retry" }
+              }
+              let dispatched = ($runs | append { status: "queued", headBranch: "main", displayTitle: $"release ($tag)" })
+              if ((active-release-builds $dispatched $tag | length) != 1) {
+                error make { msg: "a queued dispatched build should block a retry" }
+              }
             '
             touch $out
           '';

@@ -92,6 +92,24 @@ def remote-tag-exists [tag: string] {
   $result.exit_code == 0
 }
 
+# Unfinished release.yml runs building `tag`.
+# Tag pushes run on the tag ref; dispatched runs carry the tag only in their `run-name`.
+def active-release-builds [runs, tag: string] {
+  $runs | where {|run|
+    $run.status != "completed" and ($run.headBranch == $tag or $run.displayTitle == $"release ($tag)")
+  }
+}
+
+# A missing release with an existing tag can mean the tag's build is still running,
+# not that it was interrupted; dispatching again would rebuild and overwrite its assets.
+def release-build-active [repo: string, tag: string] {
+  let result = (^gh run list --repo $repo --workflow release.yml --limit 50 --json status,headBranch,displayTitle | complete)
+  if $result.exit_code != 0 {
+    fail $"failed to list release builds: ($result.stderr)"
+  }
+  (active-release-builds ($result.stdout | from json) $tag | length) > 0
+}
+
 def write-output [release_tag: string, upstream_tag: string, dispatch_release: bool] {
   let output = (env-var "GITHUB_OUTPUT")
   if not ($output | is-empty) {
@@ -280,6 +298,10 @@ def main [
   }
 
   if (remote-tag-exists $release_tag) {
+    if (release-build-active $repo $release_tag) {
+      print $"release build still running for existing tag: not retrying ($release_tag)"
+      return
+    }
     if $apply {
       print $"release missing for existing tag: retrying ($release_tag)"
       write-output $release_tag $target_tag true
