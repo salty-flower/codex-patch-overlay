@@ -113,20 +113,6 @@ jobs:
           test -x "${rg_bin}"
           echo "CODEX_RG_BIN=${rg_bin}" >> "${GITHUB_ENV}"
 
-      - name: Fetch packaged zsh
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          set -euo pipefail
-          codex_repo="${GITHUB_WORKSPACE}/staging/openai-codex"
-          zsh_bin="$(
-            CODEX_REPO_ROOT="${codex_repo}" PYTHONPATH="${codex_repo}/scripts" \
-              python3 -c 'import os; from codex_package.zsh import resolve_zsh_bin; from codex_package.targets import TARGET_SPECS; print(resolve_zsh_bin(TARGET_SPECS[os.environ["TARGET"]]))'
-          )"
-          test -x "${zsh_bin}"
-          echo "CODEX_ZSH_BIN=${zsh_bin}" >> "${GITHUB_ENV}"
-
       - name: Use hermetic Cargo home for musl
         if: contains(matrix.target, 'linux-musl')
         shell: bash
@@ -346,7 +332,7 @@ jobs:
         run: |
           set -euo pipefail
           package_dir="dist/${RELEASE_TAG}-${TARGET}"
-          mkdir -p "$package_dir/bin" "$package_dir/codex-resources/zsh/bin" "$package_dir/codex-path"
+          mkdir -p "$package_dir/bin" "$package_dir/codex-resources" "$package_dir/codex-path"
           upstream_base="$(awk -F'"' '/^upstream_base =/ { print $2; exit }' patches/manifest.toml)"
           jq -n --arg version "${upstream_base#rust-v}" --arg target "$TARGET" \
             '{layoutVersion: 1, version: $version, target: $target, variant: "codex", entrypoint: "bin/codex", resourcesDir: "codex-resources", pathDir: "codex-path"}' \
@@ -360,8 +346,6 @@ jobs:
           done
           cp "$CODEX_RG_BIN" "$package_dir/codex-path/rg"
           chmod 0755 "$package_dir/codex-path/rg"
-          cp "$CODEX_ZSH_BIN" "$package_dir/codex-resources/zsh/bin/zsh"
-          chmod 0755 "$package_dir/codex-resources/zsh/bin/zsh"
           if [[ -f "staging/openai-codex/codex-rs/target/${TARGET}/release/bwrap" ]]; then
             cp "staging/openai-codex/codex-rs/target/${TARGET}/release/bwrap" "$package_dir/codex-resources/bwrap"
             chmod 0755 "$package_dir/codex-resources/bwrap"
@@ -370,7 +354,7 @@ jobs:
 
           CODEX_PACKAGE_DIR="$package_dir" CODEX_REPO_ROOT="${GITHUB_WORKSPACE}/staging/openai-codex" \
             PYTHONPATH="${GITHUB_WORKSPACE}/staging/openai-codex/scripts" \
-            python3 -c 'import os; from pathlib import Path; from codex_package.layout import validate_package_dir; from codex_package.targets import TARGET_SPECS, PACKAGE_VARIANTS; validate_package_dir(Path(os.environ["CODEX_PACKAGE_DIR"]), PACKAGE_VARIANTS["codex"], TARGET_SPECS[os.environ["TARGET"]], include_zsh=True)'
+            python3 -c 'import os; from pathlib import Path; from codex_package.layout import validate_package_dir; from codex_package.targets import TARGET_SPECS, PACKAGE_VARIANTS; validate_package_dir(Path(os.environ["CODEX_PACKAGE_DIR"]), PACKAGE_VARIANTS["codex"], TARGET_SPECS[os.environ["TARGET"]])'
 
           # Exercise the actual archive payload on its native CI host before
           # publishing, including the Linux musl binaries that macOS cannot run.

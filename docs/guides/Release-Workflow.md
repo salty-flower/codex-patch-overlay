@@ -34,11 +34,14 @@ because neither the tarball nor the Nix package fetches a missing helper later.
 | `bin/codex-responses-api-proxy` | `--bin codex-responses-api-proxy` | `codex responses-api-proxy` |
 | `bin/codex-code-mode-host` | `--bin codex-code-mode-host` | code mode, mandatory from upstream 0.147.0 |
 | `codex-path/rg` | upstream `scripts/codex_package/rg`, fetched by `ripgrep.py` | file search; required by upstream's package layout |
-| `codex-resources/zsh/bin/zsh` | upstream `scripts/codex_package/codex-zsh`, fetched by `zsh.py` | opt-in `shell_zsh_fork` execution |
 | `codex-resources/bwrap` | `--bin bwrap`, Linux only | sandboxed exec on Linux |
 
-The release workflow fetches target-specific ripgrep and zsh archives from the staged
-upstream DotSlash manifests and verifies their SHA-256 before packaging them.
+`codex-resources/` must exist even when it is empty, as on macOS; upstream's layout validator requires it.
+Upstream 0.163.0 removed the zsh-fork shell backend and ignores `shell_zsh_fork`,
+so packages no longer ship `codex-resources/zsh/bin/zsh`.
+
+The release workflow fetches the target-specific ripgrep archive from the staged
+upstream DotSlash manifest and verifies its SHA-256 before packaging it.
 The publish job downloads this run's two target artifacts through the Actions API and verifies each API-provided ZIP digest before extraction.
 CI-only OpenSSL installer patches come from the exact workflow commit, while the application patch stack and package metadata come from the release tag.
 This lets a corrected workflow rebuild an existing source tag without moving that tag.
@@ -46,16 +49,13 @@ Before compiling, it installs both carried compressed app-server schema exports,
 matching the test workflow and Nix `postPatch`; these payloads are embedded in the binary.
 It writes the upstream package metadata, including the upstream version and target,
 and runs the upstream layout validator before archiving each package.
-The Nix overlay installs the same metadata and copies the pinned zsh helper,
-Nix's ripgrep, and Linux bubblewrap into the package resource paths.
+The Nix overlay installs the same metadata and copies
+Nix's ripgrep and Linux bubblewrap into the package resource paths.
 Helper executables must be regular files: the daemon installer rejects links that escape the package root.
 The overlay disables nixpkgs' ripgrep PATH wrapper because Codex adds `codex-path` itself,
 and the daemon requires the packaged entrypoint to match the running executable.
 The `package-layout` flake check verifies helper execution, rejects escaping links and directory links,
 and starts and stops a daemon in an isolated home with automatic updates disabled.
-Upstream's Linux zsh helper requires glibc 2.38 and `libtinfo.so.6` despite the archive's musl target name.
-The Nix overlay patches this helper's loader and library paths in a separate derivation.
-Binary archives preserve the upstream helper; musl-only systems cannot enable `shell_zsh_fork`.
 
 `codex-rs/install-context` looks for `codex-code-mode-host` under
 `codex-resources/` first and then next to the running `codex` executable,
