@@ -2258,10 +2258,10 @@ index 71761349e4..c1c3d42e33 100644
          // Clone is required because of the loop
          let mut turn_input = history
 diff --git a/codex-rs/core/src/compact_remote_v2.rs b/codex-rs/core/src/compact_remote_v2.rs
-index bacf8c3a5c..869ab46f06 100644
+index bacf8c3a5c..782485a57f 100644
 --- a/codex-rs/core/src/compact_remote_v2.rs
 +++ b/codex-rs/core/src/compact_remote_v2.rs
-@@ -301,12 +301,20 @@ async fn run_remote_compaction_request_v2(
+@@ -301,12 +301,37 @@ async fn run_remote_compaction_request_v2(
              let trace = InferenceTraceContext::disabled();
              // Replay the routing token without letting this request change foreground routing.
              let turn_state = Arc::new(turn_state.map(OnceLock::from).unwrap_or_default());
@@ -2275,16 +2275,33 @@ index bacf8c3a5c..869ab46f06 100644
 +                step_context.rotate_auth.clone(),
 +                turn_context.config.enforce_residency.value(),
 +            );
++            // A changed request identity drops the replayed token without touching foreground routing.
++            let mut routing_identity = step_context
++                .rotate_auth
++                .as_ref()
++                .and_then(codex_login::CodexAuth::rotate_identity)
++                .cloned();
++            let mut routing_turn_state = Arc::clone(&turn_state);
++            let mut rebind_routing = |auth: Option<&codex_login::CodexAuth>| {
++                let identity = auth
++                    .and_then(codex_login::CodexAuth::rotate_identity)
++                    .cloned();
++                if identity != routing_identity {
++                    routing_identity = identity;
++                    routing_turn_state = Arc::new(OnceLock::new());
++                }
++                Arc::clone(&routing_turn_state)
++            };
              let stream = tokio::select! {
                  biased;
                  _ = cancellation.cancelled() => return Err(CodexErr::TurnAborted),
                  stream = http_executor.stream_responses_http(
 -                    &turn_state, auth_owner_generation, /*event_sender*/ None, prompt, &settings.model_info, &step_context.session_telemetry, effort,
-+                    &turn_state, auth_owner_generation, /*event_sender*/ None, /*rotate_turn_state*/ None, prompt, &settings.model_info, &step_context.session_telemetry, effort,
++                    &turn_state, auth_owner_generation, /*event_sender*/ None, Some(&mut rebind_routing), prompt, &settings.model_info, &step_context.session_telemetry, effort,
                      settings.reasoning_summary, settings.service_tier.clone(), responses_metadata,
                      &trace,
                  ) => stream?,
-@@ -327,6 +335,11 @@ async fn run_remote_compaction_request_v2(
+@@ -327,6 +352,11 @@ async fn run_remote_compaction_request_v2(
          .info()
          .stream_max_retries()
          .min(MAX_REMOTE_COMPACTION_V2_STREAM_RETRIES);
