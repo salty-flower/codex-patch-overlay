@@ -285,6 +285,16 @@ jobs:
           # crate so its build script re-runs against this run's archive.
           cargo clean -p v8 --release --target "$TARGET"
 
+      # Runs after the final Cargo home is selected, so it patches the checkout the build reads.
+      - name: Apply dependency patches
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/apply-dependency-patches.py \
+            --workspace staging/openai-codex/codex-rs --target "$TARGET" --release
+
       - name: Build bwrap and export digest
         if: contains(matrix.target, 'linux')
         working-directory: staging/openai-codex/codex-rs
@@ -533,6 +543,10 @@ jobs:
             awk '
               /^name = / { name = $0; sub(/^name = "/, "", name); sub(/"$/, "", name) }
               /^enabled = true/ { print "- " name }
+            ' patches/manifest.toml
+            awk '
+              /^name = / { name = $0; sub(/^name = "/, "", name); sub(/"$/, "", name) }
+              /^crate = / { crate = $0; sub(/^crate = "/, "", crate); sub(/"$/, "", crate); print "- " name " (dependency: " crate ")" }
             ' patches/manifest.toml
             echo
             echo "Artifacts are built by GitHub Actions from the tagged manifest and include SHA-256 sidecar files."

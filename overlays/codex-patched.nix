@@ -12,6 +12,16 @@ let
   };
   enabledPatches = lib.filter (patch: patch.enabled or false) patchManifest.patches;
   patchPaths = map (patch: patchRoot + "/${patch.file}") enabledPatches;
+  dependencyPatches = patchManifest.dependency_patches or [ ];
+  # Vendored sources carry an empty checksum file list, so their files can be patched in place.
+  applyDependencyPatch = patch: ''
+    grep -qxF ${lib.escapeShellArg ''source = "${patch.source}"''} Cargo.lock \
+      || { echo "${patch.name}: Cargo.lock no longer pins ${patch.source}" >&2; exit 1; }
+    dependency_dirs=("$cargoDepsCopy"/source-git-*/${patch.crate}-[0-9]*/)
+    [ "''${#dependency_dirs[@]}" -eq 1 ] && [ -d "''${dependency_dirs[0]}" ] \
+      || { echo "${patch.name}: expected one vendored ${patch.crate} git source" >&2; exit 1; }
+    patch -p1 --forward --batch -d "''${dependency_dirs[0]}" -i ${patchRoot + "/${patch.file}"}
+  '';
   hasEditableEnterQueue = lib.any (
     patch: (patch.name or null) == "editable-enter-queue" && (patch.enabled or false)
   ) patchManifest.patches;
@@ -143,6 +153,7 @@ in
         substituteInPlace Cargo.toml \
           --replace-fail 'lto = "thin"' "" \
           --replace-fail 'codegen-units = 4' ""
+        ${lib.concatMapStrings applyDependencyPatch dependencyPatches}
         ${lib.optionalString hasEditableEnterQueue ''
           # Nix's patch hook cannot consume git binary diffs. Install the
           # generated app-server export payloads alongside the text patch.
@@ -178,6 +189,7 @@ in
       passthru = (old.passthru or { }) // {
         patchManifest = patchManifest;
         patchNames = map (patch: patch.name) enabledPatches;
+        dependencyPatchNames = map (patch: patch.name) dependencyPatches;
       };
     }
   );

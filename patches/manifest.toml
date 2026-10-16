@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.1"
+patch_suffix = "patch.2"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
@@ -173,3 +173,17 @@ status = "carried"
 risk = "medium"
 owner = "local"
 notes = "Add `[tui].reasoning_display` with `status-only` (default), `persistent`, and `hidden` modes. Persistent mode renders received reasoning summaries while they stream and commits each completed item to the transcript, preserving summaries across later tool and assistant activity. Summary cells use width-aware Markdown wrapping, retain explicit newlines, and break overlong unspaced text instead of clipping it. This displays model-provided summaries only; raw reasoning remains controlled by `show_raw_agent_reasoning`."
+
+# Patches applied to a locked dependency's source rather than to codex-rs.
+# Each entry pins the exact locked source and fails the build when the lock moves.
+
+[[dependency_patches]]
+name = "crossterm-split-escape"
+file = "patches/crossterm-split-escape.patch"
+crate = "crossterm"
+source = "git+https://github.com/openai-oss-forks/crossterm?rev=ed1cdab335221515706178d68495bba2aed1924f#ed1cdab335221515706178d68495bba2aed1924f"
+upstream_issue = "https://github.com/openai/codex/issues/52519"
+status = "carried"
+risk = "low"
+owner = "local"
+notes = "Hold a lone ESC that ends a terminal read for crossterm's existing 20 ms ambiguity window instead of emitting Esc at once. When a read splits an SGR mouse report after its ESC, as Ghostty wheel scrolling does, the TUI otherwise sees Esc, interrupts the running turn, and inserts the rest of the report (`[<65;113;25M`) into the composer. A real Escape press still arrives after the window, at most 20 ms later. Applies to the Unix mio event source only."

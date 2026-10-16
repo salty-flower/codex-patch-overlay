@@ -26,6 +26,16 @@
 - Upstream merge retires the local patch in the next local release.
 - Do not use GitHub Issues or GitHub Projects as patch state.
 
+## Dependency Patches
+
+A fix that belongs in a locked Cargo dependency, not in codex-rs, is a `[[dependency_patches]]` entry instead of a `[[patches]]` entry.
+
+- Pin the dependency by its exact `Cargo.lock` `source` string, and declare `crate`, `upstream_issue` or `upstream_pr`, `risk`, and `status`.
+- The build fails when the lock no longer pins that source; re-port the patch against the new source instead of loosening the pin.
+- Generate the patch relative to the crate root, so it applies with `patch -p1` inside the crate directory.
+- Nix patches the vendored copy in `postPatch`; CI and release builds run `scripts/ci/apply-dependency-patches.py`, which also discards Cargo's cached build of the crate.
+- Never fork the dependency to carry the change.
+
 ## Versioning
 
 | Case | Version |
