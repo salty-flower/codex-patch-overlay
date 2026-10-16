@@ -30,4 +30,23 @@ def main [] {
       error make { msg: $"enabled patch file missing: ($patch.file)" }
     }
   }
+
+  # Dependency patches pin the exact locked source instead of an upstream release.
+  for patch in ($manifest.dependency_patches? | default []) {
+    let name = ($patch.name? | default "<unnamed>")
+    for field in [name file crate source risk status] {
+      if (($patch | get -o $field) | is-empty) {
+        error make { msg: $"dependency patch missing ($field): ($name)" }
+      }
+    }
+    if ($patch.upstream_issue? | is-empty) and ($patch.upstream_pr? | is-empty) {
+      error make { msg: $"dependency patch missing upstream_issue or upstream_pr: ($name)" }
+    }
+    if not ($patch.source | str starts-with "git+") {
+      error make { msg: $"dependency patch source must be a locked git source: ($name)" }
+    }
+    if not ($patch.file | path exists) {
+      error make { msg: $"dependency patch file missing: ($patch.file)" }
+    }
+  }
 }

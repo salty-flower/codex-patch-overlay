@@ -20,6 +20,8 @@
 - Regenerate the carried `editable-enter-queue` schema payloads on the port branch whenever upstream changes its app-server protocol;
   they replace upstream's precomputed exports at build time.
   The workflow commits them with `GITHUB_TOKEN`, which does not trigger `check`, so push another commit afterwards.
+- Check each `[[dependency_patches]]` pin against the new `Cargo.lock`.
+  When upstream moves the dependency, regenerate the patch in a checkout of the new source and update `source` in the same commit.
 - Move abandoned candidates to `docs/records/`.
 
 ## Regenerating One Patch Mid-Stack
