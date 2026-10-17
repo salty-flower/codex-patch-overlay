@@ -185,7 +185,8 @@
           auto-release =
             pkgs.runCommand "codex-auto-release-check" { nativeBuildInputs = [ pkgs.nushell ]; }
               ''
-                nu --no-config-file ${./scripts/test-auto-release.nu} ${./scripts/auto-release.nu}
+                # Copy the whole directory so the test can `use` its sibling lib/ module.
+                nu --no-config-file ${./scripts}/test-auto-release.nu
                 touch $out
               '';
         }
