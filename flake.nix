@@ -182,20 +182,13 @@
               || { echo "release.yml package step does not populate bin/" >&2; exit 1; }
             touch $out
           '';
-          auto-release = pkgs.runCommand "codex-auto-release-check" { } ''
-            ${pkgs.nushell}/bin/nu --no-config-file -c '
-              source ${./scripts/auto-release.nu}
-
-              if ((release-patch-suffix "rust-v0.140.0" "rust-v0.141.0" "patch.3") != "patch.1") {
-                error make { msg: "upstream bumps should reset to patch.1" }
-              }
-
-              if ((release-patch-suffix "rust-v0.141.0" "rust-v0.141.0" "patch.3") != "patch.3") {
-                error make { msg: "same-upstream releases should keep the manifest patch suffix" }
-              }
-            '
-            touch $out
-          '';
+          auto-release =
+            pkgs.runCommand "codex-auto-release-check" { nativeBuildInputs = [ pkgs.nushell ]; }
+              ''
+                # Copy the whole directory so the test can `use` its sibling lib/ module.
+                nu --no-config-file ${./scripts}/test-auto-release.nu
+                touch $out
+              '';
         }
       );
 

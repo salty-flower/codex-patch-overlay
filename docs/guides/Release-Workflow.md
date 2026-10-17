@@ -98,8 +98,12 @@ six hours. The workflow ignores prereleases and only considers stable
 When a newer upstream release exists, `scripts/auto-release.nu`:
 
 1. Checks whether the patched GitHub Release already exists. If only its tag
-   exists, dispatches the release build again to recover from an interrupted
-   build.
+   exists and no `release.yml` run for that tag is queued or running,
+   dispatches the release build again to recover from an interrupted build.
+   A tag cut by hand is still building for over an hour; dispatching then
+   would rebuild it and overwrite the published assets with different digests,
+   as happened once for `codex-0.163.0-patch.2`.
+   Dispatched runs are titled `release <tag>` so this check can see them.
 2. Checks out the upstream tag and verifies enabled patches with
    `git apply --check`.
 3. Updates enabled manifest entries to the new upstream tag, commit SHA, source

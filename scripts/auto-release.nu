@@ -1,5 +1,7 @@
 #!/usr/bin/env nu
 
+use lib/release.nu *
+
 const FAKE_SHA256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 def env-var [name: string] {
@@ -28,35 +30,6 @@ def latest-stable-tag [repo: string] {
   }
 
   $stable.0.tagName
-}
-
-def tag-version [tag: string] {
-  $tag | str replace "rust-v" ""
-}
-
-def version-parts [tag: string] {
-  tag-version $tag | split row "." | each {|part| $part | into int }
-}
-
-def version-greater-than [left: string, right: string] {
-  let l = (version-parts $left)
-  let r = (version-parts $right)
-
-  if ($l.0 != $r.0) {
-    $l.0 > $r.0
-  } else if ($l.1 != $r.1) {
-    $l.1 > $r.1
-  } else {
-    $l.2 > $r.2
-  }
-}
-
-def release-patch-suffix [current_tag: string, target_tag: string, manifest_patch_suffix: string] {
-  if $target_tag == $current_tag {
-    $manifest_patch_suffix
-  } else {
-    "patch.1"
-  }
 }
 
 def overlay-repo [] {
@@ -90,6 +63,16 @@ def release-exists [repo: string, tag: string] {
 def remote-tag-exists [tag: string] {
   let result = (^git ls-remote --exit-code --tags origin $tag | complete)
   $result.exit_code == 0
+}
+
+# A missing release with an existing tag can mean the tag's build is still running,
+# not that it was interrupted; dispatching again would rebuild and overwrite its assets.
+def release-build-active [repo: string, tag: string] {
+  let result = (^gh run list --repo $repo --workflow release.yml --limit 50 --json status,headBranch,displayTitle | complete)
+  if $result.exit_code != 0 {
+    fail $"failed to list release builds: ($result.stderr)"
+  }
+  (active-release-builds ($result.stdout | from json) $tag | length) > 0
 }
 
 def write-output [release_tag: string, upstream_tag: string, dispatch_release: bool] {
@@ -280,6 +263,10 @@ def main [
   }
 
   if (remote-tag-exists $release_tag) {
+    if (release-build-active $repo $release_tag) {
+      print $"release build still running for existing tag: not retrying ($release_tag)"
+      return
+    }
     if $apply {
       print $"release missing for existing tag: retrying ($release_tag)"
       write-output $release_tag $target_tag true
