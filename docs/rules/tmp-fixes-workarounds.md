@@ -21,19 +21,6 @@ The helper patch makes those defaults explicit and formats optional undefined va
 The archive checksum and OpenSSL library sources remain unchanged.
 Remove both patches when the pinned upstream installer generates this metadata without the diagnostics.
 
-## Accepted dependency warning for 0.157.0
-
-The maintainer explicitly waived Rust 1.98's future-compatibility warning for `proc-macro-error2 2.0.1` for the 0.157.0 releases.
-The dependency arrives through `age 0.11.2` and `i18n-embed-fl 0.9.4`.
-Keep the upstream dependency versions for this port; reconsider the waiver on the next upstream bump.
-This exception applies only to this known warning.
-
-## Stable Rust compatibility
-
-Carry the Rust 1.99 compatibility hunks in `rust-toolchain-stable` while upstream uses deprecated `Atomic::fetch_update` calls or diverging error macros in expression position.
-Use the renamed `try_update` calls and invoke error macros as statements; neither change alters runtime behavior.
-Remove these hunks when upstream incorporates equivalent changes.
-
 ## TUI snapshot timing
 
 Carry `tui-snapshot-stability` while the affected reconnect, disconnect, guardian, hook, and exec-flow fixtures render real-time status timers and spinner phases.
@@ -44,8 +31,8 @@ Remove it when upstream makes these fixtures deterministic.
 
 ## Integration-test import cleanup
 
-Carry `core-test-unused-import` while upstream's integration suites retain unused `body_json` or `ReasoningEffort` imports.
-Remove it when upstream removes or uses those imports.
+Carry `core-test-unused-import` while upstream's `openai_file_mcp` suite imports `wiremock::matchers::body_json` without using it.
+Remove it when upstream removes or uses that import.
 
 ## Shell-snapshot error formatting
 

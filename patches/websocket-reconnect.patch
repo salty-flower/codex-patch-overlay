@@ -1,5 +1,5 @@
 diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-index 77ed1ea60d..6c41078ab4 100644
+index c59683d69d..5ba38692fc 100644
 --- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 +++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 @@ -29,7 +29,10 @@ use serde_json::map::Map as JsonMap;
@@ -873,10 +873,10 @@ index 77ed1ea60d..6c41078ab4 100644
      fn parse_wrapped_websocket_error_event_maps_to_transport_http() {
          let payload = json!({
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index 9ef4c05919..89fcda73a8 100644
+index 815ab10a7d..ae3283293e 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
-@@ -1676,7 +1676,14 @@ impl ModelClientSession {
+@@ -1717,7 +1717,14 @@ impl ModelClientSession {
                  Some("other")
              }
              Some(conn) if conn.is_closed().await => Some("connection_closed"),
@@ -919,13 +919,13 @@ index 048a68bfc9..21af02efcb 100644
              // Surface retry information to any UI/front-end so the user understands what is
              // happening instead of staring at a seemingly frozen screen.
 diff --git a/codex-rs/core/tests/common/responses.rs b/codex-rs/core/tests/common/responses.rs
-index 645b423c56..455969654e 100644
+index 25e0078f39..9a9186ad96 100644
 --- a/codex-rs/core/tests/common/responses.rs
 +++ b/codex-rs/core/tests/common/responses.rs
-@@ -1326,14 +1326,22 @@ pub async fn start_websocket_server_with_headers(
-             };
-             let close_after_requests = connection.close_after_requests;
-             for request_events in connection.requests {
+@@ -1346,15 +1346,23 @@ pub async fn start_websocket_server_with_headers(
+             let mut response_complete = false;
+             let mut batches = connection.requests.into_iter().peekable();
+             while let Some(request_events) = batches.peek() {
 -                let message = tokio::select! {
 -                    _ = &mut shutdown_rx => return,
 -                    message = ws_stream.next() => message,
@@ -946,21 +946,30 @@ index 645b423c56..455969654e 100644
                      break;
                  };
 -                if let Some(body) = parse_ws_request_body(message) {
+-                    let late_interrupt = response_complete && body["type"] == "response.interrupt";
++                let late_interrupt = response_complete && body["type"] == "response.interrupt";
 +                {
                      let mut log = requests.lock().unwrap();
                      if let Some(connection_log) = log.get_mut(connection_index) {
                          connection_log.push(WebSocketRequest { body });
-@@ -1366,8 +1374,8 @@ pub async fn start_websocket_server_with_headers(
+@@ -1387,11 +1395,11 @@ pub async fn start_websocket_server_with_headers(
                                  .and_then(Value::as_str),
                          );
                      }
 -                    request_log.notify_waiters();
-                 }
+-                    // A late interrupt cannot consume the next response's script.
+-                    if late_interrupt {
+-                        continue;
+-                    }
++                }
 +                request_log.notify_waiters();
++                // A late interrupt cannot consume the next response's script.
++                if late_interrupt {
++                    continue;
+                 }
  
                  eprintln!(
-                     "[ws test server +{}ms] connection={} sending batch_size={} event_types={:?} audio_data={:?}",
-@@ -1417,6 +1425,100 @@ pub async fn start_websocket_server_with_headers(
+@@ -1455,6 +1463,101 @@ pub async fn start_websocket_server_with_headers(
      }
  }
  
@@ -1049,6 +1058,7 @@ index 645b423c56..455969654e 100644
 +
 +    WebSocketTestServer {
 +        uri,
++        response_gates: Arc::new(Mutex::new(HashMap::new())),
 +        connections: connections_log,
 +        handshakes: handshakes_log,
 +        request_log_updated,

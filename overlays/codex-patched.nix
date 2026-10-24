@@ -43,39 +43,39 @@ in
   codex-patched = (prev.codex.override { rustPlatform = codexRustPlatform; }).overrideAttrs (
     old:
     let
-      # Codex 0.147.0 moved to rusty_v8 150.4.0 and enabled the sandbox
-      # pointer-compression feature for code mode. Pin the matching artifacts
+      # Codex 0.147.0 enabled the sandbox pointer-compression feature for code
+      # mode, and 0.164.0 moved to rusty_v8 152.2.0. Pin the matching artifacts
       # published with Codex independently of nixpkgs' bundled version.
       # When a future bump changes the resolved v8 crate, the stale binding
       # file fails compilation loudly; refresh rustyV8Version and the hashes
       # then.  Keep these targets aligned with .github/workflows/release.yml's
       # rusty_v8 staging step.
-      rustyV8Version = "150.4.0";
+      rustyV8Version = "152.2.0";
       rustyV8Target = final.stdenv.hostPlatform.rust.rustcTarget;
       rustyV8Artifacts = {
         "aarch64-apple-darwin" = {
-          archiveHash = "sha256-AK27SHmISMd1UEQcaGc6XoUpuOG3PqvN7iMss5tA9KE=";
-          bindingHash = "sha256-ylrfDPicmnCtRgrnNkiy/om3SqETs8t/dXtqArdYOU8=";
+          archiveHash = "sha256-/qua4DhL66qZwdAAZURiydQhI9WHGFx4dqru99dv90k=";
+          bindingHash = "sha256-udVlLrylFesr9MLuSmVRslZxF7Wqcg9DDSAyYW3X47U=";
         };
         "aarch64-unknown-linux-gnu" = {
-          archiveHash = "sha256-0VF+7UBUaFNwKbAF1f6ZfsdNXI01H5FrOm3yC30oEbo=";
-          bindingHash = "sha256-dyeCauR5vbZF6Acjn7EtH44uI956bPFvXuWSaQ0dhQY=";
+          archiveHash = "sha256-EFRGSmIwBs314lriCHcAK/PtuaLC8+ZPRKhxR0KxXoc=";
+          bindingHash = "sha256-Pk1f7Nvg+YpgF+adfKglGad/sDLF615M2+zdPi7FGdU=";
         };
         "aarch64-unknown-linux-musl" = {
-          archiveHash = "sha256-0ljv2cF7ZwdwE/EQMC/xSP0RQozEgE/LXJrQXj5jTLQ=";
-          bindingHash = "sha256-dyeCauR5vbZF6Acjn7EtH44uI956bPFvXuWSaQ0dhQY=";
+          archiveHash = "sha256-GmDzaj3Yd4gC5pgGaMTWWjxzBdhaXS3r9GbZqg2q3XU=";
+          bindingHash = "sha256-Pk1f7Nvg+YpgF+adfKglGad/sDLF615M2+zdPi7FGdU=";
         };
         "x86_64-apple-darwin" = {
-          archiveHash = "sha256-4Nm7ZOizoDTCkwyDly8/NXYCERSDQvoEB7OCUO8zCFY=";
-          bindingHash = "sha256-ylrfDPicmnCtRgrnNkiy/om3SqETs8t/dXtqArdYOU8=";
+          archiveHash = "sha256-v+Gdm2M7YdmXgOzolpBCf+9LmFxrQZZTbq+UVxFm/CQ=";
+          bindingHash = "sha256-udVlLrylFesr9MLuSmVRslZxF7Wqcg9DDSAyYW3X47U=";
         };
         "x86_64-unknown-linux-gnu" = {
-          archiveHash = "sha256-o1x10fJuapg4haRbM0kKTr5U8FBQVosyuJz7QhswtYM=";
-          bindingHash = "sha256-dyeCauR5vbZF6Acjn7EtH44uI956bPFvXuWSaQ0dhQY=";
+          archiveHash = "sha256-s7SQ8qqAntp/ascn+FH7AM6DVb5ygnV3z6rCjHE3280=";
+          bindingHash = "sha256-Pk1f7Nvg+YpgF+adfKglGad/sDLF615M2+zdPi7FGdU=";
         };
         "x86_64-unknown-linux-musl" = {
-          archiveHash = "sha256-0G4IvL9FqQz+rIpNMixyiHdcteNgnKcD6jErFVF05Go=";
-          bindingHash = "sha256-dyeCauR5vbZF6Acjn7EtH44uI956bPFvXuWSaQ0dhQY=";
+          archiveHash = "sha256-LyZ5dzoSV23GuJsPfXDoGQ5a6opX+PY2Tvr/3RSX0Oc=";
+          bindingHash = "sha256-Pk1f7Nvg+YpgF+adfKglGad/sDLF615M2+zdPi7FGdU=";
         };
       };
       rustyV8Artifact = rustyV8Artifacts.${rustyV8Target};

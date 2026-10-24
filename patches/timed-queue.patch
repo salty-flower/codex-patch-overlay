@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index 1b07e9826d..02ff762ae3 100644
+index 093a6af1b2..fc46848ccb 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -1096,6 +1096,13 @@ impl App {
+@@ -1107,6 +1107,13 @@ impl App {
              _ => {}
          }
  
@@ -17,10 +17,10 @@ index 1b07e9826d..02ff762ae3 100644
              let _ = self
                  .handle_backtrack_overlay_event(tui, app_server, event)
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index a7f7f1e827..16ab8cc111 100644
+index 6687d053b4..7d3510a02a 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -3169,6 +3169,30 @@ impl App {
+@@ -3278,6 +3278,30 @@ impl App {
                  self.chat_widget
                      .submit_user_message_with_mode(text, collaboration_mode);
              }
@@ -52,10 +52,10 @@ index a7f7f1e827..16ab8cc111 100644
                  self.chat_widget.handle_manage_skills_closed();
              }
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index a20193149e..9caf6cb2f6 100644
+index e2b86c9c1e..2e10106423 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -1556,6 +1556,20 @@ pub(crate) enum AppEvent {
+@@ -1580,6 +1580,20 @@ pub(crate) enum AppEvent {
          collaboration_mode: CollaborationModeMask,
      },
  
@@ -77,7 +77,7 @@ index a20193149e..9caf6cb2f6 100644
      FullScreenApprovalRequest(ApprovalRequest),
  
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 2f74f843d5..8bc9012086 100644
+index 4b9d285d29..ee28530685 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
 @@ -284,6 +284,7 @@ mod input_queue;
@@ -94,9 +94,9 @@ index 2f74f843d5..8bc9012086 100644
  pub(crate) use interaction::KeyEventAction;
 +mod scheduled_input;
  mod skills;
+ mod slash_command_args;
  mod slash_dispatch;
- mod worktree_picker;
-@@ -695,6 +697,8 @@ pub(crate) struct ChatWidget {
+@@ -703,6 +705,8 @@ pub(crate) struct ChatWidget {
      // order.
      suppress_initial_user_message_submit: bool,
      input_queue: InputQueueState,
@@ -106,10 +106,10 @@ index 2f74f843d5..8bc9012086 100644
      safety_buffering_source: UserMessageSource,
      /// Main chat-surface bindings resolved from `tui.keymap.chat`.
 diff --git a/codex-rs/tui/src/chatwidget/constructor.rs b/codex-rs/tui/src/chatwidget/constructor.rs
-index 05dde949ed..1ac53c2494 100644
+index 8d4bbbd182..5420fefd82 100644
 --- a/codex-rs/tui/src/chatwidget/constructor.rs
 +++ b/codex-rs/tui/src/chatwidget/constructor.rs
-@@ -243,6 +243,8 @@ impl ChatWidget {
+@@ -245,6 +245,8 @@ impl ChatWidget {
              forked_from: None,
              interrupted_turn_notice_mode: InterruptedTurnNoticeMode::Default,
              input_queue: InputQueueState::default(),
@@ -119,10 +119,10 @@ index 05dde949ed..1ac53c2494 100644
              safety_buffering_source: UserMessageSource::Prompt,
              chat_keymap,
 diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
-index 5b44cac1b0..3bc9fd0eb3 100644
+index ce5da8c93b..2fb8edf46f 100644
 --- a/codex-rs/tui/src/chatwidget/input_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/input_flow.rs
-@@ -210,6 +210,10 @@ impl ChatWidget {
+@@ -217,6 +217,10 @@ impl ChatWidget {
                      delivery: MessageDelivery::Unsent,
                      pending_pastes,
                      source,
@@ -133,7 +133,7 @@ index 5b44cac1b0..3bc9fd0eb3 100644
                  });
              self.input_queue
                  .queued_user_message_history_records
-@@ -253,7 +257,10 @@ impl ChatWidget {
+@@ -260,7 +264,10 @@ impl ChatWidget {
          }
          let mut submitted_follow_up = false;
          while !self.is_user_turn_pending_or_running() {
@@ -145,7 +145,7 @@ index 5b44cac1b0..3bc9fd0eb3 100644
                  break;
              };
              match queued_message.action {
-@@ -335,6 +342,81 @@ impl ChatWidget {
+@@ -342,6 +349,81 @@ impl ChatWidget {
          submitted_follow_up
      }
  
@@ -227,7 +227,7 @@ index 5b44cac1b0..3bc9fd0eb3 100644
      pub(crate) fn is_user_turn_pending_or_running(&self) -> bool {
          self.pending_image_submission.is_some()
              || self.input_queue.user_turn_pending_start
-@@ -353,7 +435,7 @@ impl ChatWidget {
+@@ -360,7 +442,7 @@ impl ChatWidget {
      }
  
      /// Rebuild and update the bottom-pane pending-input preview.
@@ -236,7 +236,7 @@ index 5b44cac1b0..3bc9fd0eb3 100644
          let has_queued = self.has_queued_follow_up_messages();
          if let Some(questions) = &mut self.bottom_pane.questions {
              questions.has_queued_messages = has_queued;
-@@ -370,6 +452,9 @@ impl ChatWidget {
+@@ -377,6 +459,9 @@ impl ChatWidget {
              preview.pending_steers,
              preview.rejected_steers,
          );
@@ -438,10 +438,10 @@ index bdaedab6ca..4ca97c389e 100644
      fn clear_resets_all_input_queues() {
          let mut state = InputQueueState::default();
 diff --git a/codex-rs/tui/src/chatwidget/input_restore.rs b/codex-rs/tui/src/chatwidget/input_restore.rs
-index e1a798b522..6326265c7b 100644
+index bc4a9c1be3..34a3c0ced9 100644
 --- a/codex-rs/tui/src/chatwidget/input_restore.rs
 +++ b/codex-rs/tui/src/chatwidget/input_restore.rs
-@@ -181,21 +181,14 @@ impl ChatWidget {
+@@ -227,21 +227,14 @@ impl ChatWidget {
          }
      }
  
@@ -467,7 +467,7 @@ index e1a798b522..6326265c7b 100644
          } else {
              // Reply envelopes must remain separate messages so other clients can read them.
              let count = self
-@@ -362,7 +355,10 @@ impl ChatWidget {
+@@ -413,7 +406,10 @@ impl ChatWidget {
                          .rejected_steer_history_records
                          .push_back(pending.history_record);
                  }
@@ -1052,7 +1052,7 @@ index 0000000000..ad99fcdaf6
 +    }
 +}
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index 5327f805cf..7648ffd250 100644
+index e9ea6e42fe..30a0820313 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 @@ -16,6 +16,7 @@ use crate::bottom_pane::slash_commands::SlashCommandItem;
@@ -1082,7 +1082,7 @@ index 5327f805cf..7648ffd250 100644
              SlashCommand::Rename => {
                  self.session_telemetry
                      .counter("codex.thread.rename", /*inc*/ 1, &[]);
-@@ -920,6 +926,29 @@ impl ChatWidget {
+@@ -943,6 +949,29 @@ impl ChatWidget {
                      Some(trimmed.to_string()),
                  );
              }
@@ -1112,7 +1112,7 @@ index 5327f805cf..7648ffd250 100644
              SlashCommand::Plan if !trimmed.is_empty() => {
                  let plan_available = self.apply_plan_slash_command();
                  let mut user_message = self.prepared_inline_user_message(
-@@ -1288,6 +1317,7 @@ impl ChatWidget {
+@@ -1310,6 +1339,7 @@ impl ChatWidget {
              | SlashCommand::Diff
              | SlashCommand::App
              | SlashCommand::Rename
@@ -1121,7 +1121,7 @@ index 5327f805cf..7648ffd250 100644
              | SlashCommand::Recap
              | SlashCommand::TestApproval => QueueDrain::Continue,
 diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index 6ef2db01fb..bd7e97daa7 100644
+index 0434900691..b53feb5e18 100644
 --- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 @@ -392,6 +392,10 @@ async fn parent_owned_thread_preserves_queued_input_before_draining() {
@@ -1136,10 +1136,10 @@ index 6ef2db01fb..bd7e97daa7 100644
      let history_record = UserMessageHistoryRecord::UserMessageText;
      chat.input_queue
 diff --git a/codex-rs/tui/src/chatwidget/tests/questions_tests.rs b/codex-rs/tui/src/chatwidget/tests/questions_tests.rs
-index c28dee3eef..9e9fcca660 100644
+index 1bd8d1c25f..c32587dea7 100644
 --- a/codex-rs/tui/src/chatwidget/tests/questions_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/questions_tests.rs
-@@ -1089,7 +1089,9 @@ async fn retried_question_answers_keep_separate_envelopes_and_order() {
+@@ -1094,7 +1094,9 @@ async fn retried_question_answers_keep_separate_envelopes_and_order() {
                  assert!(chat.enqueue_rejected_steer());
              }
          }
@@ -1151,7 +1151,7 @@ index c28dee3eef..9e9fcca660 100644
          }
          assert_eq!(retried, original);
 diff --git a/codex-rs/tui/src/chatwidget/user_messages.rs b/codex-rs/tui/src/chatwidget/user_messages.rs
-index ed997253bc..9a4baa04aa 100644
+index 864760984b..39dd44dad8 100644
 --- a/codex-rs/tui/src/chatwidget/user_messages.rs
 +++ b/codex-rs/tui/src/chatwidget/user_messages.rs
 @@ -10,6 +10,10 @@ use std::collections::HashSet;
@@ -1165,7 +1165,7 @@ index ed997253bc..9a4baa04aa 100644
  
  use crate::bottom_pane::LocalImageAttachment;
  use crate::bottom_pane::MentionBinding;
-@@ -80,6 +84,11 @@ pub(super) struct QueuedUserMessage {
+@@ -81,6 +85,11 @@ pub(super) struct QueuedUserMessage {
      pub(super) delivery: MessageDelivery,
      pub(super) pending_pastes: Vec<(String, String)>,
      pub(super) source: UserMessageSource,
@@ -1177,7 +1177,7 @@ index ed997253bc..9a4baa04aa 100644
  }
  
  impl QueuedUserMessage {
-@@ -90,12 +99,43 @@ impl QueuedUserMessage {
+@@ -91,12 +100,43 @@ impl QueuedUserMessage {
              delivery: MessageDelivery::Unsent,
              pending_pastes: Vec::new(),
              source: UserMessageSource::Prompt,
@@ -1222,10 +1222,10 @@ index ed997253bc..9a4baa04aa 100644
  
  impl From<UserMessage> for QueuedUserMessage {
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index afb372bb7b..6da508bd88 100644
+index dfd05384f7..6d777906e4 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
-@@ -28,6 +28,7 @@ pub enum SlashCommand {
+@@ -29,6 +29,7 @@ pub enum SlashCommand {
      Import,
      Hooks,
      Review,
@@ -1233,7 +1233,7 @@ index afb372bb7b..6da508bd88 100644
      Rename,
      New,
      Archive,
-@@ -98,6 +99,9 @@ impl SlashCommand {
+@@ -99,6 +100,9 @@ impl SlashCommand {
              SlashCommand::Compact => "summarize conversation to prevent hitting the context limit",
              SlashCommand::Recap => "summarize the current conversation now",
              SlashCommand::Review => "review my current changes and find issues",
@@ -1243,15 +1243,15 @@ index afb372bb7b..6da508bd88 100644
              SlashCommand::Rename => "rename the current thread",
              SlashCommand::Resume => "resume a saved chat",
              SlashCommand::Archive => "archive this session",
-@@ -171,6 +175,7 @@ impl SlashCommand {
+@@ -173,6 +177,7 @@ impl SlashCommand {
          matches!(
              self,
              SlashCommand::Review
 +                | SlashCommand::Later
-                 | SlashCommand::Rename
-                 | SlashCommand::New
-                 | SlashCommand::Clear
-@@ -273,6 +278,7 @@ impl SlashCommand {
+                 | SlashCommand::Model
+                 | SlashCommand::Permissions
+                 | SlashCommand::Title
+@@ -280,6 +285,7 @@ impl SlashCommand {
              | SlashCommand::Copy
              | SlashCommand::Raw
              | SlashCommand::Rename
