@@ -39,18 +39,16 @@ inputs.codex-patch-overlay.url = "github:salty-flower/codex-patch-overlay/latest
 ## Temporary sandbox homes
 
 Release builds reject PATH helpers under the system temporary directory by default.
-To opt in for a private Unix sandbox home, add this top-level setting to `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`):
+To opt in for a private Unix sandbox home, set this in the launch environment:
 
-```toml
-allow_helpers_in_temp = true
+```sh
+CODEX_ALLOW_HELPERS_IN_TEMP=1 codex
 ```
 
-Omitting the setting or setting it to `false` restores the upstream refusal.
-Startup reads this setting only from the user config file, before the full configuration loader runs; project configuration, profiles, and `-c` overrides do not apply.
-Missing, unreadable, malformed, or non-boolean settings never enable the exception.
-Even when enabled, every directory below the temporary root through `CODEX_HOME` must already exist, belong to the effective user, and be neither group- nor other-writable.
+Only the exact value `1` enables the exception; leaving the variable unset or setting it to `0` (or any other value) preserves the upstream refusal.
+Set it in the sandbox launcher environment, not `config.toml` or `~/.codex/.env`; upstream filters `CODEX_` variables out of `.env` files.
+Even when enabled, every directory below the temporary root through `CODEX_HOME` (default `~/.codex`) must already exist, belong to the effective user, and be neither group- nor other-writable.
 Symlinks below the temporary root remain rejected; macOS's system `/tmp` alias is allowed.
-No environment variable is added.
 Normal command completion removes the per-process alias directory; upstream's `--version` exits without running destructors, leaving a stale directory for the next invocation to clean.
 
 ## Personal account switching

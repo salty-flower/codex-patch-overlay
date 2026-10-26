@@ -19,12 +19,16 @@ expect_refusal() {
   grep -q 'Refusing to create helper binaries under temporary dir' "$root/stderr"
 }
 
+unset CODEX_ALLOW_HELPERS_IN_TEMP
 expect_refusal "$root/home"
-for setting in false '"true"' 1; do
-  printf 'allow_helpers_in_temp = %s\n' "$setting" > "$root/home/.codex/config.toml"
+# dotenv must not be able to opt in to a CODEX_ startup setting.
+printf '%s\n' 'CODEX_ALLOW_HELPERS_IN_TEMP=1' > "$root/home/.codex/.env"
+expect_refusal "$root/home"
+for setting in '' 0 true false 01 ' 1' '1 '; do
+  export CODEX_ALLOW_HELPERS_IN_TEMP="$setting"
   expect_refusal "$root/home"
 done
-printf '%s\n' 'allow_helpers_in_temp = true' > "$root/home/.codex/config.toml"
+export CODEX_ALLOW_HELPERS_IN_TEMP=1
 run_codex "$root/home" --version
 test -s "$root/stdout"
 test ! -s "$root/stderr"
