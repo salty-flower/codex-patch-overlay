@@ -19,6 +19,12 @@ expect_refusal() {
   grep -q 'Refusing to create helper binaries under temporary dir' "$root/stderr"
 }
 
+expect_refusal "$root/home"
+for setting in false '"true"' 1; do
+  printf 'allow_helpers_in_temp = %s\n' "$setting" > "$root/home/.codex/config.toml"
+  expect_refusal "$root/home"
+done
+printf '%s\n' 'allow_helpers_in_temp = true' > "$root/home/.codex/config.toml"
 run_codex "$root/home" --version
 test -s "$root/stdout"
 test ! -s "$root/stderr"

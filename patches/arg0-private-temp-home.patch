@@ -1,8 +1,16 @@
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 1eb38f3286..d3140918f1 100644
+index 1eb38f3286..11a2aaa3d0 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
-@@ -2370,6 +2370,7 @@ dependencies = [
+@@ -2360,6 +2360,7 @@ dependencies = [
+  "anyhow",
+  "codex-apply-patch",
+  "codex-async-utils",
++ "codex-config",
+  "codex-exec-server",
+  "codex-install-context",
+  "codex-linux-sandbox",
+@@ -2370,6 +2371,7 @@ dependencies = [
   "codex-utils-pty",
   "codex-windows-sandbox",
   "dotenvy",
@@ -11,10 +19,18 @@ index 1eb38f3286..d3140918f1 100644
   "pretty_assertions",
   "tempfile",
 diff --git a/codex-rs/arg0/Cargo.toml b/codex-rs/arg0/Cargo.toml
-index fad5169ffa..7fe7852362 100644
+index fad5169ffa..699b22cae8 100644
 --- a/codex-rs/arg0/Cargo.toml
 +++ b/codex-rs/arg0/Cargo.toml
-@@ -27,6 +27,9 @@ dotenvy = { workspace = true }
+@@ -16,6 +16,7 @@ workspace = true
+ anyhow = { workspace = true }
+ codex-apply-patch = { workspace = true }
+ codex-async-utils = { workspace = true }
++codex-config = { workspace = true }
+ codex-exec-server = { workspace = true }
+ codex-install-context = { workspace = true }
+ codex-linux-sandbox = { workspace = true }
+@@ -27,6 +28,9 @@ dotenvy = { workspace = true }
  tempfile = { workspace = true }
  tokio = { workspace = true, features = ["rt-multi-thread"] }
 
@@ -25,7 +41,7 @@ index fad5169ffa..7fe7852362 100644
  codex-windows-sandbox = { workspace = true }
  pathdiff = { workspace = true }
 diff --git a/codex-rs/arg0/src/lib.rs b/codex-rs/arg0/src/lib.rs
-index 2af8624b65..6fa487009b 100644
+index 2af8624b65..dcdc250452 100644
 --- a/codex-rs/arg0/src/lib.rs
 +++ b/codex-rs/arg0/src/lib.rs
 @@ -314,9 +314,9 @@ fn prepare_path_entry_for_codex_aliases(
@@ -33,14 +49,14 @@ index 2af8624b65..6fa487009b 100644
      #[cfg(not(debug_assertions))]
      {
 -        // Guard against placing helpers in system temp directories outside debug builds.
-+        // Only private, user-owned homes may place helpers below the system temp root.
++        // Opting in still requires a private, user-owned home below the temp root.
          let temp_root = std::env::temp_dir();
 -        if codex_home.starts_with(&temp_root) {
 +        if !helpers_allowed_in_home(codex_home.as_path(), &temp_root) {
              return Err(std::io::Error::new(
                  std::io::ErrorKind::InvalidInput,
                  format!(
-@@ -329,6 +329,51 @@ fn prepare_path_entry_for_codex_aliases(
+@@ -329,6 +329,56 @@ fn prepare_path_entry_for_codex_aliases(
      prepare_aliases_in_home(&codex_home, existing_path)
  }
 
@@ -53,7 +69,12 @@ index 2af8624b65..6fa487009b 100644
 +    #[cfg(unix)]
 +    {
 +        // SAFETY: geteuid has no preconditions and does not mutate process state.
-+        private_temp_home(temp_root, relative, unsafe { libc::geteuid() })
++        if !private_temp_home(temp_root, relative, unsafe { libc::geteuid() }) {
++            return false;
++        }
++        // This runs before full configuration loading. Only the user config may
++        // opt in, never project configuration, profiles, or CLI overrides.
++        codex_config::config_toml::allow_helpers_in_temp(codex_home)
 +    }
 +    #[cfg(not(unix))]
 +    {
@@ -92,7 +113,7 @@ index 2af8624b65..6fa487009b 100644
  // The production entry point validates the home before reaching this filesystem seam.
  fn prepare_aliases_in_home(
      codex_home: &Path,
-@@ -520,6 +565,9 @@ fn try_lock_dir(dir: &Path) -> std::io::Result<Option<File>> {
+@@ -520,6 +570,9 @@ fn try_lock_dir(dir: &Path) -> std::io::Result<Option<File>> {
      }
  }
 
@@ -104,10 +125,10 @@ index 2af8624b65..6fa487009b 100644
      use super::Arg0DispatchPaths;
 diff --git a/codex-rs/arg0/src/private_temp_home_tests.rs b/codex-rs/arg0/src/private_temp_home_tests.rs
 new file mode 100644
-index 0000000000..dd67e17187
+index 0000000000..2b5cb2ecfa
 --- /dev/null
 +++ b/codex-rs/arg0/src/private_temp_home_tests.rs
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,147 @@
 +use super::helpers_allowed_in_home;
 +use super::prepare_aliases_in_home;
 +use super::private_temp_home;
@@ -126,7 +147,30 @@ index 0000000000..dd67e17187
 +    for dir in [home.parent().unwrap(), home.as_path()] {
 +        fs::set_permissions(dir, fs::Permissions::from_mode(0o755))?;
 +    }
++    fs::write(home.join("config.toml"), "allow_helpers_in_temp = true\n")?;
 +    Ok((root, home))
++}
++
++#[test]
++fn only_explicit_user_toml_opt_in_allows_helpers() -> std::io::Result<()> {
++    let (root, home) = private_home()?;
++    let config = home.join("config.toml");
++    fs::remove_file(&config)?;
++    assert!(!helpers_allowed_in_home(&home, root.path()));
++    for contents in [
++        "",
++        "allow_helpers_in_temp = false",
++        "allow_helpers_in_temp = 'true'",
++        "allow_helpers_in_temp = 1",
++        "allow_helpers_in_temp = true\nbroken = [",
++        "[profiles.sandbox]\nallow_helpers_in_temp = true",
++    ] {
++        fs::write(&config, contents)?;
++        assert!(!helpers_allowed_in_home(&home, root.path()), "{contents}");
++    }
++    fs::write(&config, "allow_helpers_in_temp = true\nmodel = 'example'")?;
++    assert!(helpers_allowed_in_home(&home, root.path()));
++    Ok(())
 +}
 +
 +#[test]
@@ -232,3 +276,52 @@ index 0000000000..dd67e17187
 +    assert!(!alias_dir.exists());
 +    Ok(())
 +}
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index b626114efc..cb5db29778 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -160,10 +160,29 @@ pub struct FeatureToggleToml {
+     pub enabled: Option<bool>,
+ }
+
++/// Read the user-only startup setting before the async configuration loader runs.
++/// Missing, unreadable, or invalid configuration never enables the exception.
++pub fn allow_helpers_in_temp(codex_home: &Path) -> bool {
++    #[derive(Deserialize)]
++    struct StartupConfig {
++        #[serde(default)]
++        allow_helpers_in_temp: bool,
++    }
++
++    std::fs::read_to_string(codex_home.join(crate::CONFIG_TOML_FILE))
++        .ok()
++        .and_then(|contents| toml::from_str::<StartupConfig>(&contents).ok())
++        .is_some_and(|config| config.allow_helpers_in_temp)
++}
++
+ /// Base config deserialized from ~/.codex/config.toml.
+ #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
+ #[schemars(deny_unknown_fields)]
+ pub struct ConfigToml {
++    /// Allow PATH helpers in private, user-owned temporary homes. Defaults to false.
++    /// Read at startup only from the user config.toml, not projects, profiles, or CLI overrides.
++    pub allow_helpers_in_temp: Option<bool>,
++
+     /// Optional override of model selection.
+     pub model: Option<String>,
+     /// Default Daybreak preference for new threads and non-interactive turns.
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index 1a77f5a07b..0c9fb0094c 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -7209,6 +7209,10 @@
+       ],
+       "description": "Agent-related settings (thread limits, etc.)."
+     },
++    "allow_helpers_in_temp": {
++      "description": "Allow PATH helpers in private, user-owned temporary homes. Defaults to false. Read at startup only from the user config.toml, not projects, profiles, or CLI overrides.",
++      "type": "boolean"
++    },
+     "allow_login_shell": {
+       "description": "Whether the model may request a login shell for shell-based tools. Default to `true`\n\nIf `true`, the model may request a login shell (`login = true`), and omitting `login` defaults to using a login shell. If `false`, the model can never use a login shell: `login = true` requests are rejected, and omitting `login` defaults to a non-login shell.",
+       "type": "boolean"

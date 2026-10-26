@@ -212,6 +212,7 @@ jobs:
           env -u CODEX_CA_CERTIFICATE -u SSL_CERT_FILE \
             cargo-nextest nextest run --no-fail-fast --test-threads 2 --lib \
             -p codex-arg0 \
+            -p codex-config \
             -p codex-tui \
             -p codex-api \
             -p codex-login \
