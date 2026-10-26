@@ -111,6 +111,10 @@ in
         version = upstreamVersion;
         src = upstreamSrc;
         sourceRoot = "${upstreamSrc.name}/codex-rs";
+        # This patch adds an existing libc dependency to arg0's lock entry.
+        # Vendor from the same lockfile that the application build validates.
+        patches = lib.filter (path: baseNameOf path == "arg0-private-temp-home.patch") patchPaths;
+        patchFlags = [ "-p2" ];
         hash = upstream.cargo_hash;
       };
       # Match release tarballs: the manifest owns patches for this upstream pin.

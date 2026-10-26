@@ -20,7 +20,7 @@ for macOS (`aarch64-apple-darwin`) and Linux (`x86_64-unknown-linux-musl`), each
 `.sha256` checksum. No Nix required:
 
 ```sh
-tag=codex-0.164.0-patch.1
+tag=codex-0.164.0-patch.2
 target=aarch64-apple-darwin   # or x86_64-unknown-linux-musl
 base=https://github.com/salty-flower/codex-patch-overlay/releases/download/$tag
 curl -fsSL -O "$base/$tag-$target.tar.gz"
@@ -35,6 +35,13 @@ Or consume the Nix overlay, which always tracks the latest patch release:
 ```nix
 inputs.codex-patch-overlay.url = "github:salty-flower/codex-patch-overlay/latest-release";
 ```
+
+## Temporary sandbox homes
+
+Release builds allow PATH helpers under the system temporary directory on Unix when every directory below the temporary root through `CODEX_HOME` (or the default `~/.codex`) already exists, belongs to the effective user, and is not group- or other-writable.
+Symlinks below the temporary root remain rejected; macOS's system `/tmp` alias is allowed.
+Private sandbox homes need no environment override.
+Normal command completion removes the per-process alias directory; upstream's `--version` exits without running destructors, leaving a stale directory for the next invocation to clean.
 
 ## Personal account switching
 
