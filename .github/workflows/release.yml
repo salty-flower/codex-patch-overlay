@@ -327,6 +327,24 @@ jobs:
             --bin codex-responses-api-proxy \
             --bin codex-code-mode-host
 
+      - name: Verify private temporary homes
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          # A retry can use this workflow with an older source tag.
+          enabled="$(python3 -c 'import tomllib; from pathlib import Path; manifest = tomllib.loads(Path("patches/manifest.toml").read_text()); print(any(p.get("name") == "arg0-private-temp-home" and p.get("enabled") for p in manifest["patches"]))')"
+          if [[ "$enabled" != True ]]; then
+            echo "Source tag does not enable private temporary homes; skipping its checks."
+            exit 0
+          fi
+          env -u CODEX_SQLITE_HOME -u NO_COLOR \
+            cargo test --release --manifest-path staging/openai-codex/codex-rs/Cargo.toml \
+            --target "$TARGET" -p codex-arg0 --lib
+          bash scripts/ci/check-private-temp-home.sh \
+            "$GITHUB_WORKSPACE/staging/openai-codex/codex-rs/target/$TARGET/release/codex"
+
       - name: Verify linked V8 sandbox
         working-directory: staging/openai-codex/codex-rs
         shell: bash
