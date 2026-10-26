@@ -1,0 +1,298 @@
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index 1eb38f3286..d3140918f1 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -2370,6 +2370,7 @@ dependencies = [
+  "codex-utils-pty",
+  "codex-windows-sandbox",
+  "dotenvy",
++ "libc",
+  "pathdiff",
+  "pretty_assertions",
+  "tempfile",
+diff --git a/codex-rs/arg0/Cargo.toml b/codex-rs/arg0/Cargo.toml
+index fad5169ffa..7fe7852362 100644
+--- a/codex-rs/arg0/Cargo.toml
++++ b/codex-rs/arg0/Cargo.toml
+@@ -27,6 +27,9 @@ dotenvy = { workspace = true }
+ tempfile = { workspace = true }
+ tokio = { workspace = true, features = ["rt-multi-thread"] }
+
++[target.'cfg(unix)'.dependencies]
++libc = { workspace = true }
++
+ [target.'cfg(windows)'.dependencies]
+ codex-windows-sandbox = { workspace = true }
+ pathdiff = { workspace = true }
+diff --git a/codex-rs/arg0/src/lib.rs b/codex-rs/arg0/src/lib.rs
+index 2af8624b65..6aea9cce26 100644
+--- a/codex-rs/arg0/src/lib.rs
++++ b/codex-rs/arg0/src/lib.rs
+@@ -314,9 +314,10 @@ fn prepare_path_entry_for_codex_aliases(
+     let codex_home = find_codex_home()?;
+     #[cfg(not(debug_assertions))]
+     {
+-        // Guard against placing helpers in system temp directories outside debug builds.
++        // Opting in still requires a private, user-owned home below the temp root.
+         let temp_root = std::env::temp_dir();
+-        if codex_home.starts_with(&temp_root) {
++        let allow_helpers = std::env::var_os("CODEX_ALLOW_HELPERS_IN_TEMP");
++        if !helpers_allowed_in_home(codex_home.as_path(), &temp_root, allow_helpers.as_deref()) {
+             return Err(std::io::Error::new(
+                 std::io::ErrorKind::InvalidInput,
+                 format!(
+@@ -329,6 +330,58 @@ fn prepare_path_entry_for_codex_aliases(
+     prepare_aliases_in_home(&codex_home, existing_path)
+ }
+
++// Keep the check available in debug builds so tests exercise the release policy.
++#[cfg_attr(debug_assertions, allow(dead_code))]
++fn helpers_allowed_in_home(
++    codex_home: &Path,
++    temp_root: &Path,
++    allow_helpers: Option<&std::ffi::OsStr>,
++) -> bool {
++    let Ok(relative) = codex_home.strip_prefix(temp_root) else {
++        return true;
++    };
++    if allow_helpers != Some(std::ffi::OsStr::new("1")) {
++        return false;
++    }
++    #[cfg(unix)]
++    {
++        // SAFETY: geteuid has no preconditions and does not mutate process state.
++        private_temp_home(temp_root, relative, unsafe { libc::geteuid() })
++    }
++    #[cfg(not(unix))]
++    {
++        let _ = relative;
++        false
++    }
++}
++
++#[cfg(unix)]
++#[cfg_attr(debug_assertions, allow(dead_code))]
++fn private_temp_home(temp_root: &Path, relative: &Path, effective_uid: u32) -> bool {
++    use std::os::unix::fs::MetadataExt;
++    use std::path::Component;
++
++    // The root itself may be a system alias (macOS /tmp -> /private/tmp).
++    // Never canonicalize descendants: that would hide an attacker-owned symlink.
++    let mut path = temp_root.to_path_buf();
++    if relative.as_os_str().is_empty() {
++        return false;
++    }
++    for component in relative.components() {
++        let Component::Normal(name) = component else {
++            return false;
++        };
++        path.push(name);
++        let Ok(metadata) = std::fs::symlink_metadata(&path) else {
++            return false;
++        };
++        if !metadata.is_dir() || metadata.uid() != effective_uid || metadata.mode() & 0o022 != 0 {
++            return false;
++        }
++    }
++    true
++}
++
+ // The production entry point validates the home before reaching this filesystem seam.
+ fn prepare_aliases_in_home(
+     codex_home: &Path,
+@@ -520,6 +573,9 @@ fn try_lock_dir(dir: &Path) -> std::io::Result<Option<File>> {
+     }
+ }
+
++#[cfg(all(test, unix))]
++mod private_temp_home_tests;
++
+ #[cfg(test)]
+ mod tests {
+     use super::Arg0DispatchPaths;
+diff --git a/codex-rs/arg0/src/private_temp_home_tests.rs b/codex-rs/arg0/src/private_temp_home_tests.rs
+new file mode 100644
+index 0000000000..2cc706182e
+--- /dev/null
++++ b/codex-rs/arg0/src/private_temp_home_tests.rs
+@@ -0,0 +1,180 @@
++use super::helpers_allowed_in_home;
++use super::prepare_aliases_in_home;
++use super::private_temp_home;
++use std::ffi::OsStr;
++use std::fs;
++use std::os::unix::fs::MetadataExt;
++use std::os::unix::fs::PermissionsExt;
++use std::os::unix::fs::symlink;
++use std::path::Path;
++use std::path::PathBuf;
++use tempfile::TempDir;
++
++fn private_home() -> std::io::Result<(TempDir, PathBuf)> {
++    let root = tempfile::tempdir()?;
++    let home = root.path().join("user").join(".codex");
++    fs::create_dir_all(&home)?;
++    for dir in [home.parent().unwrap(), home.as_path()] {
++        fs::set_permissions(dir, fs::Permissions::from_mode(0o755))?;
++    }
++    Ok((root, home))
++}
++
++#[test]
++fn only_exact_environment_opt_in_allows_helpers() -> std::io::Result<()> {
++    let (root, home) = private_home()?;
++    assert!(!helpers_allowed_in_home(&home, root.path(), None));
++    for value in ["", "0", "true", "false", "01", " 1", "1 "] {
++        assert!(!helpers_allowed_in_home(
++            &home,
++            root.path(),
++            Some(OsStr::new(value)),
++        ));
++    }
++    assert!(helpers_allowed_in_home(
++        &home,
++        root.path(),
++        Some(OsStr::new("1"))
++    ));
++    Ok(())
++}
++
++#[test]
++fn private_directories_allow_helpers() -> std::io::Result<()> {
++    let (root, home) = private_home()?;
++    assert!(helpers_allowed_in_home(
++        &home,
++        root.path(),
++        Some(OsStr::new("1"))
++    ));
++    fs::set_permissions(&home, fs::Permissions::from_mode(0o700))?;
++    assert!(helpers_allowed_in_home(
++        &home,
++        root.path(),
++        Some(OsStr::new("1"))
++    ));
++    Ok(())
++}
++
++#[test]
++fn different_owner_refuses_helpers() -> std::io::Result<()> {
++    let (root, home) = private_home()?;
++    let different_uid = fs::symlink_metadata(&home)?.uid().wrapping_add(1);
++    assert!(!private_temp_home(
++        root.path(),
++        Path::new("user/.codex"),
++        different_uid,
++    ));
++    Ok(())
++}
++
++#[test]
++fn writable_ancestor_or_home_refuses_helpers() -> std::io::Result<()> {
++    let (root, home) = private_home()?;
++    for dir in [home.parent().unwrap(), home.as_path()] {
++        for mode in [0o775, 0o757, 0o777, 0o1777] {
++            fs::set_permissions(dir, fs::Permissions::from_mode(mode))?;
++            assert!(!helpers_allowed_in_home(
++                &home,
++                root.path(),
++                Some(OsStr::new("1"))
++            ));
++        }
++        fs::set_permissions(dir, fs::Permissions::from_mode(0o755))?;
++    }
++    Ok(())
++}
++
++#[test]
++fn symlink_ancestor_or_home_refuses_helpers() -> std::io::Result<()> {
++    let (root, home) = private_home()?;
++    let linked_user = root.path().join("linked-user");
++    symlink(home.parent().unwrap(), &linked_user)?;
++    assert!(!helpers_allowed_in_home(
++        &linked_user.join(".codex"),
++        root.path(),
++        Some(OsStr::new("1")),
++    ));
++    let linked_home = home.parent().unwrap().join("linked-home");
++    symlink(&home, &linked_home)?;
++    assert!(!helpers_allowed_in_home(
++        &linked_home,
++        root.path(),
++        Some(OsStr::new("1"))
++    ));
++    Ok(())
++}
++
++#[test]
++fn system_temp_root_symlink_is_allowed() -> std::io::Result<()> {
++    let (root, _) = private_home()?;
++    let system = tempfile::tempdir()?;
++    let temp_alias = system.path().join("tmp");
++    symlink(root.path(), &temp_alias)?;
++    assert!(helpers_allowed_in_home(
++        &temp_alias.join("user/.codex"),
++        &temp_alias,
++        Some(OsStr::new("1")),
++    ));
++    Ok(())
++}
++
++#[test]
++fn outside_temp_root_preserves_existing_policy() -> std::io::Result<()> {
++    let root = tempfile::tempdir()?;
++    assert!(helpers_allowed_in_home(
++        &root.path().join("tmp-other/.codex"),
++        &root.path().join("tmp"),
++        None,
++    ));
++    Ok(())
++}
++
++#[test]
++fn root_missing_file_and_parent_traversal_refuse_helpers() -> std::io::Result<()> {
++    let (root, home) = private_home()?;
++    assert!(!helpers_allowed_in_home(
++        root.path(),
++        root.path(),
++        Some(OsStr::new("1"))
++    ));
++    assert!(!helpers_allowed_in_home(
++        &home.join("missing"),
++        root.path(),
++        Some(OsStr::new("1"))
++    ));
++    let file = home.join("file");
++    fs::write(&file, b"")?;
++    assert!(!helpers_allowed_in_home(
++        &file,
++        root.path(),
++        Some(OsStr::new("1"))
++    ));
++    assert!(!helpers_allowed_in_home(
++        &home.join("../.codex"),
++        root.path(),
++        Some(OsStr::new("1")),
++    ));
++    Ok(())
++}
++
++#[test]
++fn private_home_aliases_live_until_guard_drops() -> std::io::Result<()> {
++    let (root, home) = private_home()?;
++    assert!(helpers_allowed_in_home(
++        &home,
++        root.path(),
++        Some(OsStr::new("1"))
++    ));
++    let (guard, path) = prepare_aliases_in_home(&home, None)?;
++    let alias_dir = std::env::split_paths(&path).next().unwrap();
++    for name in ["apply_patch", "applypatch"] {
++        assert_eq!(
++            fs::read_link(alias_dir.join(name))?,
++            std::env::current_exe()?
++        );
++    }
++    drop(guard);
++    assert!(!alias_dir.exists());
++    Ok(())
++}
