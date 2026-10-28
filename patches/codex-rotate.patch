@@ -2274,78 +2274,91 @@ index f929e2c969..6b1cf7eb2b 100644
                  &mut provider_auth_recovery_attempted,
                  &telemetry,
 diff --git a/codex-rs/core/src/compact.rs b/codex-rs/core/src/compact.rs
-index 163e7d53e4..0d14701c4e 100644
+index 163e7d53e4..268aa57c22 100644
 --- a/codex-rs/core/src/compact.rs
 +++ b/codex-rs/core/src/compact.rs
-@@ -119,6 +119,8 @@ pub(crate) async fn run_inline_auto_compact_task(
-     turn_context: Arc<TurnContext>,
+@@ -116,13 +116,14 @@ fn assemble_compaction_history(
+ 
+ pub(crate) async fn run_inline_auto_compact_task(
+     sess: Arc<Session>,
+-    turn_context: Arc<TurnContext>,
++    step_context: Arc<StepContext>,
      replacement_step_context: Arc<StepContext>,
      world_state: Arc<WorldState>,
-+    rotate_auth: Option<codex_login::CodexAuth>,
-+    rotate_http_client_factory: Option<codex_http_client::HttpClientFactory>,
      reason: CompactionReason,
      phase: CompactionPhase,
  ) -> CodexResult<()> {
-@@ -138,6 +140,8 @@ pub(crate) async fn run_inline_auto_compact_task(
+-    let prompt = turn_context
++    let prompt = step_context
++        .turn
+         .config
+         .compact_prompt
+         .as_deref()
+@@ -136,7 +137,7 @@ pub(crate) async fn run_inline_auto_compact_task(
+ 
+     run_compact_task_inner(
          sess,
-         turn_context,
+-        turn_context,
++        step_context,
          replacement_step_context,
-+        rotate_auth,
-+        rotate_http_client_factory,
          input,
          world_state,
-         CompactionTurnMetadata::new(
-@@ -157,10 +161,15 @@ pub(crate) async fn run_compact_task(
-     world_state: Arc<WorldState>,
-     input: Vec<UserInput>,
+@@ -159,7 +160,7 @@ pub(crate) async fn run_compact_task(
  ) -> CodexResult<()> {
-+    // The captured step already carries the admitted rotate account for this request.
-+    let rotate_auth = step_context.rotate_auth.clone();
-+    let rotate_http_client_factory = step_context.rotate_http_client_factory.clone();
      run_compact_task_inner(
          sess.clone(),
-         Arc::clone(&step_context.turn),
+-        Arc::clone(&step_context.turn),
++        Arc::clone(&step_context),
          step_context,
-+        rotate_auth,
-+        rotate_http_client_factory,
          input,
          world_state,
-         CompactionTurnMetadata::new(
-@@ -178,6 +187,8 @@ async fn run_compact_task_inner(
+@@ -176,12 +177,13 @@ pub(crate) async fn run_compact_task(
+ 
+ async fn run_compact_task_inner(
      sess: Arc<Session>,
-     turn_context: Arc<TurnContext>,
+-    turn_context: Arc<TurnContext>,
++    step_context: Arc<StepContext>,
      replacement_step_context: Arc<StepContext>,
-+    rotate_auth: Option<codex_login::CodexAuth>,
-+    rotate_http_client_factory: Option<codex_http_client::HttpClientFactory>,
      input: Vec<UserInput>,
      world_state: Arc<WorldState>,
      compaction_metadata: CompactionTurnMetadata,
-@@ -214,6 +225,8 @@ async fn run_compact_task_inner(
+ ) -> CodexResult<()> {
++    let turn_context = Arc::clone(&step_context.turn);
+     let trigger = compaction_metadata.trigger();
+     let reason = compaction_metadata.reason();
+     let phase = compaction_metadata.phase();
+@@ -212,7 +214,7 @@ async fn run_compact_task_inner(
+     }
+     let result = run_compact_task_inner_impl(
          Arc::clone(&sess),
-         Arc::clone(&turn_context),
+-        Arc::clone(&turn_context),
++        step_context,
          replacement_step_context,
-+        rotate_auth,
-+        rotate_http_client_factory,
          input,
          world_state,
-         compaction_metadata,
-@@ -264,6 +277,8 @@ async fn run_compact_task_inner_impl(
+@@ -262,12 +264,13 @@ async fn run_compact_task_inner(
+ 
+ async fn run_compact_task_inner_impl(
      sess: Arc<Session>,
-     turn_context: Arc<TurnContext>,
+-    turn_context: Arc<TurnContext>,
++    step_context: Arc<StepContext>,
      replacement_step_context: Arc<StepContext>,
-+    rotate_auth: Option<codex_login::CodexAuth>,
-+    rotate_http_client_factory: Option<codex_http_client::HttpClientFactory>,
      input: Vec<UserInput>,
      world_state: Arc<WorldState>,
      compaction_metadata: CompactionTurnMetadata,
-@@ -295,6 +310,11 @@ async fn run_compact_task_inner_impl(
+ ) -> CodexResult<String> {
++    let turn_context = Arc::clone(&step_context.turn);
+     let compaction_item = TurnItem::ContextCompaction(ContextCompactionItem::new());
+     sess.emit_turn_item_started(&turn_context, &compaction_item)
+         .await;
+@@ -295,6 +298,11 @@ async fn run_compact_task_inner_impl(
      // Reuse one client session so turn-scoped state (sticky routing and websocket incremental
      // request tracking) survives retries within this compact turn.
      let mut client_session = sess.services.model_client.new_session();
 +    client_session.set_rotate_step_auth(
-+        rotate_auth,
++        step_context.rotate_auth.clone(),
 +        turn_context.config.enforce_residency.value(),
-+        rotate_http_client_factory,
++        step_context.rotate_http_client_factory.clone(),
 +    );
      let compaction_response = loop {
          // Clone is required because of the loop
@@ -2877,7 +2890,7 @@ index a2b28fadd7..55fb939aaf 100644
      }
  }
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 5bf5caf3bd..78f670cbb6 100644
+index 5bf5caf3bd..c0d6e87e88 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
 @@ -267,6 +267,7 @@ mod retained_context;
@@ -2888,7 +2901,7 @@ index 5bf5caf3bd..78f670cbb6 100644
  #[allow(clippy::module_inception)]
  pub(crate) mod session;
  pub(crate) mod startup_prewarm;
-@@ -3945,36 +3946,21 @@ impl Session {
+@@ -3945,36 +3946,26 @@ impl Session {
          .await
      }
  
@@ -2898,17 +2911,15 @@ index 5bf5caf3bd..78f670cbb6 100644
 -    )]
      #[tracing::instrument(name = "step_context.capture", level = "info", skip_all)]
 -    async fn capture_step_context_inner(
-+    pub(super) async fn capture_prepared_step_context(
++    async fn capture_prepared_step_context(
          self: &Arc<Self>,
          turn_context: Arc<TurnContext>,
          cancellation_token: &CancellationToken,
          required_servers: &[String],
          required_plugins: &HashSet<String>,
-+        rotate_auth: Option<CodexAuth>,
-+        rotate_http_client_factory: Option<codex_http_client::HttpClientFactory>,
-+        mut settings: Arc<ResolvedStepSettings>,
-+        environments: impl std::future::Future<Output = TurnEnvironmentSnapshot> + Send + 'static,
-+        inherited_environments: Option<TurnEnvironmentSnapshot>,
++        prepared: rotate_step::PreparedStepContext<
++            impl std::future::Future<Output = TurnEnvironmentSnapshot> + Send + 'static,
++        >,
      ) -> CodexResult<Arc<StepContext>> {
 -        // Read the step's model and record its environments together so an update cannot split them.
 -        // Match apply_turn_settings and activate_turn_environments: active_turn before state.
@@ -2928,12 +2939,19 @@ index 5bf5caf3bd..78f670cbb6 100644
 -                    .then(|| self.services.turn_environments.configured_snapshot_now()),
 -            )
 -        };
++        let rotate_step::PreparedStepContext {
++            rotate_auth,
++            rotate_http_client_factory,
++            mut settings,
++            environments,
++            inherited_environments,
++        } = prepared;
 +        // The model and environment selections were captured together before account admission.
 +        // Wait for executor startup below, after the capture released both locks.
          if matches!(
              turn_context.session_source,
              SessionSource::SubAgent(SubAgentSource::ThreadSpawn { .. })
-@@ -4057,6 +4043,7 @@ impl Session {
+@@ -4057,6 +4048,7 @@ impl Session {
                  turn::prepare_tool_recommendations(self.as_ref(), turn_context.as_ref()),
              );
              extension_data.insert(selected_capability_roots);
@@ -2941,7 +2959,7 @@ index 5bf5caf3bd..78f670cbb6 100644
              // A step keeps the plugins from the environments it captured, even if shared MCP
              // moves on to another environment. Its skill tools and the model use this same copy.
              // Policy follows this step's MCP binding, which may have refreshed mid-turn.
-@@ -4130,6 +4117,8 @@ impl Session {
+@@ -4130,6 +4122,8 @@ impl Session {
                  .enabled(Feature::InstantInterrupt)
                  .then(CancellationToken::new),
              realtime: self.conversation.snapshot().await,
@@ -2952,10 +2970,10 @@ index 5bf5caf3bd..78f670cbb6 100644
              session_telemetry,
 diff --git a/codex-rs/core/src/session/rotate_step.rs b/codex-rs/core/src/session/rotate_step.rs
 new file mode 100644
-index 0000000000..e02e49fcbd
+index 0000000000..2ff527e0b1
 --- /dev/null
 +++ b/codex-rs/core/src/session/rotate_step.rs
-@@ -0,0 +1,325 @@
+@@ -0,0 +1,336 @@
 +//! Personal account admission before any account-dependent step preparation.
 +//!
 +//! Managed cloud configuration is deliberately outside this personal adapter.
@@ -2967,6 +2985,15 @@ index 0000000000..e02e49fcbd
 +use codex_config::RequirementSource;
 +use codex_protocol::account::PlanType;
 +use codex_protocol::config_types::ForcedLoginMethod;
++
++/// Settings, environments, and account transport captured before tool preparation.
++pub(super) struct PreparedStepContext<F> {
++    pub(super) rotate_auth: Option<CodexAuth>,
++    pub(super) rotate_http_client_factory: Option<codex_http_client::HttpClientFactory>,
++    pub(super) settings: Arc<ResolvedStepSettings>,
++    pub(super) environments: F,
++    pub(super) inherited_environments: Option<TurnEnvironmentSnapshot>,
++}
 +
 +fn validate_personal_step(config: &Config, auth: &CodexAuth) -> CodexResult<()> {
 +    if !matches!(
@@ -3237,11 +3264,13 @@ index 0000000000..e02e49fcbd
 +                    cancellation_token,
 +                    required_servers,
 +                    required_plugins,
-+                    rotate_auth.clone(),
-+                    rotate_http_client_factory,
-+                    settings,
-+                    environments,
-+                    inherited_environments,
++                    PreparedStepContext {
++                        rotate_auth: rotate_auth.clone(),
++                        rotate_http_client_factory,
++                        settings,
++                        environments,
++                        inherited_environments,
++                    },
 +                )
 +                .await?;
 +            if let Some(auth) = &rotate_auth {
@@ -3402,19 +3431,19 @@ index 7bd3a385bc..e56008dd66 100644
      let configured_servers = codex_mcp::configured_mcp_servers(new_step.mcp.config());
      assert_eq!(
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index 32fdf7bd27..aff79df644 100644
+index 32fdf7bd27..7d372ac269 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -1608,6 +1608,8 @@ async fn run_auto_compact(
-                 Arc::clone(turn_context),
+@@ -1605,7 +1605,7 @@ async fn run_auto_compact(
+             );
+             run_inline_auto_compact_task(
+                 Arc::clone(sess),
+-                Arc::clone(turn_context),
++                step_context,
                  replacement_step_context,
                  world_state,
-+                step_context.rotate_auth.clone(),
-+                step_context.rotate_http_client_factory.clone(),
                  reason,
-                 phase,
-             )
-@@ -1809,6 +1811,18 @@ async fn run_sampling_request(
+@@ -1809,6 +1809,18 @@ async fn run_sampling_request(
                      return Err(err);
                  }
                  CodexErrorDetails::UsageLimitReached(e) => {
@@ -3433,7 +3462,7 @@ index 32fdf7bd27..aff79df644 100644
                      let rate_limits = e.rate_limits.clone();
                      if let Some(rate_limits) = rate_limits {
                          sess.update_rate_limits(&turn_context, *rate_limits).await;
-@@ -2724,6 +2738,11 @@ async fn try_run_sampling_request(
+@@ -2724,6 +2736,11 @@ async fn try_run_sampling_request(
      let mut request_token_usage = None;
      sess.set_server_reasoning_included(step_context.settings.model_info.use_responses_lite)
          .await;
@@ -3445,7 +3474,7 @@ index 32fdf7bd27..aff79df644 100644
      let mut stream = match client_session
          .stream(
              prompt,
-@@ -2765,6 +2784,7 @@ async fn try_run_sampling_request(
+@@ -2765,6 +2782,7 @@ async fn try_run_sampling_request(
      )> = None;
      let mut should_emit_turn_diff = false;
      let mut should_emit_token_count = false;
@@ -3453,7 +3482,7 @@ index 32fdf7bd27..aff79df644 100644
      const MAX_ANALYTICS_TOOL_CALL_IDS_PER_RESPONSE: usize = 256;
      let mut analytics_tool_call_ids = Vec::new();
      let reasoning_effort = step_context
-@@ -3162,6 +3182,14 @@ async fn try_run_sampling_request(
+@@ -3162,6 +3180,14 @@ async fn try_run_sampling_request(
                  sess.set_server_reasoning_included(included).await;
              }
              ResponseEvent::RateLimits(snapshot) => {
@@ -3468,7 +3497,7 @@ index 32fdf7bd27..aff79df644 100644
                  // Update internal state with latest rate limits, but defer sending until
                  // token usage is available to avoid duplicate TokenCount events.
                  sess.record_rate_limits_info(snapshot).await;
-@@ -3401,6 +3429,15 @@ async fn try_run_sampling_request(
+@@ -3401,6 +3427,15 @@ async fn try_run_sampling_request(
      )
      .await;
  
