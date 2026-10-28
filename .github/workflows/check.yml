@@ -216,6 +216,7 @@ jobs:
             -p codex-api \
             -p codex-login \
             -p codex-core \
+            -p codex-core-plugins \
             -p codex-app-server-protocol \
             -p codex-app-server \
             -p codex-protocol \
