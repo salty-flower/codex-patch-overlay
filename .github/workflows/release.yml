@@ -196,14 +196,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "RUSTFLAGS=" >> "$GITHUB_ENV"
-          echo "CARGO_ENCODED_RUSTFLAGS=" >> "$GITHUB_ENV"
-          echo "RUSTDOCFLAGS=" >> "$GITHUB_ENV"
-          echo "CARGO_BUILD_RUSTFLAGS=" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS=" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS=" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS=" >> "$GITHUB_ENV"
+          {
+            echo "RUSTFLAGS="
+            echo "CARGO_ENCODED_RUSTFLAGS="
+            echo "RUSTDOCFLAGS="
+            echo "CARGO_BUILD_RUSTFLAGS="
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="
+          } >> "$GITHUB_ENV"
 
           sanitize_flags() {
             local input="$1"
@@ -352,6 +354,10 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
+          # Match the prebuilt V8 archive's minimum macOS version for this test.
+          if [[ "$TARGET" == *-apple-darwin ]]; then
+            export MACOSX_DEPLOYMENT_TARGET=14.0
+          fi
           cargo test --release --target "$TARGET" -p codex-code-mode-runtime --lib \
             runtime::tests::linked_v8_has_sandbox_enabled -- --exact
 
