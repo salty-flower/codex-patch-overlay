@@ -5695,6 +5695,18 @@ index 0000000000..b414ac993c
 +    );
 +    assert!(!policy.is_available());
 +}
+diff --git a/codex-rs/login/src/auth/manager/workspace_switching_tests.rs b/codex-rs/login/src/auth/manager/workspace_switching_tests.rs
+index f2298a59cf..de397136d9 100644
+--- a/codex-rs/login/src/auth/manager/workspace_switching_tests.rs
++++ b/codex-rs/login/src/auth/manager/workspace_switching_tests.rs
+@@ -91,6 +91,7 @@ async fn workspace_switch_preserves_login_and_survives_reload() -> anyhow::Resul
+     let before = *manager.auth_change_state_receiver().borrow();
+     manager.switch_workspace("login-1", "business").await?;
+     enforce_login_restrictions(&AuthConfig {
++        codex_rotate_helper: None,
+         codex_home: home.path().to_path_buf(),
+         auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+         keyring_backend_kind: AuthKeyringBackendKind::default(),
 diff --git a/codex-rs/login/src/auth/mod.rs b/codex-rs/login/src/auth/mod.rs
 index af0afd0e1d..80743f361e 100644
 --- a/codex-rs/login/src/auth/mod.rs
