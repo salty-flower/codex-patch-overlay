@@ -3900,10 +3900,10 @@ index 0000000000..65d16fcbdb
 +}
 diff --git a/codex-rs/core/tests/suite/rotate_step.rs b/codex-rs/core/tests/suite/rotate_step.rs
 new file mode 100644
-index 0000000000..a30175eb27
+index 0000000000..aa331e1f44
 --- /dev/null
 +++ b/codex-rs/core/tests/suite/rotate_step.rs
-@@ -0,0 +1,322 @@
+@@ -0,0 +1,323 @@
 +//! Offline request-boundary regression using the real helper and plugin paths.
 +
 +use anyhow::Result;
@@ -4150,6 +4150,7 @@ index 0000000000..a30175eb27
 +    config.permissions.approval_policy = Constrained::allow_any(AskForApproval::Never);
 +    let plugins = plugins_manager_for_config(&config, Arc::clone(&request_manager));
 +    let runtime = McpRuntime::new(McpRuntimeInput {
++        network_policy_metadata: None,
 +        startup_policy: McpStartupPolicy::Eager,
 +        config: Arc::new(config.to_mcp_config(&plugins).await),
 +        plugins_available: false,
