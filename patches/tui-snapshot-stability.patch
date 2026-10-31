@@ -1,21 +1,23 @@
 diff --git a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
-index f102e25b47..aef0f9d79a 100644
+index d77c233ba7..4259663ae0 100644
 --- a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
 +++ b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
-@@ -661,9 +661,10 @@ async fn reconnect_exhaustion_and_unknown_initial_thread_stay_offline() -> Resul
+@@ -662,11 +662,12 @@ async fn reconnect_exhaustion_and_unknown_initial_thread_stay_offline() -> Resul
      assert_eq!(start.elapsed().as_secs(), 120);
      app.begin_reconnect();
      app.chat_widget.reconnect_failed();
 +    app.chat_widget.freeze_status_timer_for_snapshot_for_test();
      assert_snapshot!(
          "reconnect_failed",
--        render_bottom_popup(&app.chat_widget, /*width*/ 80)
-+        render_bottom_popup(&app.chat_widget, /*width*/ 80).replace('◦', "•")
+         format!(
+             "{error}\n{}",
+-            render_bottom_popup(&app.chat_widget, /*width*/ 80)
++            render_bottom_popup(&app.chat_widget, /*width*/ 80).replace('◦', "•")
+         )
      );
      tokio::time::resume();
-     Ok(())
 diff --git a/codex-rs/tui/src/app/tests/disconnect_tests.rs b/codex-rs/tui/src/app/tests/disconnect_tests.rs
-index adf7082c0c..127de2dde5 100644
+index 15156ba47e..4a06763aad 100644
 --- a/codex-rs/tui/src/app/tests/disconnect_tests.rs
 +++ b/codex-rs/tui/src/app/tests/disconnect_tests.rs
 @@ -117,6 +117,7 @@ async fn lost_mutation_reply_preserves_work_without_resubmitting() -> Result<()>
@@ -36,10 +38,10 @@ index adf7082c0c..127de2dde5 100644
      );
      let mut keymap = codex_config::types::TuiKeymap::default();
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 0193574639..4f974fa6f5 100644
+index dd4db523f3..cea6ecb481 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1783,6 +1783,13 @@ impl ChatWidget {
+@@ -1788,6 +1788,13 @@ impl ChatWidget {
          self.bottom_pane.is_task_running()
      }
  
@@ -54,10 +56,10 @@ index 0193574639..4f974fa6f5 100644
          let enabled = self.bottom_pane.toggle_vim_enabled();
          let message = if enabled {
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-index 4e1127ba46..abf7d25274 100644
+index 5d2f4693dc..7cb98f11a0 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-@@ -589,7 +589,7 @@ async fn exec_end_without_begin_does_not_flush_unrelated_running_exploring_cell(
+@@ -596,7 +596,7 @@ async fn exec_end_without_begin_does_not_flush_unrelated_running_exploring_cell(
          orphan_blob.contains("• Ran echo repro-marker"),
          "expected orphan end to render a standalone entry: {orphan_blob:?}"
      );
@@ -66,7 +68,7 @@ index 4e1127ba46..abf7d25274 100644
      assert!(
          active.contains("• Exploring"),
          "expected unrelated exploring call to remain active: {active:?}"
-@@ -658,7 +658,7 @@ async fn overlapping_exploring_exec_end_is_not_misclassified_as_orphan() {
+@@ -665,7 +665,7 @@ async fn overlapping_exploring_exec_end_is_not_misclassified_as_orphan() {
          cells.is_empty(),
          "tracked end inside an exploring cell should not render as an orphan"
      );
@@ -75,7 +77,7 @@ index 4e1127ba46..abf7d25274 100644
      assert!(
          active.contains("List ls -la"),
          "expected first command still grouped: {active:?}"
-@@ -746,7 +746,7 @@ async fn unified_exec_unknown_end_with_active_exploring_cell_snapshot() {
+@@ -753,7 +753,7 @@ async fn unified_exec_unknown_end_with_active_exploring_cell_snapshot() {
          .iter()
          .map(|lines| lines_to_single_string(lines))
          .collect::<String>();
@@ -174,10 +176,10 @@ index b57de7f58b..9ffd239c50 100644
  }
  
 diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-index 65d7739959..4ff2d6ad1a 100644
+index 9074c5ec03..db0eb169be 100644
 --- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-@@ -5527,6 +5527,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5621,6 +5621,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          ),
      );
      reveal_running_hooks(&mut chat);
@@ -185,7 +187,7 @@ index 65d7739959..4ff2d6ad1a 100644
      let exec_and_hook_running = hook_status_frame(&chat, /*width*/ 80);
  
      end_exec(&mut chat, begin, "done", "", /*exit_code*/ 0);
-@@ -5534,6 +5535,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5628,6 +5629,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          .iter()
          .map(|lines| lines_to_single_string(lines))
          .collect::<String>();
@@ -193,7 +195,7 @@ index 65d7739959..4ff2d6ad1a 100644
      let hook_running_after_exec = hook_status_frame(&chat, /*width*/ 80);
  
      handle_hook_completed(
-@@ -5546,6 +5548,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5640,6 +5642,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          ),
      );
      assert!(drain_insert_history(&mut rx).is_empty());
@@ -201,7 +203,7 @@ index 65d7739959..4ff2d6ad1a 100644
      let quiet_hook_completed = hook_status_frame(&chat, /*width*/ 80);
      expire_quiet_hook_linger(&mut chat);
      assert!(chat.active_hook_cell.is_none());
-@@ -5555,6 +5558,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5649,6 +5652,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          format!(
              "exec running:\n{exec_running}\nexec and hook running:\n{exec_and_hook_running}\nhistory after exec:\n{history_after_exec}\nhook running after exec:\n{hook_running_after_exec}\nquiet hook completed:\n{quiet_hook_completed}"
          )
