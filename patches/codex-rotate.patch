@@ -661,10 +661,10 @@ index 0000000000..166c9f113a
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/account_rotate.rs b/codex-rs/app-server/tests/suite/v2/account_rotate.rs
 new file mode 100644
-index 0000000000..25d72fda42
+index 0000000000..b7e63c4cc0
 --- /dev/null
 +++ b/codex-rs/app-server/tests/suite/v2/account_rotate.rs
-@@ -0,0 +1,601 @@
+@@ -0,0 +1,603 @@
 +use anyhow::Result;
 +use app_test_support::ChatGptIdTokenClaims;
 +use app_test_support::TestAppServer;
@@ -854,6 +854,7 @@ index 0000000000..25d72fda42
 +    Account::Chatgpt {
 +        email: Some("rotate@example.com".into()),
 +        plan_type: PlanType::Pro,
++        workspace_name: None,
 +    }
 +}
 +
@@ -1248,6 +1249,7 @@ index 0000000000..25d72fda42
 +                Account::Chatgpt {
 +                    email: Some("second@example.com".into()),
 +                    plan_type: PlanType::Plus,
++                    workspace_name: None,
 +                },
 +                Some("second-account"),
 +            )

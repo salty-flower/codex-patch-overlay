@@ -328,6 +328,143 @@ index f310c4ac65..316d826288 100644
      async fn prepare_realtime_conversation_thread(
          &self,
          request_id: &ConnectionRequestId,
+diff --git a/codex-rs/app-server/tests/suite/v2/turn_steer.rs b/codex-rs/app-server/tests/suite/v2/turn_steer.rs
+index 38f5cace78..e42b903e67 100644
+--- a/codex-rs/app-server/tests/suite/v2/turn_steer.rs
++++ b/codex-rs/app-server/tests/suite/v2/turn_steer.rs
+@@ -2,10 +2,12 @@
+ 
+ use anyhow::Context;
+ use anyhow::Result;
++use app_test_support::ChatGptAuthFixture;
+ use app_test_support::TestAppServer;
+ use app_test_support::create_command_execution_sse_response;
+ use app_test_support::create_mock_responses_server_sequence;
+ use app_test_support::create_mock_responses_server_sequence_unchecked;
++use app_test_support::write_chatgpt_auth;
+ use app_test_support::write_mock_responses_config_toml_with_chatgpt_base_url;
+ use codex_app_server::INPUT_TOO_LARGE_ERROR_CODE;
+ use codex_app_server::INVALID_PARAMS_ERROR_CODE;
+@@ -22,14 +24,22 @@ use codex_app_server_protocol::ThreadStartResponse;
+ use codex_app_server_protocol::TurnStartParams;
+ use codex_app_server_protocol::TurnStartResponse;
+ use codex_app_server_protocol::TurnSteerParams;
++use codex_app_server_protocol::TurnSteerRecallParams;
++use codex_app_server_protocol::TurnSteerRecallResponse;
++use codex_app_server_protocol::TurnSteerRecallStatus;
+ use codex_app_server_protocol::TurnSteerResponse;
+ use codex_app_server_protocol::UserInput as V2UserInput;
++use codex_login::AuthCredentialsStoreMode;
+ use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
++use core_test_support::responses;
+ use core_test_support::skip_if_remote;
++use core_test_support::streaming_sse::StreamingSseChunk;
++use core_test_support::streaming_sse::start_streaming_sse_server;
+ use pretty_assertions::assert_eq;
+ use serde_json::Value;
+ use std::collections::HashMap;
+ use tempfile::TempDir;
++use tokio::sync::oneshot;
+ use tokio::time::timeout;
+ 
+ use super::analytics::mount_analytics_capture;
+@@ -37,6 +47,96 @@ use super::analytics::wait_for_analytics_event;
+ 
+ const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+ 
++#[tokio::test]
++async fn recall_steer_round_trip_preserves_terminal_status() -> Result<()> {
++    let (release_response, response_gate) = oneshot::channel();
++    let (server, _) = start_streaming_sse_server(vec![vec![
++        StreamingSseChunk {
++            gate: None,
++            body: responses::sse(vec![responses::ev_response_created("resp-1")]),
++        },
++        StreamingSseChunk {
++            gate: Some(response_gate),
++            body: responses::sse(vec![responses::ev_completed("resp-1")]),
++        },
++    ]])
++    .await;
++    let codex_home = TempDir::new()?;
++    std::fs::write(
++        codex_home.path().join("config.toml"),
++        format!(
++            "model = \"gpt-5.5\"\napproval_policy = \"never\"\nopenai_base_url = \"{}/v1\"\ncli_auth_credentials_store = \"file\"\n[features]\nenable_request_compression = false\n",
++            server.uri()
++        ),
++    )?;
++    write_chatgpt_auth(
++        codex_home.path(),
++        ChatGptAuthFixture::new("chatgpt-test-token").plan_type("pro"),
++        AuthCredentialsStoreMode::File,
++    )?;
++    let mut mcp = TestAppServer::builder()
++        .with_codex_home(codex_home.path())
++        .without_managed_config()
++        .build_initialized()
++        .await?;
++    let ThreadStartResponse { thread, .. } = mcp
++        .start_thread(ThreadStartParams {
++            model: Some("mock-model".to_string()),
++            ..Default::default()
++        })
++        .await?;
++    let TurnStartResponse { turn } = mcp
++        .request(|request_id| ClientRequest::TurnStart {
++            request_id,
++            params: TurnStartParams {
++                thread_id: thread.id.clone(),
++                input: vec![V2UserInput::Text {
++                    text: "start".to_string(),
++                    text_elements: Vec::new(),
++                }],
++                ..Default::default()
++            },
++        })
++        .await?;
++    timeout(DEFAULT_READ_TIMEOUT, server.wait_for_request_count(1)).await?;
++    let steer: TurnSteerResponse = mcp
++        .request(|request_id| ClientRequest::TurnSteer {
++            request_id,
++            params: TurnSteerParams {
++                thread_id: thread.id.clone(),
++                expected_turn_id: turn.id.clone(),
++                client_user_message_id: Some("recallable-steer".to_string()),
++                input: vec![V2UserInput::Text {
++                    text: "recall me".to_string(),
++                    text_elements: Vec::new(),
++                }],
++                responsesapi_client_metadata: None,
++                responsesapi_client_metadata_patch: None,
++                additional_context: None,
++            },
++        })
++        .await?;
++    assert_eq!(steer.turn_id, turn.id);
++    for expected in [
++        TurnSteerRecallStatus::Recalled,
++        TurnSteerRecallStatus::AlreadyRecalled,
++    ] {
++        let response: TurnSteerRecallResponse = mcp
++            .request(|request_id| ClientRequest::TurnSteerRecall {
++                request_id,
++                params: TurnSteerRecallParams {
++                    thread_id: thread.id.clone(),
++                    expected_turn_id: turn.id.clone(),
++                    client_user_message_id: "recallable-steer".to_string(),
++                },
++            })
++            .await?;
++        assert_eq!(response.status, expected);
++    }
++    let _ = release_response.send(());
++    Ok(())
++}
++
+ #[tokio::test]
+ async fn turn_steer_requires_active_turn() -> Result<()> {
+     let tmp = TempDir::new()?;
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
 index 968d331a5e..5ad5bc0b69 100644
 --- a/codex-rs/core/src/codex_thread.rs
