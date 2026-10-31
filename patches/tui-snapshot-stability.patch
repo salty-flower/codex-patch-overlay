@@ -211,3 +211,21 @@ index 9074c5ec03..db0eb169be 100644
      );
  }
  
+diff --git a/codex-rs/tui/src/bottom_pane/request_user_input/render_tests.rs b/codex-rs/tui/src/bottom_pane/request_user_input/render_tests.rs
+index 2bf87d342b..731ed42173 100644
+--- a/codex-rs/tui/src/bottom_pane/request_user_input/render_tests.rs
++++ b/codex-rs/tui/src/bottom_pane/request_user_input/render_tests.rs
+@@ -30,8 +30,12 @@ fn halfwidth_sound_marks_are_truncated_and_rendered_at_a_grapheme_boundary() {
+
+     Paragraph::new(lines.to_vec()).render(area, &mut buf);
+
++    // Rust versions differ in whether Debug escapes these combining marks.
++    let debug_lines = format!("{lines:#?}")
++        .replace('\u{ff9e}', "\\u{ff9e}")
++        .replace('\u{ff9f}', "\\u{ff9f}");
+     insta::assert_snapshot!(
+         "request_user_input_halfwidth_sound_marks_truncation",
+-        format!("{buf:?}\n{lines:#?}")
++        format!("{buf:?}\n{debug_lines}")
+     );
+ }
