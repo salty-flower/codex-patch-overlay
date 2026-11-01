@@ -97,6 +97,7 @@ in
           target = final.stdenv.hostPlatform.rust.rustcTarget;
           variant = "codex";
           entrypoint = "bin/codex";
+          execServer = "bin/codex-exec-server";
           resourcesDir = "codex-resources";
           pathDir = "codex-path";
         }
@@ -123,6 +124,8 @@ in
       cargoBuildFlags = (old.cargoBuildFlags or [ ]) ++ [
         "--package"
         "codex-responses-api-proxy"
+        "--package"
+        "codex-exec-server-cli"
       ];
       preVersionCheck = ''
         version=${upstreamVersion}
@@ -185,7 +188,7 @@ in
         ${lib.optionalString final.stdenv.hostPlatform.isLinux ''
           install -m755 ${lib.getExe final.bubblewrap} "$out/codex-resources/bwrap"
         ''}
-        for binary in codex codex-responses-api-proxy codex-code-mode-host; do
+        for binary in codex codex-responses-api-proxy codex-code-mode-host codex-exec-server; do
           test -x "$out/bin/$binary"
         done
       '';

@@ -81,6 +81,9 @@
                   esac
                 done < <(fd --hidden --no-ignore --type symlink --print0 . "$package")
                 test -d "$package/codex-resources"
+                jq -e '.execServer == "bin/codex-exec-server"' "$package/codex-package.json"
+                test -f "$package/bin/codex-exec-server"
+                test -x "$package/bin/codex-exec-server"
                 for helper in codex-path/rg ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "codex-resources/bwrap"}; do
                   test -f "$package/$helper"
                   test -x "$package/$helper"
@@ -172,7 +175,9 @@
               || { echo "release.yml does not validate its package layout" >&2; exit 1; }
             printf '%s' "$package_run" | ${pkgs.ripgrep}/bin/rg -qF -- '--arg version "''${upstream_base#rust-v}" --arg target "$TARGET"' \
               || { echo "release.yml does not record the upstream version and target" >&2; exit 1; }
-            for binary in codex codex-responses-api-proxy codex-code-mode-host; do
+            printf '%s' "$package_run" | ${pkgs.ripgrep}/bin/rg -qF -- 'execServer: "bin/codex-exec-server"' \
+              || { echo "release.yml does not record the exec server in package metadata" >&2; exit 1; }
+            for binary in codex codex-responses-api-proxy codex-code-mode-host codex-exec-server; do
               printf '%s' "$build_run" | ${pkgs.ripgrep}/bin/rg -qF -- "--bin $binary" \
                 || { echo "release.yml build step does not build $binary" >&2; exit 1; }
               printf '%s' "$package_run" | ${pkgs.ripgrep}/bin/rg -qF -- "$binary" \
