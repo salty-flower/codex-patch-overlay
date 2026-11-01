@@ -324,10 +324,14 @@ jobs:
           # in-process runtime is gone, so codex resolves a sibling
           # `codex-code-mode-host` next to its own executable and fails code
           # mode closed when it is missing.
+          extra_bins=()
+          if [[ -f exec-server-cli/Cargo.toml ]]; then
+            extra_bins+=(--bin codex-exec-server)
+          fi
           cargo build --release --target "$TARGET" \
             --bin codex \
             --bin codex-responses-api-proxy \
-            --bin codex-code-mode-host
+            --bin codex-code-mode-host "${extra_bins[@]}"
 
       - name: Verify private temporary homes
         shell: bash
@@ -370,13 +374,19 @@ jobs:
           package_dir="dist/${RELEASE_TAG}-${TARGET}"
           mkdir -p "$package_dir/bin" "$package_dir/codex-resources" "$package_dir/codex-path"
           upstream_base="$(awk -F'"' '/^upstream_base =/ { print $2; exit }' patches/manifest.toml)"
-          jq -n --arg version "${upstream_base#rust-v}" --arg target "$TARGET" \
-            '{layoutVersion: 1, version: $version, target: $target, variant: "codex", entrypoint: "bin/codex", resourcesDir: "codex-resources", pathDir: "codex-path"}' \
+          binaries=(codex codex-responses-api-proxy codex-code-mode-host)
+          has_exec_server=false
+          if [[ -f staging/openai-codex/codex-rs/exec-server-cli/Cargo.toml ]]; then
+            binaries+=(codex-exec-server)
+            has_exec_server=true
+          fi
+          jq -n --arg version "${upstream_base#rust-v}" --arg target "$TARGET" --argjson has_exec_server "$has_exec_server" \
+            '{layoutVersion: 1, version: $version, target: $target, variant: "codex", entrypoint: "bin/codex", resourcesDir: "codex-resources", pathDir: "codex-path"} | if $has_exec_server then . + {execServer: "bin/codex-exec-server"} else . end' \
             > "$package_dir/codex-package.json"
           # Keep codex-code-mode-host in bin/ next to codex, matching upstream's
           # package layout (scripts/codex_package/layout.py) and the sibling
           # lookup in codex-rs/install-context.
-          for binary in codex codex-responses-api-proxy codex-code-mode-host; do
+          for binary in "${binaries[@]}"; do
             cp "staging/openai-codex/codex-rs/target/${TARGET}/release/${binary}" "$package_dir/bin/"
             chmod 0755 "$package_dir/bin/${binary}"
           done
@@ -398,7 +408,7 @@ jobs:
           export CODEX_HOME="${smoke_root}/home"
           export TMPDIR="${smoke_root}/tmp"
           mkdir -p "$CODEX_HOME" "$TMPDIR"
-          for binary in codex codex-responses-api-proxy codex-code-mode-host; do
+          for binary in "${binaries[@]}"; do
             option=--help
             if [[ "$binary" == codex ]]; then option=--version; fi
             result=0
@@ -563,7 +573,12 @@ jobs:
             echo
             echo "- Upstream: ${upstream_repo}@${upstream_base} (${upstream_sha})"
             echo "- Versioning: patch overlay release from \`patches/manifest.toml\`"
-            echo "- Binaries: \`codex\`, \`codex-responses-api-proxy\`, \`codex-code-mode-host\`"
+            binaries='`codex`, `codex-responses-api-proxy`, `codex-code-mode-host`'
+            archive_contents="$(tar -tzf "dist/${RELEASE_TAG}-x86_64-unknown-linux-musl.tar.gz")"
+            if grep -Fq '/bin/codex-exec-server' <<< "$archive_contents"; then
+              binaries+=', `codex-exec-server`'
+            fi
+            echo "- Binaries: ${binaries}"
             echo
             echo "Enabled patches:"
             awk '

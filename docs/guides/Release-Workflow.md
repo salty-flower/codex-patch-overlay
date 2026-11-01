@@ -10,7 +10,7 @@
 | Tracking check | Carried patches are recorded in `patches/manifest.toml` |
 
 `nix flake check` builds `codex-patched` with
-`cargoBuildFlags = --package codex-cli --package codex-code-mode-host --package codex-responses-api-proxy` and `doCheck`
+`cargoBuildFlags = --package codex-cli --package codex-code-mode-host --package codex-responses-api-proxy --package codex-exec-server-cli` and `doCheck`
 empty — it runs **no tests**, for any crate, including `codex-tui`. A patch's own
 bundled test (e.g. one added alongside a struct/behavior change) can be permanently
 broken and this gate will never catch it; treat such tests as unverified until run
@@ -33,6 +33,7 @@ because neither the tarball nor the Nix package fetches a missing helper later.
 | `bin/codex` | `--bin codex` | the CLI/TUI entrypoint |
 | `bin/codex-responses-api-proxy` | `--bin codex-responses-api-proxy` | `codex responses-api-proxy` |
 | `bin/codex-code-mode-host` | `--bin codex-code-mode-host` | code mode, mandatory from upstream 0.147.0 |
+| `bin/codex-exec-server` | `--bin codex-exec-server` | execution server, required by upstream package layout from 0.166.0 |
 | `codex-path/rg` | upstream `scripts/codex_package/rg`, fetched by `ripgrep.py` | file search; required by upstream's package layout |
 | `codex-resources/bwrap` | `--bin bwrap`, Linux only | sandboxed exec on Linux |
 
