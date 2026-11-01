@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 05a8b9e050..0587c182b0 100644
+index 3f02d5e198..3f4215a7af 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -940,6 +940,19 @@ pub struct Tui {
+@@ -955,6 +955,19 @@ pub struct Tui {
      #[serde(default)]
      pub raw_output_mode: bool,
  
@@ -23,10 +23,10 @@ index 05a8b9e050..0587c182b0 100644
      /// Defaults to `true`; alternate-screen restrictions take precedence.
      #[serde(default = "default_true")]
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 50e67b4b7b..55fd31a07c 100644
+index 3a9405d9d3..dbd4c6ea1a 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -2776,6 +2776,14 @@
+@@ -2940,6 +2940,14 @@
        ],
        "description": "Selected microphone inputs. Scalars preserve existing single-channel configuration."
      },
@@ -41,7 +41,7 @@ index 50e67b4b7b..55fd31a07c 100644
      "ModelAvailabilityNuxConfig": {
        "additionalProperties": {
          "format": "uint32",
-@@ -4853,6 +4861,15 @@
+@@ -5075,6 +5083,15 @@
            "description": "Deselect read-only transcript or footer text after Copy on select confirms delivery. Editable composer selections remain visible. Defaults to `false` and has no effect when Copy on select is off.",
            "type": "boolean"
          },
@@ -57,7 +57,7 @@ index 50e67b4b7b..55fd31a07c 100644
          "disable_paste_burst": {
            "description": "When true, disables burst-paste detection for typed input entirely. All characters are inserted as they are received, and no buffering or placeholder replacement will occur for fast keypress bursts. Overrides the legacy top-level `disable_paste_burst` setting. Defaults to `false`.",
            "type": "boolean"
-@@ -8359,4 +8376,4 @@
+@@ -8627,4 +8644,4 @@
    },
    "title": "ConfigToml",
    "type": "object"
@@ -65,10 +65,10 @@ index 50e67b4b7b..55fd31a07c 100644
 \ No newline at end of file
 +}
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 6e0e47a371..b18ff069a6 100644
+index c23ad7ec5a..4f15b7efd5 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -1257,6 +1257,7 @@ fn config_toml_deserializes_model_availability_nux() {
+@@ -1393,6 +1393,7 @@ fn config_toml_deserializes_model_availability_nux() {
      assert_eq!(
          cfg.tui.expect("tui config should deserialize"),
          Tui {
@@ -76,7 +76,7 @@ index 6e0e47a371..b18ff069a6 100644
              notification_settings: TuiNotificationSettings::default(),
              animations: true,
              screen_reader_detection_done: None,
-@@ -4503,6 +4504,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+@@ -4643,6 +4644,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
      assert_eq!(
          tui,
          Tui {
@@ -85,10 +85,10 @@ index 6e0e47a371..b18ff069a6 100644
              animations: true,
              screen_reader_detection_done: None,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 3f6c1cc9e1..10f4fefeb0 100644
+index eb949b8a46..f0f78d736e 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -100,6 +100,7 @@ use codex_prompts::ResolvedModelMessages;
+@@ -104,6 +104,7 @@ use codex_protocol::MemoryVersion;
  use codex_protocol::config_types::AltScreenMode;
  use codex_protocol::config_types::AutoCompactTokenLimitScope;
  use codex_protocol::config_types::ForcedLoginMethod;
@@ -96,7 +96,7 @@ index 3f6c1cc9e1..10f4fefeb0 100644
  use codex_protocol::config_types::Personality;
  use codex_protocol::config_types::ReasoningSummary;
  use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
-@@ -839,6 +840,8 @@ pub struct Config {
+@@ -846,6 +847,8 @@ pub struct Config {
      pub tui_right_click_paste: codex_config::types::RightClickPaste,
  
      /// Start the TUI in the specified collaboration mode (plan/default).
@@ -105,7 +105,7 @@ index 3f6c1cc9e1..10f4fefeb0 100644
  
      /// Controls whether the TUI uses the terminal's alternate screen buffer.
      ///
-@@ -4718,6 +4721,10 @@ impl Config {
+@@ -4804,6 +4807,10 @@ impl Config {
                  .as_ref()
                  .map(|tui| tui.right_click_paste)
                  .unwrap_or_default(),
@@ -117,10 +117,10 @@ index 3f6c1cc9e1..10f4fefeb0 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index af50bd5f44..a006e7c8db 100644
+index 1ced86ef11..5b2ff80b56 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -304,6 +304,7 @@ async fn new_config(
+@@ -305,6 +305,7 @@ async fn new_config(
          tui_terminal_title: None,
          tui_theme: None,
          tui_raw_output_mode: false,
@@ -129,10 +129,10 @@ index af50bd5f44..a006e7c8db 100644
          tui_pet_anchor: TuiPetAnchor::Composer,
          terminal_resize_reflow: TerminalResizeReflowConfig::default(),
 diff --git a/codex-rs/tui/src/chatwidget/settings.rs b/codex-rs/tui/src/chatwidget/settings.rs
-index 767548773f..3c183ea1ee 100644
+index 432fa653e8..cacbea5207 100644
 --- a/codex-rs/tui/src/chatwidget/settings.rs
 +++ b/codex-rs/tui/src/chatwidget/settings.rs
-@@ -424,11 +424,14 @@ impl ChatWidget {
+@@ -431,11 +431,14 @@ impl ChatWidget {
      }
  
      pub(super) fn initial_collaboration_mask(

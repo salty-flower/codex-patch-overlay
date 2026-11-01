@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 3cbc527392..4e66790847 100644
+index 1154b22049..409ab2148e 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -914,6 +914,19 @@ impl QuickDial {
+@@ -929,6 +929,19 @@ impl QuickDial {
      }
  }
  
@@ -22,7 +22,7 @@ index 3cbc527392..4e66790847 100644
  /// Collection of settings that are specific to the TUI.
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
  #[schemars(deny_unknown_fields)]
-@@ -972,6 +985,12 @@ pub struct Tui {
+@@ -987,6 +1000,12 @@ pub struct Tui {
      #[serde(default)]
      pub raw_output_mode: bool,
  
@@ -36,10 +36,10 @@ index 3cbc527392..4e66790847 100644
      ///
      /// When set to `"plan"`, the TUI launches in Plan mode instead of the
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 4aeefdadd0..1a77f5a07b 100644
+index ef13aa55b2..dec1255264 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -5208,6 +5208,15 @@
+@@ -5431,6 +5431,15 @@
            "description": "Start the TUI in raw scrollback mode for copy-friendly transcript output. Defaults to `false`.",
            "type": "boolean"
          },
@@ -55,7 +55,7 @@ index 4aeefdadd0..1a77f5a07b 100644
          "rendering": {
            "allOf": [
              {
-@@ -6428,6 +6437,32 @@
+@@ -6660,6 +6669,32 @@
          }
        ]
      },
@@ -88,7 +88,7 @@ index 4aeefdadd0..1a77f5a07b 100644
      "TuiRendering": {
        "additionalProperties": false,
        "description": "Optional rich renderers. Disabled renderers preserve the original source.",
-@@ -8426,4 +8461,4 @@
+@@ -8694,4 +8729,4 @@
    },
    "title": "ConfigToml",
    "type": "object"
@@ -96,10 +96,10 @@ index 4aeefdadd0..1a77f5a07b 100644
 +}
 \ No newline at end of file
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 2beca20c3d..be65121837 100644
+index 34288de593..6767984157 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -69,6 +69,7 @@ use codex_config::types::Tui;
+@@ -70,6 +70,7 @@ use codex_config::types::Tui;
  use codex_config::types::TuiKeymap;
  use codex_config::types::TuiNotificationSettings;
  use codex_config::types::TuiPetAnchor;
@@ -107,7 +107,7 @@ index 2beca20c3d..be65121837 100644
  use codex_config::types::WindowsSandboxModeToml;
  use codex_config::types::WindowsToml;
  use codex_exec_server::LOCAL_FS;
-@@ -1271,6 +1272,7 @@ fn config_toml_deserializes_model_availability_nux() {
+@@ -1407,6 +1408,7 @@ fn config_toml_deserializes_model_availability_nux() {
              vim_mode_default: false,
              question_esc_back: true,
              raw_output_mode: false,
@@ -115,7 +115,7 @@ index 2beca20c3d..be65121837 100644
              fullscreen_transcript: true,
              mouse_scroll_speed: None,
              copy_on_select: Default::default(),
-@@ -4599,6 +4601,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+@@ -4739,6 +4741,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
              vim_mode_default: false,
              question_esc_back: true,
              raw_output_mode: false,
@@ -123,7 +123,7 @@ index 2beca20c3d..be65121837 100644
              fullscreen_transcript: true,
              mouse_scroll_speed: None,
              copy_on_select: Default::default(),
-@@ -4623,6 +4626,82 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+@@ -4763,6 +4766,82 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
      );
  }
  
@@ -207,7 +207,7 @@ index 2beca20c3d..be65121837 100644
  async fn runtime_config_resolves_disable_paste_burst() -> anyhow::Result<()> {
      for (toml, expected) in [
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 1ca0cac38a..e2c0f97a11 100644
+index 346330648b..71c183c779 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
 @@ -61,6 +61,7 @@ use codex_config::types::ToolSuggestDiscoverable;
@@ -218,7 +218,7 @@ index 1ca0cac38a..e2c0f97a11 100644
  use codex_config::types::UriBasedFileOpener;
  use codex_config::types::WindowsSandboxModeToml;
  use codex_core_plugins::PluginLoadOutcome;
-@@ -828,6 +829,10 @@ pub struct Config {
+@@ -835,6 +836,10 @@ pub struct Config {
      /// Start the TUI in raw scrollback mode for copy-friendly transcript output.
      pub tui_raw_output_mode: bool,
  
@@ -229,7 +229,7 @@ index 1ca0cac38a..e2c0f97a11 100644
      /// Own the fullscreen transcript when the alternate screen is enabled.
      pub tui_fullscreen_transcript: bool,
  
-@@ -4758,6 +4763,11 @@ impl Config {
+@@ -4844,6 +4849,11 @@ impl Config {
                  .as_ref()
                  .map(|t| t.raw_output_mode)
                  .unwrap_or(false),
@@ -242,10 +242,10 @@ index 1ca0cac38a..e2c0f97a11 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index b23dff07ee..573acd8555 100644
+index 2099dd7e8c..84dc551289 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -305,6 +305,7 @@ async fn new_config(
+@@ -306,6 +306,7 @@ async fn new_config(
          tui_terminal_title: None,
          tui_theme: None,
          tui_raw_output_mode: false,
@@ -254,10 +254,10 @@ index b23dff07ee..573acd8555 100644
          tui_pet: None,
          tui_pet_anchor: TuiPetAnchor::Composer,
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 4f974fa6f5..25d01feeff 100644
+index cea6ecb481..b0f7ead039 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -2024,9 +2024,11 @@ impl ChatWidget {
+@@ -2029,9 +2029,11 @@ impl ChatWidget {
      /// tick are unchanged. Stable sources still require a revision bump when their content changes.
      pub(crate) fn active_cell_transcript_key(&self) -> Option<ActiveCellTranscriptKey> {
          let cell = self.transcript.active_cell.as_ref();
@@ -269,7 +269,7 @@ index 4f974fa6f5..25d01feeff 100644
              && self
                  .realtime_conversation
                  .live_transcript_cells()
-@@ -2037,8 +2039,9 @@ impl ChatWidget {
+@@ -2042,8 +2044,9 @@ impl ChatWidget {
          {
              return None;
          }
@@ -280,7 +280,7 @@ index 4f974fa6f5..25d01feeff 100644
              rate_limit_reset_hint.map(|cell| cell as &dyn HistoryCell),
          ];
          Some(ActiveCellTranscriptKey {
-@@ -2059,6 +2062,7 @@ impl ChatWidget {
+@@ -2064,6 +2067,7 @@ impl ChatWidget {
                  .unwrap_or(/*default*/ false),
              animation_tick: cell
                  .and_then(|cell| cell.transcript_animation_tick())
@@ -289,7 +289,7 @@ index 4f974fa6f5..25d01feeff 100644
          })
      }
 diff --git a/codex-rs/tui/src/chatwidget/input_flow.rs b/codex-rs/tui/src/chatwidget/input_flow.rs
-index 8991bfe567..421dd25769 100644
+index 20c1efc052..ceb08826fe 100644
 --- a/codex-rs/tui/src/chatwidget/input_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/input_flow.rs
 @@ -76,6 +76,7 @@ impl ChatWidget {
@@ -301,10 +301,10 @@ index 8991bfe567..421dd25769 100644
                      self.reasoning_summary_parts.clear();
                      self.set_status_header(String::from("Working"));
 diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
-index 5bd2254d86..0f9bebf82d 100644
+index be7da50c03..d43d628e3a 100644
 --- a/codex-rs/tui/src/chatwidget/protocol.rs
 +++ b/codex-rs/tui/src/chatwidget/protocol.rs
-@@ -155,7 +155,7 @@ impl ChatWidget {
+@@ -163,7 +163,7 @@ impl ChatWidget {
                      )
                      && self.status_state.reasoning_item_id.as_deref() == Some(&notification.item_id)
                  {
@@ -314,7 +314,7 @@ index 5bd2254d86..0f9bebf82d 100644
              }
              ServerNotification::ReasoningSummaryPartAdded(notification) => {
 diff --git a/codex-rs/tui/src/chatwidget/rendering.rs b/codex-rs/tui/src/chatwidget/rendering.rs
-index 15bbdad9d8..b4cfa229f9 100644
+index 4f31674e5b..e1a088c144 100644
 --- a/codex-rs/tui/src/chatwidget/rendering.rs
 +++ b/codex-rs/tui/src/chatwidget/rendering.rs
 @@ -185,9 +185,10 @@ impl ChatWidget {
@@ -330,7 +330,7 @@ index 15bbdad9d8..b4cfa229f9 100644
              .chain(self.realtime_conversation.live_transcript_cells())
          {
              flex.push(
-@@ -293,6 +294,7 @@ impl ChatWidget {
+@@ -296,6 +297,7 @@ impl ChatWidget {
              .active_cell
              .as_deref()
              .into_iter()
@@ -339,7 +339,7 @@ index 15bbdad9d8..b4cfa229f9 100644
                  self.realtime_conversation
                      .pending_history_cells
 diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
-index 6c8a7fb7fb..3ab3bdaa21 100644
+index fbe40068bc..9be4c5904a 100644
 --- a/codex-rs/tui/src/chatwidget/replay.rs
 +++ b/codex-rs/tui/src/chatwidget/replay.rs
 @@ -5,8 +5,32 @@
@@ -396,7 +396,7 @@ index 6c8a7fb7fb..3ab3bdaa21 100644
          }
      }
  
-@@ -354,31 +366,26 @@ impl ChatWidget {
+@@ -360,31 +372,26 @@ impl ChatWidget {
                  summary,
                  content,
              } => {
@@ -443,10 +443,10 @@ index 6c8a7fb7fb..3ab3bdaa21 100644
                  self.on_agent_reasoning_final();
              }
 diff --git a/codex-rs/tui/src/chatwidget/safety_buffering.rs b/codex-rs/tui/src/chatwidget/safety_buffering.rs
-index dc3fb0b805..662f1d264f 100644
+index 4b7d512f49..2521845020 100644
 --- a/codex-rs/tui/src/chatwidget/safety_buffering.rs
 +++ b/codex-rs/tui/src/chatwidget/safety_buffering.rs
-@@ -167,6 +167,7 @@ impl ChatWidget {
+@@ -168,6 +168,7 @@ impl ChatWidget {
              last_prompt_had_retry: can_offer_retry,
              agent_message_started: false,
          });
@@ -455,7 +455,7 @@ index dc3fb0b805..662f1d264f 100644
          let status_details = if can_offer_retry {
              format!("{SAFETY_BUFFERING_HEADER} {SAFETY_BUFFERING_MESSAGE_WITH_RETRY}")
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index 30a0820313..d62b34b7fd 100644
+index 659df14685..6a85274ea4 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 @@ -1002,6 +1002,7 @@ impl ChatWidget {
@@ -467,7 +467,7 @@ index 30a0820313..d62b34b7fd 100644
                      self.reasoning_summary_parts.clear();
                      self.set_status_header(String::from("Working"));
 diff --git a/codex-rs/tui/src/chatwidget/streaming.rs b/codex-rs/tui/src/chatwidget/streaming.rs
-index 7dee87c171..b9cdf23c9f 100644
+index 6229fd735a..58dcf4d54d 100644
 --- a/codex-rs/tui/src/chatwidget/streaming.rs
 +++ b/codex-rs/tui/src/chatwidget/streaming.rs
 @@ -5,6 +5,7 @@
@@ -681,7 +681,7 @@ index 7dee87c171..b9cdf23c9f 100644
  
      pub(super) fn on_stream_error(&mut self, message: String, additional_details: Option<String>) {
 diff --git a/codex-rs/tui/src/chatwidget/tests.rs b/codex-rs/tui/src/chatwidget/tests.rs
-index 1cc51a1646..8d50d3ec7a 100644
+index 42f292b52b..b6c0a358dd 100644
 --- a/codex-rs/tui/src/chatwidget/tests.rs
 +++ b/codex-rs/tui/src/chatwidget/tests.rs
 @@ -279,6 +279,8 @@ mod popups_and_settings;
@@ -695,13 +695,14 @@ index 1cc51a1646..8d50d3ec7a 100644
  #[path = "tests/replay_render_tests.rs"]
 diff --git a/codex-rs/tui/src/chatwidget/tests/reasoning_display_tests.rs b/codex-rs/tui/src/chatwidget/tests/reasoning_display_tests.rs
 new file mode 100644
-index 0000000000..a1c1e4782c
+index 0000000000..32245f7f08
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/tests/reasoning_display_tests.rs
-@@ -0,0 +1,737 @@
+@@ -0,0 +1,740 @@
 +//! Behavioral coverage for configurable reasoning-summary visibility.
 +
 +use super::*;
++use codex_app_server_protocol::ThreadItem as AppServerThreadItem;
 +use codex_config::types::TuiReasoningDisplay;
 +use pretty_assertions::assert_eq;
 +
@@ -721,11 +722,11 @@ index 0000000000..a1c1e4782c
 +        thread_id: thread_id(chat),
 +        turn_id: active_turn_id(chat),
 +        started_at_ms: 0,
-+        item: AppServerThreadItem::Reasoning {
++        item: AppServerThreadItem::untimed(AppServerThreadItemPayload::Reasoning {
 +            id: item_id.to_string(),
 +            summary: Vec::new(),
 +            content: Vec::new(),
-+        },
++        }),
 +    });
 +    chat.handle_server_notification(notification, /*replay_kind*/ None);
 +}
@@ -765,11 +766,11 @@ index 0000000000..a1c1e4782c
 +        thread_id: thread_id(chat),
 +        turn_id: active_turn_id(chat),
 +        completed_at_ms: 0,
-+        item: AppServerThreadItem::Reasoning {
++        item: AppServerThreadItem::untimed(AppServerThreadItemPayload::Reasoning {
 +            id: item_id.to_string(),
 +            summary,
 +            content,
-+        },
++        }),
 +    });
 +    chat.handle_server_notification(notification, /*replay_kind*/ None);
 +}
@@ -1058,7 +1059,7 @@ index 0000000000..a1c1e4782c
 +
 +            if display == TuiReasoningDisplay::Hidden {
 +                chat.handle_thread_item(
-+                    AppServerThreadItem::Reasoning {
++                    AppServerThreadItemPayload::Reasoning {
 +                        id: "hidden-replay-item".to_string(),
 +                        summary: vec!["**Replay summary marker**".to_string()],
 +                        content: if show_raw {
@@ -1382,14 +1383,16 @@ index 0000000000..a1c1e4782c
 +            id: "reasoning-resume-turn".to_string(),
 +            root_turn_id: None,
 +            items_view: codex_app_server_protocol::TurnItemsView::Full,
-+            items: vec![AppServerThreadItem::Reasoning {
-+                id: "reasoning-resume-item".to_string(),
-+                summary: vec![
-+                    "**Resumed heading**\n\nSnapshot text that completion will replace."
-+                        .to_string(),
-+                ],
-+                content: Vec::new(),
-+            }],
++            items: vec![AppServerThreadItem::untimed(
++                AppServerThreadItemPayload::Reasoning {
++                    id: "reasoning-resume-item".to_string(),
++                    summary: vec![
++                        "**Resumed heading**\n\nSnapshot text that completion will replace."
++                            .to_string(),
++                    ],
++                    content: Vec::new(),
++                },
++            )],
 +            status: AppServerTurnStatus::InProgress,
 +            error: None,
 +            started_at: Some(0),
@@ -1450,10 +1453,10 @@ index ef2aba3bd0..d5ca2fe8ec 100644
      pub(super) dynamic_calls:
          std::collections::HashMap<String, crate::history_cell::DynamicToolCallCell>,
 diff --git a/codex-rs/tui/src/chatwidget/turn_runtime.rs b/codex-rs/tui/src/chatwidget/turn_runtime.rs
-index d9726d2fc4..692688fe18 100644
+index ef5954a853..97a1d2e2d7 100644
 --- a/codex-rs/tui/src/chatwidget/turn_runtime.rs
 +++ b/codex-rs/tui/src/chatwidget/turn_runtime.rs
-@@ -106,6 +106,7 @@ impl ChatWidget {
+@@ -117,6 +117,7 @@ impl ChatWidget {
          }
          self.reasoning_summary_parts.clear();
          self.reasoning_buffer.clear();
@@ -1461,7 +1464,7 @@ index d9726d2fc4..692688fe18 100644
          self.reasoning_header = None;
          self.status_state.reasoning_item_id = None;
          self.status_state.reasoning_resume_turn_id = None;
-@@ -132,7 +133,11 @@ impl ChatWidget {
+@@ -143,7 +144,11 @@ impl ChatWidget {
          completion: Option<history_cell::FinalMessageSeparator>,
          from_replay: bool,
      ) {
@@ -1474,7 +1477,7 @@ index d9726d2fc4..692688fe18 100644
              self.on_agent_reasoning_final();
          }
          self.input_queue.submit_pending_steers_after_interrupt = false;
-@@ -330,6 +335,7 @@ impl ChatWidget {
+@@ -341,6 +346,7 @@ impl ChatWidget {
      /// This does not clear MCP startup tracking, because MCP startup can overlap with turn cleanup
      /// and should continue to drive the bottom-pane running indicator while it is in progress.
      pub(super) fn finalize_turn(&mut self) {
@@ -1483,7 +1486,7 @@ index d9726d2fc4..692688fe18 100644
          self.flush_interrupt_activity();
          self.finish_dynamic_activity();
 diff --git a/codex-rs/tui/src/history_cell/messages.rs b/codex-rs/tui/src/history_cell/messages.rs
-index 1cd4a356c5..d95cabe379 100644
+index 66f407a510..2d01fb8572 100644
 --- a/codex-rs/tui/src/history_cell/messages.rs
 +++ b/codex-rs/tui/src/history_cell/messages.rs
 @@ -1,5 +1,5 @@
@@ -1493,7 +1496,7 @@ index 1cd4a356c5..d95cabe379 100644
  
  use super::markdown_render_cache::MarkdownRenderCache;
  use super::*;
-@@ -757,6 +757,47 @@ pub(crate) fn new_reasoning_summary_block(
+@@ -840,6 +840,47 @@ pub(crate) fn new_reasoning_summary_block(
      ))
  }
  
@@ -1542,10 +1545,10 @@ index 1cd4a356c5..d95cabe379 100644
  pub(crate) fn split_reasoning_summary_parts(reasoning_parts: &[String]) -> (String, String) {
      let mut leading_empty_part_header = None;
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 8996d8e3a1..73071802e7 100644
+index cc7f2f668c..fd110cb7e8 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -2716,6 +2716,8 @@ fn reasoning_summary_block() {
+@@ -2718,6 +2718,8 @@ fn reasoning_summary_block() {
          &test_cwd(),
      );
  
@@ -1554,7 +1557,7 @@ index 8996d8e3a1..73071802e7 100644
      let rendered_display = render_lines(&cell.display_lines(/*width*/ 80));
      assert_eq!(rendered_display, Vec::<String>::new());
  
-@@ -2723,6 +2725,129 @@ fn reasoning_summary_block() {
+@@ -2725,6 +2727,129 @@ fn reasoning_summary_block() {
      assert_eq!(rendered_transcript, vec!["• Detailed reasoning goes here."]);
  }
  
@@ -1697,7 +1700,7 @@ index 4ab8878794..99d79a5ada 100644
                  mouse_scroll_speed: config.tui_mouse_scroll_speed,
                  copy_on_select: config.tui_copy_on_select,
 diff --git a/codex-rs/tui/src/resume_picker.rs b/codex-rs/tui/src/resume_picker.rs
-index ce873fb0b1..82d8face81 100644
+index c054f23d1d..062abbbc6a 100644
 --- a/codex-rs/tui/src/resume_picker.rs
 +++ b/codex-rs/tui/src/resume_picker.rs
 @@ -26,7 +26,7 @@ use crate::terminal_palette::default_bg;
@@ -1709,7 +1712,7 @@ index ce873fb0b1..82d8face81 100644
  use crate::tui::FrameRequester;
  use crate::tui::Tui;
  use crate::tui::TuiEvent;
-@@ -494,6 +494,7 @@ async fn run_resume_picker_with_launch_context(
+@@ -531,6 +531,7 @@ async fn run_resume_picker_with_launch_context(
              archive_request_handle,
              include_non_interactive,
              raw_reasoning_visibility(config),
@@ -1717,7 +1720,7 @@ index ce873fb0b1..82d8face81 100644
              (!uses_remote_workspace).then(|| config.clone()),
              bg_tx,
          ),
-@@ -556,6 +557,7 @@ pub async fn run_fork_picker_with_app_server(
+@@ -593,6 +594,7 @@ pub async fn run_fork_picker_with_app_server(
              archive_request_handle,
              /*include_non_interactive*/ false,
              raw_reasoning_visibility(config),
@@ -1725,16 +1728,16 @@ index ce873fb0b1..82d8face81 100644
              (!uses_remote_workspace).then(|| config.clone()),
              bg_tx,
          ),
-@@ -721,6 +723,7 @@ fn spawn_app_server_page_loader(
+@@ -784,6 +786,7 @@ fn spawn_app_server_page_loader(
      archive_request_handle: AppServerRequestHandle,
      include_non_interactive: bool,
      raw_reasoning_visibility: RawReasoningVisibility,
 +    reasoning_display: codex_config::types::TuiReasoningDisplay,
      config: Option<Config>,
-     bg_tx: mpsc::UnboundedSender<BackgroundEvent>,
- ) -> PickerLoader {
-@@ -764,10 +767,11 @@ fn spawn_app_server_page_loader(
-                     cancellation,
+     output: mpsc::UnboundedSender<BackgroundEvent>,
+ ) -> PickerBackground {
+@@ -843,10 +846,11 @@ fn spawn_app_server_page_loader(
+                     ..
                  } => {
                      tokio::select! {
 -                        transcript = load_session_transcript(
@@ -1746,7 +1749,7 @@ index ce873fb0b1..82d8face81 100644
                              config.as_ref(),
                          ) => {
                              let _ = bg_tx.send(BackgroundEvent::Transcript {
-@@ -3865,6 +3869,7 @@ mod tests {
+@@ -4033,6 +4037,7 @@ mod tests {
              request_handle,
              /*include_non_interactive*/ false,
              RawReasoningVisibility::Hidden,
@@ -1755,18 +1758,18 @@ index ce873fb0b1..82d8face81 100644
              bg_tx,
          );
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index babf331fa2..f193d2f330 100644
+index b2322a57a2..82e81b7101 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
-@@ -19,6 +19,7 @@ use crate::legacy_core::config::Config;
+@@ -18,6 +18,7 @@ use crate::legacy_core::config::Config;
  use codex_app_server_protocol::Thread;
- use codex_app_server_protocol::ThreadItem;
+ use codex_app_server_protocol::ThreadItemPayload;
  use codex_app_server_protocol::UserInput;
 +use codex_config::types::TuiReasoningDisplay;
  use codex_protocol::ThreadId;
  use codex_protocol::items::UserMessageItem;
  use codex_utils_absolute_path::AbsolutePathBuf;
-@@ -28,6 +29,10 @@ mod activity_pages;
+@@ -27,6 +28,10 @@ mod activity_pages;
  mod computer_groups;
  mod exploration_groups;
  mod other_items;
@@ -1777,7 +1780,7 @@ index babf331fa2..f193d2f330 100644
  pub(crate) mod tools;
  
  pub(crate) use activity_pages::fold_trailing_activity_details;
-@@ -65,11 +70,29 @@ pub(crate) enum RawReasoningVisibility {
+@@ -64,11 +69,29 @@ pub(crate) enum RawReasoningVisibility {
      Visible,
  }
  
@@ -1807,7 +1810,7 @@ index babf331fa2..f193d2f330 100644
  ) -> std::io::Result<TranscriptCells> {
      let mut thread = app_server
          .thread_read(thread_id, /*include_turns*/ false)
-@@ -86,17 +109,33 @@ pub(crate) async fn load_session_transcript(
+@@ -85,17 +108,33 @@ pub(crate) async fn load_session_transcript(
          )
          .await
          .map_err(std::io::Error::other)?;
@@ -1842,7 +1845,7 @@ index babf331fa2..f193d2f330 100644
  ) -> TranscriptCells {
      let cwd = thread.cwd;
      let thread_id = ThreadId::from_string(&thread.id).ok();
-@@ -104,11 +143,12 @@ pub(crate) fn thread_to_transcript_cells(
+@@ -103,11 +142,12 @@ pub(crate) fn thread_to_transcript_cells(
          .turns
          .into_iter()
          .flat_map(|turn| {
@@ -1850,14 +1853,14 @@ index babf331fa2..f193d2f330 100644
 +            thread_items_to_transcript_cells_with_display(
                  thread_id,
                  &cwd,
-                 turn.items,
+                 turn.items.into_iter().map(|entry| entry.payload),
                  raw_reasoning_visibility,
 +                reasoning_display,
                  config,
              )
          })
-@@ -127,6 +167,30 @@ pub(crate) fn thread_items_to_transcript_cells(
-     items: impl IntoIterator<Item = ThreadItem>,
+@@ -126,6 +166,30 @@ pub(crate) fn thread_items_to_transcript_cells(
+     items: impl IntoIterator<Item = ThreadItemPayload>,
      raw_reasoning_visibility: RawReasoningVisibility,
      config: Option<&Config>,
 +) -> TranscriptCells {
@@ -1880,17 +1883,17 @@ index babf331fa2..f193d2f330 100644
 +pub(crate) fn thread_items_to_transcript_cells_with_display(
 +    thread_id: Option<ThreadId>,
 +    cwd: &AbsolutePathBuf,
-+    items: impl IntoIterator<Item = ThreadItem>,
++    items: impl IntoIterator<Item = ThreadItemPayload>,
 +    raw_reasoning_visibility: RawReasoningVisibility,
 +    reasoning_display: TuiReasoningDisplay,
 +    config: Option<&Config>,
  ) -> TranscriptCells {
      let inline_visualization_context = config.and_then(|config| {
          thread_id.and_then(|thread_id| InlineVisualizationContext::from_config(config, thread_id))
-@@ -135,12 +199,14 @@ pub(crate) fn thread_items_to_transcript_cells(
+@@ -134,12 +198,14 @@ pub(crate) fn thread_items_to_transcript_cells(
      let mut pending = None;
      for item in items {
-         if matches!(item, ThreadItem::Reasoning { .. })
+         if matches!(item, ThreadItemPayload::Reasoning { .. })
 +            && reasoning_display != TuiReasoningDisplay::Persistent
              && let Some(group) = &mut pending
          {
@@ -1902,7 +1905,7 @@ index babf331fa2..f193d2f330 100644
                  inline_visualization_context.clone(),
              ) {
                  match group {
-@@ -205,6 +271,7 @@ pub(crate) fn thread_items_to_transcript_cells(
+@@ -204,6 +270,7 @@ pub(crate) fn thread_items_to_transcript_cells(
                      item,
                      cwd,
                      raw_reasoning_visibility,
@@ -1910,15 +1913,15 @@ index babf331fa2..f193d2f330 100644
                      inline_visualization_context.clone(),
                  );
                  if !projected.is_empty() {
-@@ -223,6 +290,7 @@ fn item_to_cells(
-     item: ThreadItem,
+@@ -222,6 +289,7 @@ fn item_to_cells(
+     item: ThreadItemPayload,
      cwd: &AbsolutePathBuf,
      raw_reasoning_visibility: RawReasoningVisibility,
 +    reasoning_display: TuiReasoningDisplay,
      inline_visualization_context: Option<InlineVisualizationContext>,
  ) -> TranscriptCells {
      let mut cells: TranscriptCells = Vec::new();
-@@ -309,25 +377,58 @@ fn item_to_cells(
+@@ -316,25 +384,58 @@ fn item_to_cells(
              summary,
              content,
          } => {
@@ -1993,18 +1996,18 @@ index babf331fa2..f193d2f330 100644
 +            cell.set_source_item_id(id);
 +            cells.push(Arc::new(cell));
          }
-         item @ ThreadItem::CommandExecution { .. } => {
+         item @ ThreadItemPayload::CommandExecution { .. } => {
              if let Some(command) = tools::CommandHistory::from_item(item) {
 diff --git a/codex-rs/tui/src/thread_transcript/reasoning_display_tests.rs b/codex-rs/tui/src/thread_transcript/reasoning_display_tests.rs
 new file mode 100644
-index 0000000000..7e13775055
+index 0000000000..767db1ba25
 --- /dev/null
 +++ b/codex-rs/tui/src/thread_transcript/reasoning_display_tests.rs
 @@ -0,0 +1,180 @@
 +use super::RawReasoningVisibility;
 +use super::thread_items_to_transcript_cells;
 +use super::thread_items_to_transcript_cells_with_display;
-+use codex_app_server_protocol::ThreadItem;
++use codex_app_server_protocol::ThreadItemPayload;
 +use codex_config::types::TuiReasoningDisplay;
 +use codex_utils_absolute_path::AbsolutePathBuf;
 +
@@ -2014,7 +2017,7 @@ index 0000000000..7e13775055
 +    raw_visibility: RawReasoningVisibility,
 +    display: TuiReasoningDisplay,
 +) -> String {
-+    let item = ThreadItem::Reasoning {
++    let item = ThreadItemPayload::Reasoning {
 +        id: String::from("reasoning-1"),
 +        summary: summary.into_iter().map(String::from).collect(),
 +        content: content.into_iter().map(String::from).collect(),
@@ -2048,7 +2051,7 @@ index 0000000000..7e13775055
 +    config.tui_reasoning_display = TuiReasoningDisplay::Persistent;
 +
 +    let cwd = AbsolutePathBuf::current_dir().expect("cwd");
-+    let item = ThreadItem::Reasoning {
++    let item = ThreadItemPayload::Reasoning {
 +        id: String::from("reasoning-configured"),
 +        summary: vec![String::from("**Configured heading**\n\nConfigured body.")],
 +        content: Vec::new(),
@@ -2147,14 +2150,14 @@ index 0000000000..7e13775055
 +                    "aggregatedOutput": format!("Result {id}"), "exitCode": 0, "durationMs": 10
 +                })
 +            };
-+            serde_json::from_value::<ThreadItem>(value).expect("tool fixture")
++            serde_json::from_value::<ThreadItemPayload>(value).expect("tool fixture")
 +        };
 +        let cells = thread_items_to_transcript_cells_with_display(
 +            None,
 +            &cwd,
 +            [
 +                tool("before"),
-+                ThreadItem::Reasoning {
++                ThreadItemPayload::Reasoning {
 +                    id: "between-tools".to_string(),
 +                    summary: vec!["**Visible heading**\n\nRetained summary.".to_string()],
 +                    content: Vec::new(),
