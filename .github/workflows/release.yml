@@ -32,7 +32,8 @@ jobs:
   build:
     name: build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
+    # macOS release builds and post-build tests can exceed two hours on cold runners.
+    timeout-minutes: 240
     permissions:
       contents: read
     strategy:

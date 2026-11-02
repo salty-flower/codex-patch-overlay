@@ -189,6 +189,7 @@ The selection fails if the runner has no sufficiently large free range; it does 
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
+| macOS build cancelled after two hours during release verification | A cold runner can exceed the previous 120-minute job limit before the V8 sandbox test finishes | Use the 240-minute build job limit and dispatch the existing tag after the previous run stops |
 | Build: `could not find native static library rusty_v8` | `Swatinem/rust-cache` full-matches on an unchanged `Cargo.lock` (e.g. a patch.N+1 re-release) and restores `v8`'s build-script output, whose baked linker path only the fresh build populates | `release.yml` stages the archive at `$GITHUB_WORKSPACE/.rusty_v8` (run-stable) and runs `cargo clean -p v8` after cache restore, forcing `v8` to rebuild every run |
 | `nix flake check` fails on `checks.<system>.latest-release-ref`: `no matches found` | `flake.nix` pins the build jobs' `Swatinem/rust-cache` key to `${{ matrix.target }}` via a `yq` assertion — do not change it to bust a cache | bust a poisoned cache with `gh cache delete <id>` instead of changing the key |
 | `publish`: `403 Resource not accessible by integration` | `GITHUB_TOKEN` cannot update a release that already exists (only create one on tag push) | pass `token: ${{ secrets.RELEASE_PUSH_TOKEN \|\| github.token }}` to `action-gh-release` |
