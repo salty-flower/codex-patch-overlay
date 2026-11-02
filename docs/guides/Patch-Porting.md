@@ -6,6 +6,7 @@
 | --- | --- |
 | Stage upstream | `nu scripts/stage-upstream.nu --ref rust-v0.135.0` |
 | Apply enabled patches | `nu scripts/apply-patches.nu` |
+| Check upstream package contract | `bash scripts/ci/check-package-contract.sh staging/openai-codex` |
 | Edit staged source | `staging/openai-codex/` |
 | Refresh patch | `nu scripts/refresh-patch.nu <patch-name>` |
 | Refresh schema payloads | `gh workflow run refresh-editable-enter-schema.yml --ref <port-branch>` |
@@ -22,6 +23,8 @@
   The workflow commits them with `GITHUB_TOKEN`, which does not trigger `check`, so push another commit afterwards.
 - Check each `[[dependency_patches]]` pin against the new `Cargo.lock`.
   When upstream moves the dependency, regenerate the patch in a checkout of the new source and update `source` in the same commit.
+- Run the package contract check against the new upstream checkout before bumping;
+  it executes the release workflow's build and packaging steps with stub executables and validates both target layouts with upstream's validator.
 - Move abandoned candidates to `docs/records/`.
 
 ## Regenerating One Patch Mid-Stack

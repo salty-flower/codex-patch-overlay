@@ -8,6 +8,7 @@
 | Build check | `nix flake check --all-systems` |
 | Patch check | `nu scripts/check-release.nu` |
 | Tracking check | Carried patches are recorded in `patches/manifest.toml` |
+| Package contract | Release build and packaging steps pass the target upstream validator for Linux and macOS |
 
 `nix flake check` builds `codex-patched` with
 `cargoBuildFlags = --package codex-cli --package codex-code-mode-host --package codex-responses-api-proxy --package codex-exec-server-cli` and `doCheck`
@@ -56,7 +57,12 @@ Helper executables must be regular files: the daemon installer rejects links tha
 The overlay disables nixpkgs' ripgrep PATH wrapper because Codex adds `codex-path` itself,
 and the daemon requires the packaged entrypoint to match the running executable.
 The `package-layout` flake check verifies helper execution, rejects escaping links and directory links,
+validates the actual Nix package with the pinned upstream validator,
+checks its executable files against upstream's source-build list,
 and starts and stops a daemon in an isolated home with automatic updates disabled.
+The `upstream-package-contract` check executes the release workflow's real build and packaging steps with stub executables,
+compares built and packaged binaries with upstream's source-build list,
+and runs the upstream validator for both release targets without compiling Rust.
 
 `codex-rs/install-context` looks for `codex-code-mode-host` under
 `codex-resources/` first and then next to the running `codex` executable,

@@ -281,6 +281,7 @@ def main [
 
   let upstream = (checked-out-upstream $upstream_repo $target_tag)
   verify-patches-apply $upstream.stage $patches
+  ^bash scripts/ci/check-package-contract.sh $upstream.stage
 
   if not $apply {
     print $"dry run: would release ($release_tag) from ($target_tag) at ($upstream.sha)"

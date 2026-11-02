@@ -69,10 +69,18 @@
                   pkgs.coreutils
                   pkgs.jq
                   pkgs.procps
+                  pkgs.python3
                 ];
               }
               ''
                 package=${pkgs.codex-patched}
+                CODEX_REPO_ROOT=${pkgs.codex-patched.src} \
+                  PYTHONPATH=${pkgs.codex-patched.src}/scripts \
+                  CODEX_PACKAGE_DIR="$package" \
+                  CODEX_TARGET=${pkgs.stdenv.hostPlatform.rust.rustcTarget} \
+                  python3 -c 'import os; from pathlib import Path; from codex_package.layout import validate_package_dir; from codex_package.targets import TARGET_SPECS, PACKAGE_VARIANTS; validate_package_dir(Path(os.environ["CODEX_PACKAGE_DIR"]), PACKAGE_VARIANTS["codex"], TARGET_SPECS[os.environ["CODEX_TARGET"]])'
+                bash ${./scripts/ci/check-installed-binaries.sh} ${pkgs.codex-patched.src} \
+                  ${pkgs.stdenv.hostPlatform.rust.rustcTarget} "$package" ${./scripts/ci/list-upstream-binaries.sh}
                 while IFS= read -r -d "" link; do
                   resolved="$(realpath "$link")"
                   case "$resolved" in
@@ -108,6 +116,26 @@
             ${pkgs.yq-go}/bin/yq -o=json ${./patches/manifest.toml} > /dev/null
             touch $out
           '';
+          upstream-package-contract =
+            pkgs.runCommand "codex-upstream-package-contract-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.bash
+                  pkgs.coreutils
+                  pkgs.gawk
+                  pkgs.gnutar
+                  pkgs.gzip
+                  pkgs.jq
+                  pkgs.perl
+                  pkgs.python3
+                  pkgs.yq-go
+                ];
+              }
+              ''
+                bash ${./scripts/ci/check-package-contract.sh} ${pkgs.codex-patched.src} ${./.}
+                bash ${./scripts/ci/test-package-contract.sh} ${pkgs.codex-patched.src} ${./.} ${./scripts/ci/check-package-contract.sh} ${./scripts/ci/check-installed-binaries.sh} ${./scripts/ci/list-upstream-binaries.sh}
+                touch "$out"
+              '';
           latest-release-ref =
             pkgs.runCommand "codex-latest-release-ref-check"
               {
@@ -212,7 +240,10 @@
               pkgs.gh
               pkgs.jq
               pkgs.nushell
+              pkgs.perl
+              pkgs.python3
               pkgs.ripgrep
+              pkgs.yq-go
               pkgs.codex-rust-toolchain
               # For `cargo check` of the staged upstream tree.
               pkgs.pkg-config
