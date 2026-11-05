@@ -1495,10 +1495,10 @@ index 2578c59d9c..08ee445a02 100644
      /// file (default): Use a file in the Codex home directory.
      /// keyring: Use an OS-specific keyring service.
 diff --git a/codex-rs/core-plugins/src/manager.rs b/codex-rs/core-plugins/src/manager.rs
-index 96833721c8..f2508c5060 100644
+index 96833721c8..9e7c2d2a16 100644
 --- a/codex-rs/core-plugins/src/manager.rs
 +++ b/codex-rs/core-plugins/src/manager.rs
-@@ -1735,6 +1735,18 @@ impl PluginsManager {
+@@ -1735,6 +1735,25 @@ impl PluginsManager {
          Ok(RemoteInstalledPluginSyncGuard { _permit: permit })
      }
  
@@ -1506,22 +1506,29 @@ index 96833721c8..f2508c5060 100644
 +    ///
 +    /// A reconcile fences metadata-refresh publication until it commits, so a caller that needs
 +    /// the published snapshot waits here rather than reading a cache the pass still owns.
++    /// A first bundle download can outlast the mutation wait, so the caller picks the deadline.
 +    pub async fn wait_for_remote_installed_plugin_sync(
 +        &self,
++        timeout: Duration,
 +    ) -> Result<(), RemoteInstalledPluginBundleSyncError> {
-+        self.acquire_remote_installed_plugin_sync_guard()
-+            .await
-+            .map(drop)
++        tokio::time::timeout(
++            timeout,
++            Arc::clone(&self.remote_installed_plugin_bundle_sync_gate).acquire_owned(),
++        )
++        .await
++        .map_err(|_| RemoteInstalledPluginBundleSyncError::LockTimeout)?
++        .map(drop)
++        .map_err(|_| RemoteInstalledPluginBundleSyncError::Superseded)
 +    }
 +
      /// Synchronizes remote bundles and publishes the same installed-plugin snapshot.
      ///
      /// The shared gate orders this blocking path with background bundle synchronization. A
 diff --git a/codex-rs/core-plugins/src/manager_tests.rs b/codex-rs/core-plugins/src/manager_tests.rs
-index 7439f7b038..2f5fed1b3a 100644
+index 7439f7b038..ad7f8e66bb 100644
 --- a/codex-rs/core-plugins/src/manager_tests.rs
 +++ b/codex-rs/core-plugins/src/manager_tests.rs
-@@ -7567,6 +7567,92 @@ remote_plugin = true
+@@ -7567,6 +7567,99 @@ remote_plugin = true
      server.verify().await;
  }
  
@@ -1583,6 +1590,13 @@ index 7439f7b038..2f5fed1b3a 100644
 +    {
 +        tokio::task::yield_now().await;
 +    }
++    // The caller's deadline bounds the wait while the reconcile still holds the gate.
++    assert!(matches!(
++        manager
++            .wait_for_remote_installed_plugin_sync(Duration::ZERO)
++            .await,
++        Err(RemoteInstalledPluginBundleSyncError::LockTimeout)
++    ));
 +
 +    // The startup reconcile owns publication: a metadata refresh returns its fetch unpublished.
 +    manager
@@ -1601,7 +1615,7 @@ index 7439f7b038..2f5fed1b3a 100644
 +    );
 +
 +    manager
-+        .wait_for_remote_installed_plugin_sync()
++        .wait_for_remote_installed_plugin_sync(Duration::from_secs(10))
 +        .await
 +        .expect("startup reconcile should finish");
 +    assert_eq!(
@@ -3035,10 +3049,10 @@ index c9ffc4b94a..c3e72dfec9 100644
              session_telemetry,
 diff --git a/codex-rs/core/src/session/rotate_step.rs b/codex-rs/core/src/session/rotate_step.rs
 new file mode 100644
-index 0000000000..6906f8782e
+index 0000000000..3c814725ad
 --- /dev/null
 +++ b/codex-rs/core/src/session/rotate_step.rs
-@@ -0,0 +1,342 @@
+@@ -0,0 +1,429 @@
 +//! Personal account admission before any account-dependent step preparation.
 +//!
 +//! Managed cloud configuration is deliberately outside this personal adapter.
@@ -3048,8 +3062,12 @@ index 0000000000..6906f8782e
 +use codex_config::ConfigLayerSource;
 +use codex_config::ConfigRequirements;
 +use codex_config::RequirementSource;
++use codex_core_plugins::PluginsConfigInput;
++use codex_core_plugins::remote::RemotePluginCatalogError;
++use codex_http_client::RouteAwareRequestError;
 +use codex_protocol::account::PlanType;
 +use codex_protocol::config_types::ForcedLoginMethod;
++use std::time::Duration;
 +
 +/// Settings, environments, and account transport captured before tool preparation.
 +pub(super) struct PreparedStepContext<F> {
@@ -3218,6 +3236,108 @@ index 0000000000..6906f8782e
 +    .any(is_cloud_source)
 +}
 +
++/// On a fresh `CODEX_HOME` the startup sync downloads every installed bundle while it holds the
++/// gate, which can outlast the shared two-minute mutation wait; the turn stays cancellable.
++const PLUGIN_SYNC_WAIT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
++const PLUGIN_INVENTORY_RETRY_DELAY: Duration = Duration::from_secs(1);
++
++/// Publishes the selected account's installed-plugin snapshot, failing closed with the cause.
++async fn prepare_selected_plugin_inventory(
++    plugins: &PluginsManager,
++    plugins_config: &PluginsConfigInput,
++    auth: &CodexAuth,
++    cancellation_token: &CancellationToken,
++    thread_id: ThreadId,
++    sync_wait_timeout: Duration,
++) -> CodexResult<()> {
++    let unprepared = |stage: &str, err: String| {
++        warn!(
++            %thread_id,
++            stage,
++            error = %err,
++            "Codex Rotate could not prepare the selected account's plugin inventory"
++        );
++        CodexErr::InvalidRequest(format!(
++            "Codex Rotate could not prepare the selected account's plugin inventory ({stage}: {err}); no model request was sent"
++        ))
++    };
++    // A bundle reconcile in flight, such as the startup sync, fences the metadata refresh below
++    // from publishing; wait for its snapshot instead of preparing tools from an inventory that
++    // is still unpublished.
++    plugins
++        .wait_for_remote_installed_plugin_sync(sync_wait_timeout)
++        .or_cancel(cancellation_token)
++        .await?
++        .map_err(|err| unprepared("waiting for the installed-plugin sync", err.to_string()))?;
++    if plugins
++        .build_remote_installed_plugin_marketplaces_from_cache(&[])
++        .is_some()
++    {
++        return Ok(());
++    }
++    let fetch = || {
++        plugins.build_and_cache_remote_installed_plugin_marketplaces(
++            plugins_config,
++            Some(auth),
++            &[],
++            /*on_effective_plugins_changed*/ None,
++        )
++    };
++    let result = match fetch().or_cancel(cancellation_token).await? {
++        Err(err) if is_transient_inventory_error(&err) => {
++            warn!(
++                %thread_id,
++                error = %inventory_error_cause(&err),
++                "retrying the selected account's installed-plugin fetch"
++            );
++            tokio::time::sleep(PLUGIN_INVENTORY_RETRY_DELAY)
++                .or_cancel(cancellation_token)
++                .await?;
++            fetch().or_cancel(cancellation_token).await?
++        }
++        result => result,
++    };
++    result.map(drop).map_err(|err| {
++        unprepared(
++            "fetching the installed plugins",
++            inventory_error_cause(&err),
++        )
++    })
++}
++
++/// Describes a fetch failure without the request URL or response body, which reach rollouts.
++fn inventory_error_cause(err: &RemotePluginCatalogError) -> String {
++    match err {
++        RemotePluginCatalogError::Request { source, .. } if source.is_timeout() => {
++            "the request timed out".to_string()
++        }
++        RemotePluginCatalogError::Request { source, .. } if source.is_connect() => {
++            "the connection failed".to_string()
++        }
++        RemotePluginCatalogError::Request { .. } => "the request failed".to_string(),
++        RemotePluginCatalogError::UnexpectedStatus { status, .. } => {
++            format!("the backend returned HTTP {status}")
++        }
++        RemotePluginCatalogError::Decode { .. } => "the response was malformed".to_string(),
++        other => other.to_string(),
++    }
++}
++
++/// Transport failures and server-side statuses; auth and response-shape errors repeat.
++fn is_transient_inventory_error(err: &RemotePluginCatalogError) -> bool {
++    match err {
++        RemotePluginCatalogError::InstalledPluginsFetchTimeout => true,
++        RemotePluginCatalogError::Request { source, .. } => matches!(
++            source,
++            RouteAwareRequestError::Request(_) | RouteAwareRequestError::Timeout
++        ),
++        RemotePluginCatalogError::UnexpectedStatus { status, .. } => {
++            status.is_server_error() || status.as_u16() == 429
++        }
++        _ => false,
++    }
++}
++
 +impl Session {
 +    #[expect(
 +        clippy::await_holding_invalid_type,
@@ -3294,34 +3414,15 @@ index 0000000000..6906f8782e
 +                        .build_remote_installed_plugin_marketplaces_from_cache(&[])
 +                        .is_none()
 +                {
-+                    let unprepared = || {
-+                        CodexErr::InvalidRequest(
-+                            "Codex Rotate could not prepare the selected account's plugin inventory; no model request was sent".to_string(),
-+                        )
-+                    };
-+                    // A bundle reconcile in flight, such as the startup sync, fences the
-+                    // metadata refresh below from publishing; wait for its snapshot instead
-+                    // of preparing tools from an inventory that is still unpublished.
-+                    plugins
-+                        .wait_for_remote_installed_plugin_sync()
-+                        .or_cancel(cancellation_token)
-+                        .await?
-+                        .map_err(|_| unprepared())?;
-+                    if plugins
-+                        .build_remote_installed_plugin_marketplaces_from_cache(&[])
-+                        .is_none()
-+                    {
-+                        plugins
-+                            .build_and_cache_remote_installed_plugin_marketplaces(
-+                                &plugins_config,
-+                                Some(auth),
-+                                &[],
-+                                /*on_effective_plugins_changed*/ None,
-+                            )
-+                            .or_cancel(cancellation_token)
-+                            .await?
-+                            .map_err(|_| unprepared())?;
-+                    }
++                    prepare_selected_plugin_inventory(
++                        plugins,
++                        &plugins_config,
++                        auth,
++                        cancellation_token,
++                        self.thread_id,
++                        PLUGIN_SYNC_WAIT_TIMEOUT,
++                    )
++                    .await?;
 +                    // The awaited metadata refresh does not run background bundle
 +                    // reconciliation or delete files retained by another account's turn.
 +                    plugins.clear_cache();
@@ -3383,10 +3484,10 @@ index 0000000000..6906f8782e
 +mod tests;
 diff --git a/codex-rs/core/src/session/rotate_step_tests.rs b/codex-rs/core/src/session/rotate_step_tests.rs
 new file mode 100644
-index 0000000000..97f251b2d3
+index 0000000000..9c6727c398
 --- /dev/null
 +++ b/codex-rs/core/src/session/rotate_step_tests.rs
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,280 @@
 +use super::*;
 +use codex_config::Sourced;
 +use pretty_assertions::assert_eq;
@@ -3438,6 +3539,234 @@ index 0000000000..97f251b2d3
 +    requirements.unsafe_enforce_sqlite_journal_mode = None;
 +    requirements.otel = Some(Box::new(Sourced::new(Default::default(), source)));
 +    assert!(has_cloud_requirements(&requirements));
++}
++
++struct InventoryFixture {
++    _codex_home: tempfile::TempDir,
++    server: wiremock::MockServer,
++    config: Config,
++    plugins: Arc<PluginsManager>,
++    auth: CodexAuth,
++}
++
++impl InventoryFixture {
++    async fn new() -> Self {
++        let codex_home = tempfile::tempdir().expect("create temp dir");
++        let server = wiremock::MockServer::start().await;
++        let mut config = crate::config::ConfigBuilder::without_managed_config_for_tests()
++            .codex_home(codex_home.path().to_path_buf())
++            .build()
++            .await
++            .expect("load test config");
++        config.chatgpt_base_url = server.uri();
++        config
++            .features
++            .enable(Feature::Plugins)
++            .expect("enable plugins");
++        config
++            .features
++            .enable(Feature::RemotePlugin)
++            .expect("enable remote plugins");
++        let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
++        let plugins = Arc::new(crate::plugins::plugins_manager_for_config(
++            &config,
++            AuthManager::from_auth_for_testing(auth.clone()),
++        ));
++        Self {
++            _codex_home: codex_home,
++            server,
++            config,
++            plugins,
++            auth,
++        }
++    }
++
++    async fn prepare(
++        &self,
++        cancellation_token: &CancellationToken,
++        sync_wait_timeout: Duration,
++    ) -> CodexResult<()> {
++        prepare_selected_plugin_inventory(
++            &self.plugins,
++            &self.config.plugins_config_input(),
++            &self.auth,
++            cancellation_token,
++            ThreadId::new(),
++            sync_wait_timeout,
++        )
++        .await
++    }
++
++    async fn installed_requests(&self) -> usize {
++        self.server
++            .received_requests()
++            .await
++            .expect("recorded requests")
++            .iter()
++            .filter(|request| request.url.path() == "/ps/plugins/installed")
++            .count()
++    }
++}
++
++fn empty_inventory() -> wiremock::ResponseTemplate {
++    wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
++        "plugins": [], "pagination": {"next_page_token": null},
++    }))
++}
++
++fn invalid_request_message(err: CodexErr) -> String {
++    match err.details() {
++        CodexErrorDetails::InvalidRequest(message) => message.clone(),
++        other => panic!("expected an invalid-request error, got {other:?}"),
++    }
++}
++
++#[tokio::test]
++async fn plugin_inventory_retries_one_transient_fetch_failure() {
++    let fixture = InventoryFixture::new().await;
++    wiremock::Mock::given(wiremock::matchers::method("GET"))
++        .and(wiremock::matchers::path("/ps/plugins/installed"))
++        .respond_with(wiremock::ResponseTemplate::new(503).set_body_string("upstream busy"))
++        .up_to_n_times(1)
++        .mount(&fixture.server)
++        .await;
++    wiremock::Mock::given(wiremock::matchers::method("GET"))
++        .and(wiremock::matchers::path("/ps/plugins/installed"))
++        .respond_with(empty_inventory())
++        .mount(&fixture.server)
++        .await;
++
++    fixture
++        .prepare(&CancellationToken::new(), Duration::from_secs(5))
++        .await
++        .expect("the retried fetch should publish the inventory");
++
++    assert_eq!(fixture.installed_requests().await, 2);
++    assert_eq!(
++        fixture
++            .plugins
++            .build_remote_installed_plugin_marketplaces_from_cache(&[]),
++        Some(Vec::new())
++    );
++}
++
++#[tokio::test]
++async fn plugin_inventory_persistent_failure_fails_closed_with_the_cause() {
++    let fixture = InventoryFixture::new().await;
++    wiremock::Mock::given(wiremock::matchers::method("GET"))
++        .and(wiremock::matchers::path("/ps/plugins/installed"))
++        .respond_with(wiremock::ResponseTemplate::new(503).set_body_string("upstream busy"))
++        .mount(&fixture.server)
++        .await;
++
++    let err = fixture
++        .prepare(&CancellationToken::new(), Duration::from_secs(5))
++        .await
++        .expect_err("a persistent outage must not publish an inventory");
++
++    let message = invalid_request_message(err);
++    assert!(
++        message.starts_with(
++            "Codex Rotate could not prepare the selected account's plugin inventory (fetching the installed plugins: "
++        ),
++        "{message}"
++    );
++    assert!(
++        message.contains("the backend returned HTTP 503 Service Unavailable"),
++        "{message}"
++    );
++    // Response bodies and request URLs stay out of the turn error.
++    assert!(!message.contains("upstream busy"), "{message}");
++    assert!(!message.contains(&fixture.server.uri()), "{message}");
++    assert!(
++        message.ends_with("; no model request was sent"),
++        "{message}"
++    );
++    assert_eq!(fixture.installed_requests().await, 2);
++    assert_eq!(
++        fixture
++            .plugins
++            .build_remote_installed_plugin_marketplaces_from_cache(&[]),
++        None
++    );
++}
++
++#[tokio::test]
++async fn plugin_inventory_does_not_retry_an_auth_rejection() {
++    let fixture = InventoryFixture::new().await;
++    wiremock::Mock::given(wiremock::matchers::method("GET"))
++        .and(wiremock::matchers::path("/ps/plugins/installed"))
++        .respond_with(wiremock::ResponseTemplate::new(401).set_body_string("token expired"))
++        .mount(&fixture.server)
++        .await;
++
++    let err = fixture
++        .prepare(&CancellationToken::new(), Duration::from_secs(5))
++        .await
++        .expect_err("an auth rejection must fail closed");
++
++    assert!(invalid_request_message(err).contains("the backend returned HTTP 401 Unauthorized"));
++    assert_eq!(fixture.installed_requests().await, 1);
++}
++
++#[tokio::test]
++async fn plugin_inventory_waits_out_a_slow_startup_sync_within_its_deadline() {
++    let fixture = InventoryFixture::new().await;
++    wiremock::Mock::given(wiremock::matchers::method("GET"))
++        .and(wiremock::matchers::path("/ps/plugins/installed"))
++        .and(wiremock::matchers::query_param(
++            "includeDownloadUrls",
++            "true",
++        ))
++        .respond_with(empty_inventory().set_delay(Duration::from_millis(500)))
++        .mount(&fixture.server)
++        .await;
++    wiremock::Mock::given(wiremock::matchers::method("GET"))
++        .and(wiremock::matchers::path("/ps/plugins/installed"))
++        .respond_with(empty_inventory())
++        .mount(&fixture.server)
++        .await;
++    // The startup sync takes the gate before it spawns, so it is held from here until it publishes.
++    fixture
++        .plugins
++        .maybe_start_remote_installed_plugin_bundle_sync(
++            &fixture.config.plugins_config_input(),
++            Some(fixture.auth.clone()),
++            /*on_effective_plugins_changed*/ None,
++        );
++
++    let err = fixture
++        .prepare(&CancellationToken::new(), Duration::from_millis(50))
++        .await
++        .expect_err("a deadline shorter than the sync must fail closed");
++    let message = invalid_request_message(err);
++    assert!(
++        message.contains(
++            "(waiting for the installed-plugin sync: timed out waiting for another remote plugin cache mutation; retry)"
++        ),
++        "{message}"
++    );
++
++    let cancelled = CancellationToken::new();
++    cancelled.cancel();
++    let err = fixture
++        .prepare(&cancelled, Duration::from_secs(600))
++        .await
++        .expect_err("an interrupted turn stops waiting");
++    assert!(matches!(err.details(), CodexErrorDetails::TurnAborted));
++
++    fixture
++        .prepare(&CancellationToken::new(), Duration::from_secs(10))
++        .await
++        .expect("the sync's own snapshot should satisfy the step");
++    assert_eq!(
++        fixture
++            .plugins
++            .build_remote_installed_plugin_marketplaces_from_cache(&[]),
++        Some(Vec::new())
++    );
++    // The step used the sync's publication instead of fetching the inventory again.
++    assert_eq!(fixture.installed_requests().await, 1);
 +}
 diff --git a/codex-rs/core/src/session/step_context.rs b/codex-rs/core/src/session/step_context.rs
 index 5d4162a500..1a711a850e 100644
