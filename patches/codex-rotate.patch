@@ -2352,6 +2352,27 @@ index 4f60892b53..332f2e5542 100644
                  &mut auth_recovery,
                  &mut provider_auth_recovery_attempted,
                  &telemetry,
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+index 5ad5bc0b69..650b6c033c 100644
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -87,7 +87,6 @@ use tokio::sync::Mutex;
+ use tokio::sync::RwLock;
+ use tokio::sync::oneshot;
+ use tokio::sync::watch;
+-use tokio_util::sync::CancellationToken;
+ 
+ use codex_rollout::state_db::StateDbHandle;
+ 
+@@ -950,7 +949,7 @@ impl CodexThread {
+             // This history-only API runs without run_turn, so it owns its initial step.
+             let step_context = self
+                 .session
+-                .capture_step_context(Arc::clone(&turn_context), &CancellationToken::new())
++                .capture_uncancellable_step_context(Arc::clone(&turn_context))
+                 .await?;
+             self.session
+                 .record_context_updates_and_set_reference_context_item(step_context.as_ref())
 diff --git a/codex-rs/core/src/compact.rs b/codex-rs/core/src/compact.rs
 index 2f6a91de70..03d14588a9 100644
 --- a/codex-rs/core/src/compact.rs
@@ -2562,6 +2583,27 @@ index 79ed3d9fda..36a34b7c5f 100644
  #![deny(clippy::print_stdout, clippy::print_stderr)]
  
  mod apply_patch;
+diff --git a/codex-rs/core/src/prompt_debug.rs b/codex-rs/core/src/prompt_debug.rs
+index 8d1af241c6..0a06546217 100644
+--- a/codex-rs/core/src/prompt_debug.rs
++++ b/codex-rs/core/src/prompt_debug.rs
+@@ -10,7 +10,6 @@ use codex_protocol::error::Result as CodexResult;
+ use codex_protocol::models::ResponseItem;
+ use codex_protocol::protocol::SessionSource;
+ use codex_protocol::user_input::UserInput;
+-use tokio_util::sync::CancellationToken;
+ 
+ use crate::config::Config;
+ use crate::resolve_installation_id;
+@@ -88,7 +87,7 @@ pub(crate) async fn build_prompt_input_from_session(
+     let turn_context = sess.new_default_turn().await;
+     // Prompt debugging builds a standalone request without entering run_turn.
+     let step_context = sess
+-        .capture_step_context(Arc::clone(&turn_context), &CancellationToken::new())
++        .capture_uncancellable_step_context(Arc::clone(&turn_context))
+         .await?;
+     sess.record_context_updates_and_set_reference_context_item(step_context.as_ref())
+         .await?;
 diff --git a/codex-rs/core/src/session/mcp.rs b/codex-rs/core/src/session/mcp.rs
 index 3d85a45e01..8a48048141 100644
 --- a/codex-rs/core/src/session/mcp.rs
@@ -2969,7 +3011,7 @@ index ac0bc4a983..7ebbd9bc0d 100644
      }
  }
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index c9ffc4b94a..c3e72dfec9 100644
+index c9ffc4b94a..0f41c8c9ae 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
 @@ -270,6 +270,7 @@ mod retained_context;
@@ -2980,7 +3022,48 @@ index c9ffc4b94a..c3e72dfec9 100644
  #[allow(clippy::module_inception)]
  pub(crate) mod session;
  pub(crate) mod startup_prewarm;
-@@ -4064,36 +4065,26 @@ impl Session {
+@@ -4028,6 +4029,27 @@ impl Session {
+         .await
+     }
+ 
++    /// Captures a step for a request outside `run_turn` that has no turn to interrupt.
++    ///
++    /// Without a cancellation source, waiting for the selected account's plugin sync keeps the
++    /// shared mutation deadline instead of an interruptible turn's longer one.
++    pub(crate) async fn capture_uncancellable_step_context(
++        self: &Arc<Self>,
++        turn_context: Arc<TurnContext>,
++    ) -> CodexResult<Arc<StepContext>> {
++        let step_context = self
++            .capture_step_context_inner(
++                turn_context,
++                &CancellationToken::new(),
++                /*required_servers*/ &[],
++                /*required_plugins*/ &HashSet::new(),
++                rotate_step::PluginSyncWait::UNCANCELLABLE,
++            )
++            .await?;
++        self.set_last_known_step_context(&step_context).await;
++        Ok(step_context)
++    }
++
+     /// Captures and retains a step with the required MCP startup dependencies.
+     pub(crate) async fn capture_step_context_with_required_mcp_servers(
+         self: &Arc<Self>,
+@@ -4042,6 +4064,7 @@ impl Session {
+                 cancellation_token,
+                 required_servers,
+                 required_plugins,
++                rotate_step::PluginSyncWait::INTERRUPTIBLE,
+             )
+             .await?;
+         self.set_last_known_step_context(&step_context).await;
+@@ -4060,40 +4083,31 @@ impl Session {
+             cancellation_token,
+             /*required_servers*/ &[],
+             /*required_plugins*/ &HashSet::new(),
++            rotate_step::PluginSyncWait::INTERRUPTIBLE,
+         )
          .await
      }
  
@@ -3030,7 +3113,7 @@ index c9ffc4b94a..c3e72dfec9 100644
          if matches!(
              turn_context.session_source,
              SessionSource::SubAgent(SubAgentSource::ThreadSpawn { .. })
-@@ -4186,6 +4177,7 @@ impl Session {
+@@ -4186,6 +4200,7 @@ impl Session {
                  turn::prepare_tool_recommendations(self.as_ref(), turn_context.as_ref()),
              );
              extension_data.insert(selected_capability_roots);
@@ -3038,7 +3121,7 @@ index c9ffc4b94a..c3e72dfec9 100644
              // A step keeps the plugins from the environments it captured, even if shared MCP
              // moves on to another environment. Its skill tools and the model use this same copy.
              // Policy follows this step's MCP binding, which may have refreshed mid-turn.
-@@ -4260,6 +4252,8 @@ impl Session {
+@@ -4260,6 +4275,8 @@ impl Session {
                  .enabled(Feature::InstantInterrupt)
                  .then(CancellationToken::new),
              realtime: self.conversation.snapshot().await,
@@ -3049,10 +3132,10 @@ index c9ffc4b94a..c3e72dfec9 100644
              session_telemetry,
 diff --git a/codex-rs/core/src/session/rotate_step.rs b/codex-rs/core/src/session/rotate_step.rs
 new file mode 100644
-index 0000000000..3c814725ad
+index 0000000000..93db990452
 --- /dev/null
 +++ b/codex-rs/core/src/session/rotate_step.rs
-@@ -0,0 +1,429 @@
+@@ -0,0 +1,483 @@
 +//! Personal account admission before any account-dependent step preparation.
 +//!
 +//! Managed cloud configuration is deliberately outside this personal adapter.
@@ -3068,6 +3151,7 @@ index 0000000000..3c814725ad
 +use codex_protocol::account::PlanType;
 +use codex_protocol::config_types::ForcedLoginMethod;
 +use std::time::Duration;
++use std::time::Instant;
 +
 +/// Settings, environments, and account transport captured before tool preparation.
 +pub(super) struct PreparedStepContext<F> {
@@ -3236,20 +3320,43 @@ index 0000000000..3c814725ad
 +    .any(is_cloud_source)
 +}
 +
-+/// On a fresh `CODEX_HOME` the startup sync downloads every installed bundle while it holds the
-+/// gate, which can outlast the shared two-minute mutation wait; the turn stays cancellable.
-+const PLUGIN_SYNC_WAIT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 +const PLUGIN_INVENTORY_RETRY_DELAY: Duration = Duration::from_secs(1);
 +
++/// How long step preparation waits for an in-flight installed-plugin sync.
++#[derive(Clone, Copy, Debug)]
++pub(super) struct PluginSyncWait {
++    timeout: Duration,
++    notice_after: Duration,
++}
++
++impl PluginSyncWait {
++    /// On a fresh `CODEX_HOME` the startup sync downloads every installed bundle while it holds
++    /// the gate, which can outlast the shared two-minute mutation wait; the turn stays
++    /// cancellable while it waits.
++    pub(super) const INTERRUPTIBLE: Self = Self {
++        timeout: Duration::from_secs(10 * 60),
++        notice_after: Duration::from_secs(30),
++    };
++    /// A request with no turn to interrupt keeps the shared mutation wait.
++    pub(super) const UNCANCELLABLE: Self = Self {
++        timeout: Duration::from_secs(120),
++        notice_after: Duration::from_secs(30),
++    };
++}
++
 +/// Publishes the selected account's installed-plugin snapshot, failing closed with the cause.
-+async fn prepare_selected_plugin_inventory(
++async fn prepare_selected_plugin_inventory<F>(
 +    plugins: &PluginsManager,
 +    plugins_config: &PluginsConfigInput,
 +    auth: &CodexAuth,
 +    cancellation_token: &CancellationToken,
 +    thread_id: ThreadId,
-+    sync_wait_timeout: Duration,
-+) -> CodexResult<()> {
++    sync_wait: PluginSyncWait,
++    on_slow_sync: impl FnOnce(u64) -> F + Send,
++) -> CodexResult<()>
++where
++    F: std::future::Future<Output = ()> + Send,
++{
 +    let unprepared = |stage: &str, err: String| {
 +        warn!(
 +            %thread_id,
@@ -3264,9 +3371,25 @@ index 0000000000..3c814725ad
 +    // A bundle reconcile in flight, such as the startup sync, fences the metadata refresh below
 +    // from publishing; wait for its snapshot instead of preparing tools from an inventory that
 +    // is still unpublished.
-+    plugins
-+        .wait_for_remote_installed_plugin_sync(sync_wait_timeout)
-+        .or_cancel(cancellation_token)
++    let wait_started = Instant::now();
++    let wait = plugins.wait_for_remote_installed_plugin_sync(sync_wait.timeout);
++    let wait = async {
++        tokio::pin!(wait);
++        tokio::select! {
++            synced = &mut wait => synced,
++            () = tokio::time::sleep(sync_wait.notice_after) => {
++                let elapsed_secs = wait_started.elapsed().as_secs();
++                info!(
++                    %thread_id,
++                    elapsed_secs,
++                    "Codex Rotate is waiting for the installed-plugin sync before the next request"
++                );
++                on_slow_sync(elapsed_secs).await;
++                wait.await
++            }
++        }
++    };
++    wait.or_cancel(cancellation_token)
 +        .await?
 +        .map_err(|err| unprepared("waiting for the installed-plugin sync", err.to_string()))?;
 +    if plugins
@@ -3349,6 +3472,7 @@ index 0000000000..3c814725ad
 +        cancellation_token: &CancellationToken,
 +        required_servers: &[String],
 +        required_plugins: &HashSet<String>,
++        plugin_sync_wait: PluginSyncWait,
 +    ) -> CodexResult<Arc<StepContext>> {
 +        // Capture settings and environment selection at the same publication boundary
 +        // before account admission can await.
@@ -3420,7 +3544,20 @@ index 0000000000..3c814725ad
 +                        auth,
 +                        cancellation_token,
 +                        self.thread_id,
-+                        PLUGIN_SYNC_WAIT_TIMEOUT,
++                        plugin_sync_wait,
++                        |elapsed_secs| {
++                            let message = format!(
++                                "Waiting for the plugin sync to finish before the next request ({elapsed_secs}s so far); the first request after Codex starts can take a few minutes"
++                            );
++                            let turn_context = &turn_context;
++                            async move {
++                                self.send_event(
++                                    turn_context,
++                                    EventMsg::Warning(WarningEvent { message }),
++                                )
++                                .await;
++                            }
++                        },
 +                    )
 +                    .await?;
 +                    // The awaited metadata refresh does not run background bundle
@@ -3484,10 +3621,10 @@ index 0000000000..3c814725ad
 +mod tests;
 diff --git a/codex-rs/core/src/session/rotate_step_tests.rs b/codex-rs/core/src/session/rotate_step_tests.rs
 new file mode 100644
-index 0000000000..9c6727c398
+index 0000000000..3f19003e6c
 --- /dev/null
 +++ b/codex-rs/core/src/session/rotate_step_tests.rs
-@@ -0,0 +1,280 @@
+@@ -0,0 +1,326 @@
 +use super::*;
 +use codex_config::Sourced;
 +use pretty_assertions::assert_eq;
@@ -3547,6 +3684,7 @@ index 0000000000..9c6727c398
 +    config: Config,
 +    plugins: Arc<PluginsManager>,
 +    auth: CodexAuth,
++    slow_sync_notices: std::sync::Mutex<Vec<u64>>,
 +}
 +
 +impl InventoryFixture {
@@ -3578,13 +3716,14 @@ index 0000000000..9c6727c398
 +            config,
 +            plugins,
 +            auth,
++            slow_sync_notices: std::sync::Mutex::new(Vec::new()),
 +        }
 +    }
 +
 +    async fn prepare(
 +        &self,
 +        cancellation_token: &CancellationToken,
-+        sync_wait_timeout: Duration,
++        sync_wait: PluginSyncWait,
 +    ) -> CodexResult<()> {
 +        prepare_selected_plugin_inventory(
 +            &self.plugins,
@@ -3592,9 +3731,17 @@ index 0000000000..9c6727c398
 +            &self.auth,
 +            cancellation_token,
 +            ThreadId::new(),
-+            sync_wait_timeout,
++            sync_wait,
++            |elapsed_secs| {
++                self.slow_sync_notices.lock().unwrap().push(elapsed_secs);
++                std::future::ready(())
++            },
 +        )
 +        .await
++    }
++
++    fn slow_sync_notice_count(&self) -> usize {
++        self.slow_sync_notices.lock().unwrap().len()
 +    }
 +
 +    async fn installed_requests(&self) -> usize {
@@ -3606,6 +3753,24 @@ index 0000000000..9c6727c398
 +            .filter(|request| request.url.path() == "/ps/plugins/installed")
 +            .count()
 +    }
++}
++
++fn sync_wait(timeout: Duration, notice_after: Duration) -> PluginSyncWait {
++    PluginSyncWait {
++        timeout,
++        notice_after,
++    }
++}
++
++const NO_NOTICE: Duration = Duration::from_secs(600);
++
++#[test]
++fn only_interruptible_steps_wait_past_the_shared_mutation_deadline() {
++    assert_eq!(
++        PluginSyncWait::UNCANCELLABLE.timeout,
++        Duration::from_secs(120)
++    );
++    assert!(PluginSyncWait::INTERRUPTIBLE.timeout > PluginSyncWait::UNCANCELLABLE.timeout);
 +}
 +
 +fn empty_inventory() -> wiremock::ResponseTemplate {
@@ -3637,7 +3802,10 @@ index 0000000000..9c6727c398
 +        .await;
 +
 +    fixture
-+        .prepare(&CancellationToken::new(), Duration::from_secs(5))
++        .prepare(
++            &CancellationToken::new(),
++            sync_wait(Duration::from_secs(5), NO_NOTICE),
++        )
 +        .await
 +        .expect("the retried fetch should publish the inventory");
 +
@@ -3660,7 +3828,10 @@ index 0000000000..9c6727c398
 +        .await;
 +
 +    let err = fixture
-+        .prepare(&CancellationToken::new(), Duration::from_secs(5))
++        .prepare(
++            &CancellationToken::new(),
++            sync_wait(Duration::from_secs(5), NO_NOTICE),
++        )
 +        .await
 +        .expect_err("a persistent outage must not publish an inventory");
 +
@@ -3701,7 +3872,10 @@ index 0000000000..9c6727c398
 +        .await;
 +
 +    let err = fixture
-+        .prepare(&CancellationToken::new(), Duration::from_secs(5))
++        .prepare(
++            &CancellationToken::new(),
++            sync_wait(Duration::from_secs(5), NO_NOTICE),
++        )
 +        .await
 +        .expect_err("an auth rejection must fail closed");
 +
@@ -3736,7 +3910,10 @@ index 0000000000..9c6727c398
 +        );
 +
 +    let err = fixture
-+        .prepare(&CancellationToken::new(), Duration::from_millis(50))
++        .prepare(
++            &CancellationToken::new(),
++            sync_wait(Duration::from_millis(50), NO_NOTICE),
++        )
 +        .await
 +        .expect_err("a deadline shorter than the sync must fail closed");
 +    let message = invalid_request_message(err);
@@ -3750,15 +3927,21 @@ index 0000000000..9c6727c398
 +    let cancelled = CancellationToken::new();
 +    cancelled.cancel();
 +    let err = fixture
-+        .prepare(&cancelled, Duration::from_secs(600))
++        .prepare(&cancelled, sync_wait(Duration::from_secs(600), NO_NOTICE))
 +        .await
 +        .expect_err("an interrupted turn stops waiting");
 +    assert!(matches!(err.details(), CodexErrorDetails::TurnAborted));
 +
++    assert_eq!(fixture.slow_sync_notice_count(), 0);
 +    fixture
-+        .prepare(&CancellationToken::new(), Duration::from_secs(10))
++        .prepare(
++            &CancellationToken::new(),
++            sync_wait(Duration::from_secs(10), Duration::from_millis(20)),
++        )
 +        .await
 +        .expect("the sync's own snapshot should satisfy the step");
++    // A wait past the notice threshold tells the client once, then keeps waiting.
++    assert_eq!(fixture.slow_sync_notice_count(), 1);
 +    assert_eq!(
 +        fixture
 +            .plugins
