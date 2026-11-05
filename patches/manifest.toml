@@ -1,5 +1,5 @@
 [release]
-patch_suffix = "patch.2"
+patch_suffix = "patch.3"
 upstream_repo = "openai/codex"
 upstream_package = "codex"
 
