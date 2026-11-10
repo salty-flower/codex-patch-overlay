@@ -1,5 +1,5 @@
 diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-index ce32a374c1..0b0b395858 100644
+index ce32a374c1..160f7509d9 100644
 --- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 +++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 @@ -34,7 +34,10 @@ use serde_json::map::Map as JsonMap;
@@ -13,7 +13,7 @@ index ce32a374c1..0b0b395858 100644
  use tokio::sync::Mutex;
  use tokio::sync::mpsc;
  use tokio::sync::oneshot;
-@@ -67,69 +70,227 @@ enum WsCommand {
+@@ -67,69 +70,231 @@ enum WsCommand {
          message: Message,
          tx_result: oneshot::Sender<Result<(), WsError>>,
      },
@@ -92,9 +92,13 @@ index ce32a374c1..0b0b395858 100644
              let mut inner = inner;
 +            let mut pending_probe: Option<PendingProbe> = None;
 +            let mut next_heartbeat = Instant::now() + liveness.heartbeat_interval;
-+            let mut clock_check = tokio::time::interval(liveness.clock_check_interval);
++            // Start one period out instead of awaiting the immediate first tick: that await
++            // never completes while tokio time is paused, and the pump would not start.
++            let mut clock_check = tokio::time::interval_at(
++                Instant::now() + liveness.clock_check_interval,
++                liveness.clock_check_interval,
++            );
 +            clock_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-+            clock_check.tick().await;
 +            let mut last_clock_sample = (Instant::now(), wall_clock());
              loop {
 -                tokio::select! {
@@ -276,7 +280,7 @@ index ce32a374c1..0b0b395858 100644
              tx_command,
              rx_message,
              pump_task,
-@@ -157,11 +318,125 @@ impl WsStream {
+@@ -157,11 +322,125 @@ impl WsStream {
              .await
      }
  
@@ -402,7 +406,7 @@ index ce32a374c1..0b0b395858 100644
  impl Drop for WsStream {
      fn drop(&mut self) {
          self.pump_task.abort();
-@@ -242,7 +517,18 @@ impl ResponsesWebsocketConnection {
+@@ -242,7 +521,18 @@ impl ResponsesWebsocketConnection {
              .lock()
              .await
              .as_ref()
@@ -422,7 +426,7 @@ index ce32a374c1..0b0b395858 100644
      }
  
      #[instrument(
-@@ -1071,6 +1357,7 @@ mod tests {
+@@ -1071,6 +1361,7 @@ mod tests {
      use super::*;
      use crate::common::ResponseCreateWsRequest;
      use crate::common::ResponsesApiRequest;
@@ -430,7 +434,7 @@ index ce32a374c1..0b0b395858 100644
      use codex_protocol::ResponseItemId;
      use codex_protocol::models::ContentItem;
      use codex_protocol::models::ResponseItem;
-@@ -1081,6 +1368,61 @@ mod tests {
+@@ -1081,6 +1372,61 @@ mod tests {
      use serde_json::value::to_raw_value;
      use std::collections::HashMap;
      use std::sync::Arc;
@@ -492,7 +496,7 @@ index ce32a374c1..0b0b395858 100644
  
      #[test]
      fn direct_serialization_preserves_websocket_request_payload() {
-@@ -1154,6 +1496,389 @@ mod tests {
+@@ -1154,6 +1500,389 @@ mod tests {
          assert!(config.extensions.permessage_deflate.is_some());
      }
  
