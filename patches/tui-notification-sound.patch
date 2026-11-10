@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 6ec41a99aa..3f02d5e198 100644
+index 60e713fcf5..fe8a6b568f 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -824,6 +824,40 @@ pub struct TuiNotificationSettings {
+@@ -829,6 +829,40 @@ pub struct TuiNotificationSettings {
      /// regardless of focus. Defaults to `unfocused`.
      #[serde(default, rename = "notification_condition")]
      pub condition: NotificationCondition,
@@ -44,10 +44,10 @@ index 6ec41a99aa..3f02d5e198 100644
  
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 0e741b619f..3a9405d9d3 100644
+index f5149c6efd..ad7a2520c2 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -5327,6 +5327,18 @@
+@@ -5389,6 +5389,18 @@
            "default": "auto",
            "description": "Notification method to use for terminal notifications. Defaults to `auto`."
          },
@@ -66,7 +66,7 @@ index 0e741b619f..3a9405d9d3 100644
          "notifications": {
            "allOf": [
              {
-@@ -6456,6 +6468,25 @@
+@@ -6518,6 +6530,25 @@
        },
        "type": "object"
      },
@@ -93,10 +93,10 @@ index 0e741b619f..3a9405d9d3 100644
        "additionalProperties": false,
        "description": "Pager context keybindings for transcript and static overlays.",
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 309e2d3d54..c23ad7ec5a 100644
+index 8b2548f7ea..39c1a2e981 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -14105,3 +14105,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
+@@ -14223,3 +14223,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
  
      Ok(())
  }
@@ -135,10 +135,10 @@ index 309e2d3d54..c23ad7ec5a 100644
 +    assert_eq!(sound.command, None);
 +}
 diff --git a/codex-rs/tui/src/app/agents_overview.rs b/codex-rs/tui/src/app/agents_overview.rs
-index 3cb5a425a9..fa59652b69 100644
+index 8559f1272f..4d6c43fbaa 100644
 --- a/codex-rs/tui/src/app/agents_overview.rs
 +++ b/codex-rs/tui/src/app/agents_overview.rs
-@@ -781,6 +781,7 @@ impl App {
+@@ -753,6 +753,7 @@ impl App {
              tui.set_notification_settings(
                  self.local_settings.tui.notification_settings.method,
                  self.local_settings.tui.notification_settings.condition,
@@ -159,10 +159,10 @@ index 039670f165..4979fe4a60 100644
      app.chat_widget.open_config_panel();
      app.chat_widget.handle_key_event(KeyCode::Right.into());
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index c7dc18d544..f625b946ab 100644
+index 9203adf62c..af31b93868 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -1412,6 +1412,7 @@ impl App {
+@@ -1446,6 +1446,7 @@ impl App {
          tui.set_notification_settings(
              self.local_settings.tui.notification_settings.method,
              self.local_settings.tui.notification_settings.condition,
@@ -171,10 +171,10 @@ index c7dc18d544..f625b946ab 100644
          self.file_search
              .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index f1e83e5a5f..e58fb38a9a 100644
+index fca1ef21b6..7a47edbec9 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -322,6 +322,7 @@ impl App {
+@@ -323,6 +323,7 @@ impl App {
          tui.set_notification_settings(
              local_settings.tui.notification_settings.method,
              local_settings.tui.notification_settings.condition,
@@ -785,7 +785,7 @@ index 0000000000..149efcb458
 +    }
 +}
 diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
-index 019f820411..deb1025cd8 100644
+index 25c70c4e51..9fcc5b9b82 100644
 --- a/codex-rs/tui/src/tui.rs
 +++ b/codex-rs/tui/src/tui.rs
 @@ -49,6 +49,7 @@ use crate::custom_terminal::Terminal as CustomTerminal;
@@ -832,7 +832,7 @@ index 019f820411..deb1025cd8 100644
      }
  
      pub(crate) fn set_notification_condition(&mut self, condition: NotificationCondition) {
-@@ -1061,7 +1067,7 @@ impl Tui {
+@@ -1064,7 +1070,7 @@ impl Tui {
          };
  
          let message = message.as_ref().to_string();

@@ -1,5 +1,5 @@
 diff --git a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
-index 7b46c37823..c500b816bd 100644
+index 06224d5a72..f8da480dbf 100644
 --- a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
 +++ b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
 @@ -153,7 +153,7 @@ impl SessionRuntime {
@@ -60,7 +60,7 @@ index 910c65114e..67e3d88cb5 100644
 +channel = "stable"
  components = ["clippy", "rustfmt", "rust-src"]
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index 91dde41810..189d3c0d8b 100644
+index a998f6c511..969be5f608 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
 @@ -135,7 +135,7 @@ pub(super) async fn reconnect(
@@ -99,10 +99,10 @@ index ec21bb947e..9bf779f36d 100644
      let client = crate::connect_remote_app_server(endpoint).await?;
      let mode = if scenario == RpcScenario::RemoteWorkspace {
 diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
-index 691136baaf..227f8f11bf 100644
+index 03ede03823..67a2917bb5 100644
 --- a/codex-rs/tui/src/app_backtrack.rs
 +++ b/codex-rs/tui/src/app_backtrack.rs
-@@ -671,7 +671,7 @@ pub(crate) fn backtrack_revert_before_turn_id(
+@@ -676,7 +676,7 @@ pub(crate) fn backtrack_revert_before_turn_id(
          }
      }
  
@@ -112,7 +112,7 @@ index 691136baaf..227f8f11bf 100644
  
  /// Returns whether a turn is the reconstructed inline-review child with duplicated prompt inputs.
 diff --git a/codex-rs/tui/src/app_server_connection.rs b/codex-rs/tui/src/app_server_connection.rs
-index ac3ab1cb2c..afa82e07f4 100644
+index 31d6f528d2..ef4de92e7c 100644
 --- a/codex-rs/tui/src/app_server_connection.rs
 +++ b/codex-rs/tui/src/app_server_connection.rs
 @@ -17,7 +17,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
