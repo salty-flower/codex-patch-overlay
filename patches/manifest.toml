@@ -116,7 +116,7 @@ upstream_issue = "local-request"
 status = "carried"
 risk = "low"
 owner = "local"
-notes = "Use the stable Rust channel in rust-toolchain.toml so rustc, Cargo, rustfmt, and Clippy track the latest stable release instead of upstream's pinned release. CI selects the same channel; Nix builds and the development shell share the stable toolchain fixed by the rust-overlay flake input. Upstream 0.167.0 pins Rust 1.95.0; update atomic calls and macro expressions deprecated by Rust 1.99."
+notes = "Use the stable Rust channel in rust-toolchain.toml so rustc, Cargo, rustfmt, and Clippy track the latest stable release instead of upstream's pinned release. CI selects the same channel; Nix builds and the development shell share the stable toolchain fixed by the rust-overlay flake input. Upstream 0.167.0 pins Rust 1.95.0; update atomic calls and macro expressions deprecated by Rust 1.99, and drop a test-module import of `base64::Engine` that Rust 1.99 reports as unused because `use super::*` already brings it in."
 
 [[patches]]
 name = "tui-snapshot-stability"

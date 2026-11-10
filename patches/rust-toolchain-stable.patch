@@ -1,3 +1,15 @@
+diff --git a/codex-rs/agent-identity/src/lib.rs b/codex-rs/agent-identity/src/lib.rs
+index 14a9e35190..30f2b8a2eb 100644
+--- a/codex-rs/agent-identity/src/lib.rs
++++ b/codex-rs/agent-identity/src/lib.rs
+@@ -564,7 +564,6 @@ fn signing_key_from_private_key_pkcs8_base64(private_key_pkcs8_base64: &str) ->
+ 
+ #[cfg(test)]
+ mod tests {
+-    use base64::Engine as _;
+     use ed25519_dalek::Signature;
+     use ed25519_dalek::Verifier as _;
+     use jsonwebtoken::EncodingKey;
 diff --git a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
 index 06224d5a72..f8da480dbf 100644
 --- a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
