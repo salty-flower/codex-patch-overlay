@@ -12,6 +12,8 @@ refreshed on every upstream Codex release.
 See `patches/manifest.toml` for the
 exact patch stack.
 An opt-in TUI mode can render streamed reasoning summaries live and keep each completed summary in the transcript.
+When the server answers a turn with a different model than the one you selected, Codex shows a warning naming both models;
+upstream reports this only when an `OpenAI-Model` header arrives, which WebSocket turns usually lack.
 
 ## Install a patched build
 

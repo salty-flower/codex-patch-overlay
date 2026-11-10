@@ -188,6 +188,20 @@ risk = "medium"
 owner = "local"
 notes = "Opt in with the exact launch environment value CODEX_ALLOW_HELPERS_IN_TEMP=1 to allow release-build PATH helpers below the system temporary directory on Unix. Unset, 0, and every other value preserve the upstream refusal. No TOML setting or additional configuration dependency; upstream filtering prevents .env files from enabling CODEX_ variables. Every component below temp_root through codex_home must still be an existing directory owned by the effective UID with no group/other write bits. Use symlink_metadata without canonicalizing descendants; reject symlinks, missing paths, foreign owners, writable components, and temp_root itself. Preserve non-temp, non-Unix, and debug behavior, plus existing alias cleanup. The system temp root may itself be an alias (macOS /tmp -> /private/tmp). User-provided darwin-overlay measurements show HOME and HOME/.codex owned by effective UID 502 with mode 0755. Set the opt-in variable in the sandbox launch environment. Unit and release smoke tests cover opt-in/out, unsafe homes, and normal-exit cleanup. Upstream --version exits without dropping the guard; the next normal invocation cleans its stale directory."
 
+[[patches]]
+name = "served-model-warning"
+enabled = true
+file = "patches/served-model-warning.patch"
+upstream_base = "rust-v0.167.0"
+upstream_sha = "086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a"
+source_hash = "sha256-9BVM0mUQ+F9QpqvnG+7x4ZXYaNTclcGLtF5DzEU5Zzg="
+cargo_hash = "sha256-WhKprI9ED9HZV4mlRNqL4RqeG2LAGUB4EengyUCELvM="
+upstream_issue = "https://github.com/openai/codex/issues/46632"
+status = "carried"
+risk = "low"
+owner = "local"
+notes = "Warn when the server answers a turn with a different model than the one requested. Upstream only checks the `OpenAI-Model` header, which WebSocket turns usually lack, so a silent substitution such as gpt-6-astra served by a Luna model goes unreported. The `model` field of `response.created` names the serving model on every transport; it now produces a separate `ResponseBodyModel` event, and core emits one neutral Warning per turn when it differs from the requested slug (ASCII case-insensitive). The header path, its cyber-downgrade text, and `ModelReroute` are unchanged; the body path sends no `ModelReroute` because its only reason would claim a cyber downgrade. Live probes on 2026-11-10 returned bodies equal to the requested slug for gpt-6-astra, gpt-6.1-sol and gpt-6-luna, so a matching turn stays silent. The TUI shows the Warning as a history cell and in its warning count; it cannot detect a degraded model that still reports the requested name."
+
 # Patches applied to a locked dependency's source rather than to codex-rs.
 # Each entry pins the exact locked source and fails the build when the lock moves.
 
