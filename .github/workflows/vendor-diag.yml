@@ -1,0 +1,23 @@
+name: vendor diagnostics (temporary)
+
+on:
+  pull_request:
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/install-nix
+      - name: Hash vendor staging parts
+        run: |
+          set -euo pipefail
+          nix config show | grep -E '^(sandbox|sandbox-fallback) ' || true
+          out=$(nix build --no-link --print-out-paths --impure --expr 'let f = builtins.getFlake (toString ./.); p = f.packages.x86_64-linux.codex-patched; in p.cargoDeps.vendorStaging.overrideAttrs (o: { outputHash = "sha256-KLDYvCcVxNByrNOO581500q8GGSWPRHXEsKdn9SGjnI="; })')
+          echo "out=$out"
+          v8="$out/git/90a65f887a0c0f048f3784afbcb320b373c8a2e0"
+          for d in "$out"/git/* "$out/tarballs" "$out/Cargo.lock" "$v8"/* "$v8"/.[!.]*; do
+            echo "$(nix hash path "$d") $(basename "$d")"
+          done
+          find "$v8" -type f | wc -l
+          find "$v8/tools/win" -type f | wc -l || true
