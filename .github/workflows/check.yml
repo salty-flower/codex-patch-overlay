@@ -209,7 +209,12 @@ jobs:
               echo "Isolating inherited ${name} from unit test fixtures"
             fi
           done
+          # Under Rust 1.100's cargo, the assert_cmd fallback in codex-utils-cargo-bin
+          # resolves helpers under target/debug/build/ and misses them. Point it at
+          # the helpers built above instead.
           env -u CODEX_CA_CERTIFICATE -u SSL_CERT_FILE \
+            CARGO_BIN_EXE_test_stdio_server="$PWD/target/debug/test_stdio_server" \
+            CARGO_BIN_EXE_codex_code_mode_host="$PWD/target/debug/codex-code-mode-host" \
             cargo-nextest nextest run --no-fail-fast --test-threads 2 --lib \
             -p codex-arg0 \
             -p codex-tui \

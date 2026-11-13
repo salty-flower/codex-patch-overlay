@@ -247,10 +247,10 @@ index 613e258b1a..d7504ef1aa 100644
          tui_pet: None,
          tui_pet_anchor: TuiPetAnchor::Composer,
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index d3893ddd5b..c00f250821 100644
+index 97f606ce44..cf7a73416e 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -2077,9 +2077,11 @@ impl ChatWidget {
+@@ -2079,9 +2079,11 @@ impl ChatWidget {
      /// tick are unchanged. Stable sources still require a revision bump when their content changes.
      pub(crate) fn active_cell_transcript_key(&self) -> Option<ActiveCellTranscriptKey> {
          let cell = self.transcript.active_cell.as_ref();
@@ -262,7 +262,7 @@ index d3893ddd5b..c00f250821 100644
              && self
                  .realtime_conversation
                  .live_transcript_cells()
-@@ -2090,8 +2092,9 @@ impl ChatWidget {
+@@ -2092,8 +2094,9 @@ impl ChatWidget {
          {
              return None;
          }
@@ -273,7 +273,7 @@ index d3893ddd5b..c00f250821 100644
              rate_limit_reset_hint.map(|cell| cell as &dyn HistoryCell),
          ];
          Some(ActiveCellTranscriptKey {
-@@ -2112,6 +2115,7 @@ impl ChatWidget {
+@@ -2114,6 +2117,7 @@ impl ChatWidget {
                  .unwrap_or(/*default*/ false),
              animation_tick: cell
                  .and_then(|cell| cell.transcript_animation_tick())

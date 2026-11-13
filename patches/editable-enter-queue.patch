@@ -1954,7 +1954,7 @@ index 7a026d04c5..00ac5e8b29 100644
          &mut self,
          thread_id: ThreadId,
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index b187e7fe92..5aebd815c1 100644
+index b187e7fe92..f1ef887a07 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
 @@ -423,6 +423,7 @@ use self::user_messages::MessageDelivery;
@@ -1965,7 +1965,7 @@ index b187e7fe92..5aebd815c1 100644
  use self::user_messages::QueueDrain;
  use self::user_messages::QueuedUserMessage;
  use self::user_messages::ShellEscapePolicy;
-@@ -1397,15 +1398,20 @@ impl ChatWidget {
+@@ -1397,15 +1398,22 @@ impl ChatWidget {
          let already_rendered = client_id.is_some()
              && self.last_rendered_user_message_client_id.as_deref() == client_id;
          let steers = &mut self.input_queue.pending_steers;
@@ -1974,12 +1974,15 @@ index b187e7fe92..5aebd815c1 100644
 +            .iter()
 +            .position(|pending| pending.state != PendingSteerState::Recalling);
          let matching = match client_id {
-             Some(id) => steers.iter().enumerate().position(|(index, pending)| {
+-            Some(id) => steers.iter().enumerate().position(|(index, pending)| {
++            // An exact ID matches regardless of queue order; once rendered, only an admitted
++            // or recall-claimed steer can still be the committed one.
++            Some(id) => steers.iter().position(|pending| {
                  pending.client_id == id
 -                    && (pending.admitted_turn_id.is_some() || (index == 0 && !already_rendered))
 +                    && (pending.admitted_turn_id.is_some()
 +                        || pending.state != PendingSteerState::Submitted
-+                        || (Some(index) == front && !already_rendered))
++                        || !already_rendered)
              }),
              // Older app servers do not echo submission IDs.
 -            None => steers.front().and_then(|pending| {
