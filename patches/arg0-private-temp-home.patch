@@ -1,8 +1,8 @@
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 2eae72dab5..51c635668c 100644
+index d719a520b7..308c79a399 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
-@@ -2370,6 +2370,7 @@ dependencies = [
+@@ -2413,6 +2413,7 @@ dependencies = [
   "codex-utils-pty",
   "codex-windows-sandbox",
   "dotenvy",

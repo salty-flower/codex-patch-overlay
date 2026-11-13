@@ -1,8 +1,8 @@
 diff --git a/codex-rs/agent-identity/src/lib.rs b/codex-rs/agent-identity/src/lib.rs
-index 14a9e35190..30f2b8a2eb 100644
+index 8323e1d9e7..a580f13d21 100644
 --- a/codex-rs/agent-identity/src/lib.rs
 +++ b/codex-rs/agent-identity/src/lib.rs
-@@ -564,7 +564,6 @@ fn signing_key_from_private_key_pkcs8_base64(private_key_pkcs8_base64: &str) ->
+@@ -565,7 +565,6 @@ fn signing_key_from_private_key_pkcs8_base64(private_key_pkcs8_base64: &str) ->
  
  #[cfg(test)]
  mod tests {
@@ -10,6 +10,76 @@ index 14a9e35190..30f2b8a2eb 100644
      use ed25519_dalek::Signature;
      use ed25519_dalek::Verifier as _;
      use jsonwebtoken::EncodingKey;
+diff --git a/codex-rs/app-server-client/src/cloud_backend/mod.rs b/codex-rs/app-server-client/src/cloud_backend/mod.rs
+index 057a41c64a..f7432c40f0 100644
+--- a/codex-rs/app-server-client/src/cloud_backend/mod.rs
++++ b/codex-rs/app-server-client/src/cloud_backend/mod.rs
+@@ -92,9 +92,11 @@ impl Replies {
+         // A server can close Attach immediately after returning successful headers.
+         // A healthy idle stream needs no event to prove that it is ready.
+         let first_event = match tokio::task::unconstrained(stream.next()).now_or_never() {
+-            Some(None | Some(Err(_))) => bail!(
+-                "Cloud conversation activated but its stream did not connect. Reopen it before sending."
+-            ),
++            Some(None | Some(Err(_))) => {
++                bail!(
++                    "Cloud conversation activated but its stream did not connect. Reopen it before sending."
++                );
++            }
+             Some(Some(Ok(event))) => Some(event),
+             None => None,
+         };
+diff --git a/codex-rs/app-server-client/src/cloud_backend/requests.rs b/codex-rs/app-server-client/src/cloud_backend/requests.rs
+index 7c01d5ca1a..fb395b2d11 100644
+--- a/codex-rs/app-server-client/src/cloud_backend/requests.rs
++++ b/codex-rs/app-server-client/src/cloud_backend/requests.rs
+@@ -152,7 +152,7 @@ impl Requests {
+                     Some(protocol::ThreadItemsListCursor::Opaque(cursor)) => Some(cursor),
+                     None => None,
+                     Some(protocol::ThreadItemsListCursor::Anchor(_)) => {
+-                        bail!("Cloud item anchors are not supported yet.")
++                        bail!("Cloud item anchors are not supported yet.");
+                     }
+                 };
+                 let page = self
+@@ -285,7 +285,7 @@ fn thread_list_query(params: protocol::ThreadListParams) -> Result<cloud::Thread
+             Some(protocol::ThreadSortKey::UpdatedAt) => cloud::ThreadSortKey::UpdatedAt,
+             Some(protocol::ThreadSortKey::RecencyAt) => cloud::ThreadSortKey::RecencyAt,
+             Some(protocol::ThreadSortKey::SectionPosition) => {
+-                bail!("Cloud section ordering is not supported yet.")
++                bail!("Cloud section ordering is not supported yet.");
+             }
+         },
+         sort_direction: match params.sort_direction {
+@@ -408,18 +408,22 @@ fn admitted_message(outcome: cloud::AdmissionOutcome) -> Result<CloudUserMessage
+         cloud::AdmissionOutcome::Duplicate { turn_id } => {
+             CloudUserMessageReceipt::Duplicate { turn_id }
+         }
+-        cloud::AdmissionOutcome::Queued { .. } => bail!(
+-            "Cloud already accepted this message without returning a turn. Reopen the conversation to see its status before sending again."
+-        ),
++        cloud::AdmissionOutcome::Queued { .. } => {
++            bail!(
++                "Cloud already accepted this message without returning a turn. Reopen the conversation to see its status before sending again."
++            );
++        }
+     })
+ }
+ 
+ fn admitted_turn(outcome: cloud::AdmissionOutcome) -> Result<protocol::Turn> {
+     match admitted_message(outcome)? {
+         CloudUserMessageReceipt::Started(turn) | CloudUserMessageReceipt::Steered(turn) => Ok(turn),
+-        CloudUserMessageReceipt::Duplicate { .. } => bail!(
+-            "Cloud already accepted this message without returning a turn. Reopen the conversation to see its status before sending again."
+-        ),
++        CloudUserMessageReceipt::Duplicate { .. } => {
++            bail!(
++                "Cloud already accepted this message without returning a turn. Reopen the conversation to see its status before sending again."
++            );
++        }
+     }
+ }
+ 
 diff --git a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
 index 06224d5a72..f8da480dbf 100644
 --- a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
@@ -24,10 +94,10 @@ index 06224d5a72..f8da480dbf 100644
              })
              .map(|cell_id| CellId::new(cell_id.to_string()))
 diff --git a/codex-rs/core/src/tools/executed_tool_calls.rs b/codex-rs/core/src/tools/executed_tool_calls.rs
-index 853c88a972..26c1eb72a8 100644
+index 43c62916b7..d81df7d275 100644
 --- a/codex-rs/core/src/tools/executed_tool_calls.rs
 +++ b/codex-rs/core/src/tools/executed_tool_calls.rs
-@@ -369,7 +369,7 @@ impl ExecutedToolCalls {
+@@ -368,7 +368,7 @@ impl ExecutedToolCalls {
      fn reserve_direct_call(&self) -> Option<DirectCallPermit> {
          let recording = Arc::downgrade(&self.lock_state().as_ref()?.recording);
          self.pending_direct_calls
@@ -37,10 +107,10 @@ index 853c88a972..26c1eb72a8 100644
              })
              .ok()?;
 diff --git a/codex-rs/core/tests/common/apps_test_server.rs b/codex-rs/core/tests/common/apps_test_server.rs
-index cde2ed74da..6771062f9a 100644
+index 3d090cbdea..b51231602a 100644
 --- a/codex-rs/core/tests/common/apps_test_server.rs
 +++ b/codex-rs/core/tests/common/apps_test_server.rs
-@@ -543,7 +543,7 @@ impl Respond for CodexAppsJsonRpcResponder {
+@@ -565,7 +565,7 @@ impl Respond for CodexAppsJsonRpcResponder {
                      .as_ref()
                      .is_some_and(|remaining| {
                          remaining
@@ -72,10 +142,10 @@ index 910c65114e..67e3d88cb5 100644
 +channel = "stable"
  components = ["clippy", "rustfmt", "rust-src"]
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index a998f6c511..969be5f608 100644
+index d6e2f6f26a..ddd8ec9707 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
-@@ -135,7 +135,7 @@ pub(super) async fn reconnect(
+@@ -138,7 +138,7 @@ pub(super) async fn reconnect(
          }
      }
      tracing::warn!(stage, "automatic reconnect timed out");
@@ -85,10 +155,10 @@ index a998f6c511..969be5f608 100644
  
  impl App {
 diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-index 9123904c51..970e55ef72 100644
+index f0496740c5..5b8e38ea06 100644
 --- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
 +++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-@@ -1207,7 +1207,7 @@ async fn command_center_new_checkout_and_worktree_preserve_source_and_default_br
+@@ -1222,7 +1222,7 @@ async fn command_center_new_checkout_and_worktree_preserve_source_and_default_br
                      return Ok::<_, color_eyre::Report>(());
                  }
              }
@@ -111,10 +181,10 @@ index ec21bb947e..9bf779f36d 100644
      let client = crate::connect_remote_app_server(endpoint).await?;
      let mode = if scenario == RpcScenario::RemoteWorkspace {
 diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
-index 03ede03823..67a2917bb5 100644
+index 06e71e3c7b..defb36147d 100644
 --- a/codex-rs/tui/src/app_backtrack.rs
 +++ b/codex-rs/tui/src/app_backtrack.rs
-@@ -676,7 +676,7 @@ pub(crate) fn backtrack_revert_before_turn_id(
+@@ -680,7 +680,7 @@ pub(crate) fn backtrack_revert_before_turn_id(
          }
      }
  
@@ -124,12 +194,12 @@ index 03ede03823..67a2917bb5 100644
  
  /// Returns whether a turn is the reconstructed inline-review child with duplicated prompt inputs.
 diff --git a/codex-rs/tui/src/app_server_connection.rs b/codex-rs/tui/src/app_server_connection.rs
-index 31d6f528d2..ef4de92e7c 100644
+index cfb203e6a8..4a13063eba 100644
 --- a/codex-rs/tui/src/app_server_connection.rs
 +++ b/codex-rs/tui/src/app_server_connection.rs
-@@ -17,7 +17,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
- pub(crate) async fn connect(target: &AppServerTarget) -> color_eyre::Result<AppServerClient> {
-     match target {
+@@ -20,7 +20,7 @@ pub(crate) async fn connect(target: &AppServerTarget) -> color_eyre::Result<AppS
+             color_eyre::eyre::bail!("Reopen Codex to reconnect the cloud backend.");
+         }
          AppServerTarget::Embedded => {
 -            color_eyre::eyre::bail!("embedded sessions have no remote connection")
 +            color_eyre::eyre::bail!("embedded sessions have no remote connection");

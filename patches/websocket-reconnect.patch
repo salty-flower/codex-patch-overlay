@@ -1,8 +1,8 @@
 diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-index ce32a374c1..160f7509d9 100644
+index 015c8a7ce8..d23135ff73 100644
 --- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 +++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-@@ -34,7 +34,10 @@ use serde_json::map::Map as JsonMap;
+@@ -35,7 +35,10 @@ use serde_json::map::Map as JsonMap;
  use std::future::Future;
  use std::sync::Arc;
  use std::sync::OnceLock;
@@ -13,7 +13,7 @@ index ce32a374c1..160f7509d9 100644
  use tokio::sync::Mutex;
  use tokio::sync::mpsc;
  use tokio::sync::oneshot;
-@@ -67,69 +70,231 @@ enum WsCommand {
+@@ -71,6 +74,10 @@ enum WsCommand {
          message: Message,
          tx_result: oneshot::Sender<Result<(), WsError>>,
      },
@@ -21,8 +21,13 @@ index ce32a374c1..160f7509d9 100644
 +        deadline: Instant,
 +        tx_result: oneshot::Sender<Result<(), String>>,
 +    },
-+}
-+
+ }
+ 
+ /// Send large Responses turns as one text message with backpressure between frames.
+@@ -103,67 +110,225 @@ async fn send_message(
+     Ok(())
+ }
+ 
 +enum WsPumpEvent {
 +    Command(Option<WsCommand>),
 +    Message(Option<Result<Message, WsError>>),
@@ -47,8 +52,8 @@ index ce32a374c1..160f7509d9 100644
 +            resume_gap: Duration::from_secs(2),
 +        }
 +    }
- }
- 
++}
++
 +struct PendingProbe {
 +    payload: Vec<u8>,
 +    deadline: Instant,
@@ -157,15 +162,15 @@ index ce32a374c1..160f7509d9 100644
 +                match event {
 +                    WsPumpEvent::Command(Some(WsCommand::Send { message, tx_result })) => {
 +                        let result = if let Some(probe) = pending_probe.as_ref() {
-+                            tokio::time::timeout_at(probe.deadline, inner.send(message))
++                            tokio::time::timeout_at(probe.deadline, send_message(&mut inner, message))
 +                                .await
 +                                .unwrap_or_else(|_| Err(liveness_timeout_error()))
 +                        } else {
-+                            inner.send(message).await
++                            send_message(&mut inner, message).await
                          };
 -                        match command {
 -                            WsCommand::Send { message, tx_result } => {
--                                let result = inner.send(message).await;
+-                                let result = send_message(&mut inner, message).await;
 -                                let should_break = result.is_err();
 -                                let _ = tx_result.send(result);
 -                                if should_break {
@@ -280,7 +285,7 @@ index ce32a374c1..160f7509d9 100644
              tx_command,
              rx_message,
              pump_task,
-@@ -157,11 +322,125 @@ impl WsStream {
+@@ -191,11 +356,125 @@ impl WsStream {
              .await
      }
  
@@ -406,7 +411,7 @@ index ce32a374c1..160f7509d9 100644
  impl Drop for WsStream {
      fn drop(&mut self) {
          self.pump_task.abort();
-@@ -242,7 +521,18 @@ impl ResponsesWebsocketConnection {
+@@ -276,7 +555,18 @@ impl ResponsesWebsocketConnection {
              .lock()
              .await
              .as_ref()
@@ -426,7 +431,7 @@ index ce32a374c1..160f7509d9 100644
      }
  
      #[instrument(
-@@ -1071,6 +1361,7 @@ mod tests {
+@@ -1127,6 +1417,7 @@ mod tests {
      use super::*;
      use crate::common::ResponseCreateWsRequest;
      use crate::common::ResponsesApiRequest;
@@ -434,7 +439,7 @@ index ce32a374c1..160f7509d9 100644
      use codex_protocol::ResponseItemId;
      use codex_protocol::models::ContentItem;
      use codex_protocol::models::ResponseItem;
-@@ -1081,6 +1372,61 @@ mod tests {
+@@ -1137,6 +1428,61 @@ mod tests {
      use serde_json::value::to_raw_value;
      use std::collections::HashMap;
      use std::sync::Arc;
@@ -496,7 +501,7 @@ index ce32a374c1..160f7509d9 100644
  
      #[test]
      fn direct_serialization_preserves_websocket_request_payload() {
-@@ -1154,6 +1500,389 @@ mod tests {
+@@ -1245,6 +1591,389 @@ mod tests {
          assert!(config.extensions.permessage_deflate.is_some());
      }
  
@@ -887,10 +892,10 @@ index ce32a374c1..160f7509d9 100644
      fn parse_wrapped_websocket_error_event_maps_to_transport_http() {
          let payload = json!({
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index 889a62680f..77b716f09e 100644
+index 425967e392..4de194dbd8 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
-@@ -1821,7 +1821,14 @@ impl ModelClientSession {
+@@ -1875,7 +1875,14 @@ impl ModelClientSession {
                  Some("other")
              }
              Some(conn) if conn.is_closed().await => Some("connection_closed"),
@@ -933,10 +938,10 @@ index 6a4214609c..eebf7767d8 100644
              // Surface retry information to any UI/front-end so the user understands what is
              // happening instead of staring at a seemingly frozen screen.
 diff --git a/codex-rs/core/tests/common/responses.rs b/codex-rs/core/tests/common/responses.rs
-index 13b446e291..96cda164de 100644
+index c36062446a..c46f264419 100644
 --- a/codex-rs/core/tests/common/responses.rs
 +++ b/codex-rs/core/tests/common/responses.rs
-@@ -1365,11 +1365,20 @@ pub async fn start_websocket_server_with_headers(
+@@ -1395,11 +1395,20 @@ pub async fn start_websocket_server_with_headers(
                  let mut response_complete = false;
                  let mut batches = connection.requests.into_iter().peekable();
                  while let Some(request_events) = batches.peek() {
@@ -960,7 +965,7 @@ index 13b446e291..96cda164de 100644
                          let late_interrupt = response_complete && body["type"] == "response.interrupt";
                          let mut log = requests.lock().unwrap();
                          if let Some(connection_log) = log.get_mut(connection_index) {
-@@ -1472,6 +1481,101 @@ pub async fn start_websocket_server_with_headers(
+@@ -1502,6 +1511,101 @@ pub async fn start_websocket_server_with_headers(
      }
  }
  
@@ -1063,10 +1068,10 @@ index 13b446e291..96cda164de 100644
      match message {
          Message::Text(text) => serde_json::from_str(&text).ok(),
 diff --git a/codex-rs/core/tests/suite/client_websockets.rs b/codex-rs/core/tests/suite/client_websockets.rs
-index c48ae76402..d9492e29cc 100755
+index ae69634c9a..40c298da3b 100755
 --- a/codex-rs/core/tests/suite/client_websockets.rs
 +++ b/codex-rs/core/tests/suite/client_websockets.rs
-@@ -59,6 +59,7 @@ use core_test_support::responses::WebSocketTestServer;
+@@ -64,6 +64,7 @@ use core_test_support::responses::WebSocketTestServer;
  use core_test_support::responses::ev_assistant_message;
  use core_test_support::responses::ev_completed;
  use core_test_support::responses::ev_response_created;
@@ -1074,7 +1079,7 @@ index c48ae76402..d9492e29cc 100755
  use core_test_support::responses::start_websocket_server;
  use core_test_support::responses::start_websocket_server_with_headers;
  use core_test_support::responses_metadata as test_responses_metadata;
-@@ -2243,6 +2244,50 @@ async fn responses_websocket_uses_previous_response_id_when_prefix_after_complet
+@@ -2310,6 +2311,50 @@ async fn responses_websocket_uses_previous_response_id_when_prefix_after_complet
      server.shutdown().await;
  }
  

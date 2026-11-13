@@ -1,8 +1,8 @@
 diff --git a/codex-rs/codex-api/src/common.rs b/codex-rs/codex-api/src/common.rs
-index 2510f35d9b..91bb6048c9 100644
+index 455836c2b8..930682f92a 100644
 --- a/codex-rs/codex-api/src/common.rs
 +++ b/codex-rs/codex-api/src/common.rs
-@@ -89,6 +89,10 @@ pub enum ResponseEvent {
+@@ -90,6 +90,10 @@ pub enum ResponseEvent {
      /// Emitted when the server includes `OpenAI-Model` on the stream response.
      /// This can differ from the requested model when backend safety routing applies.
      ServerModel(String),
@@ -14,10 +14,10 @@ index 2510f35d9b..91bb6048c9 100644
      ModelVerifications(Vec<ModelVerification>),
      /// Emitted when the server includes moderation metadata for first-party turn presentation.
 diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-index 160f7509d9..919aa47ed6 100644
+index d23135ff73..9cbe54ba34 100644
 --- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 +++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-@@ -1214,6 +1214,7 @@ async fn run_websocket_response_stream(
+@@ -1270,6 +1270,7 @@ async fn run_websocket_response_stream(
                      continue;
                  }
                  let model = event.response_model();
@@ -25,7 +25,7 @@ index 160f7509d9..919aa47ed6 100644
                  // Preserve terminal usage before any accompanying notification can block.
                  let event = match process_responses_event(event) {
                      Ok(Some(event @ ResponseEvent::Completed { .. })) => {
-@@ -1230,6 +1231,11 @@ async fn run_websocket_response_stream(
+@@ -1286,6 +1287,11 @@ async fn run_websocket_response_stream(
                          .await;
                      last_server_model = Some(model);
                  }
@@ -38,7 +38,7 @@ index 160f7509d9..919aa47ed6 100644
                      let _ = tx_event.send(Ok(metadata_event)).await;
                  }
 diff --git a/codex-rs/codex-api/src/sse/responses.rs b/codex-rs/codex-api/src/sse/responses.rs
-index 055feeca44..6572667505 100644
+index 9c12aaed21..c29851cb88 100644
 --- a/codex-rs/codex-api/src/sse/responses.rs
 +++ b/codex-rs/codex-api/src/sse/responses.rs
 @@ -211,6 +211,22 @@ impl ResponsesStreamEvent {
@@ -79,7 +79,7 @@ index 055feeca44..6572667505 100644
          for metadata_event in metadata_events {
              if tx_event.send(Ok(metadata_event)).await.is_err() {
                  return;
-@@ -1641,7 +1665,7 @@ mod tests {
+@@ -1648,7 +1672,7 @@ mod tests {
      }
  
      #[tokio::test]
@@ -88,7 +88,7 @@ index 055feeca44..6572667505 100644
          let events = run_sse(vec![
              json!({
                  "type": "response.created",
-@@ -1660,10 +1684,16 @@ mod tests {
+@@ -1667,10 +1691,16 @@ mod tests {
          ])
          .await;
  
@@ -108,11 +108,23 @@ index 055feeca44..6572667505 100644
              ResponseEvent::Completed {
                  response_id,
                  token_usage: None,
+diff --git a/codex-rs/core/src/guardian/response_resampling.rs b/codex-rs/core/src/guardian/response_resampling.rs
+index f5a671cb14..e54e883543 100644
+--- a/codex-rs/core/src/guardian/response_resampling.rs
++++ b/codex-rs/core/src/guardian/response_resampling.rs
+@@ -100,6 +100,7 @@ impl ResponseResampling {
+             ResponseEvent::Created { .. }
+             | ResponseEvent::SafetyBuffering(_)
+             | ResponseEvent::ServerModel(_)
++            | ResponseEvent::ResponseBodyModel(_)
+             | ResponseEvent::ModelVerifications(_)
+             | ResponseEvent::TurnModerationMetadata(_)
+             | ResponseEvent::GuardianAssessment(_)
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 1f329e845e..80bd325ad1 100644
+index 614b81cb84..e9846145f2 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -4503,6 +4503,34 @@ impl Session {
+@@ -4807,6 +4807,34 @@ impl Session {
          true
      }
  
@@ -148,10 +160,10 @@ index 1f329e845e..80bd325ad1 100644
          self: &Arc<Self>,
          turn_context: &Arc<TurnContext>,
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index 640b62046a..54c05201dc 100644
+index 37849f4c94..8f0ed2944f 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -3291,6 +3291,19 @@ async fn try_run_sampling_request(
+@@ -3492,6 +3492,19 @@ async fn try_run_sampling_request(
                          .store(true, Ordering::Relaxed);
                  }
              }
@@ -172,10 +184,10 @@ index 640b62046a..54c05201dc 100644
                  if !turn_context
                      .model_verification_emitted
 diff --git a/codex-rs/core/src/turn_timing.rs b/codex-rs/core/src/turn_timing.rs
-index de45b7403d..d7fb2b7078 100644
+index f666d7fcc7..f6a416ea11 100644
 --- a/codex-rs/core/src/turn_timing.rs
 +++ b/codex-rs/core/src/turn_timing.rs
-@@ -492,6 +492,7 @@ fn response_event_records_turn_ttft(event: &ResponseEvent) -> bool {
+@@ -528,6 +528,7 @@ fn response_event_records_turn_ttft(event: &ResponseEvent) -> bool {
          | ResponseEvent::ReasoningContentDelta { .. } => true,
          ResponseEvent::Created { .. }
          | ResponseEvent::ServerModel(_)
@@ -293,10 +305,10 @@ index 30485660d3..a4e9ff4bbc 100644
  async fn openai_model_header_casing_only_mismatch_does_not_warn() -> Result<()> {
      skip_if_no_network!(Ok(()));
 diff --git a/codex-rs/otel/src/events/session_telemetry.rs b/codex-rs/otel/src/events/session_telemetry.rs
-index 43affe902d..76f4adfd0c 100644
+index f6099b84df..d8c32611fb 100644
 --- a/codex-rs/otel/src/events/session_telemetry.rs
 +++ b/codex-rs/otel/src/events/session_telemetry.rs
-@@ -1418,6 +1418,7 @@ impl SessionTelemetry {
+@@ -1428,6 +1428,7 @@ impl SessionTelemetry {
                  "reasoning_summary_part_added".into()
              }
              ResponseEvent::ServerModel(_) => "server_model".into(),
