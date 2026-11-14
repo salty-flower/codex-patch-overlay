@@ -1,42 +1,3 @@
-diff --git a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
-index a56853b2fc..df40cd7ced 100644
---- a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
-+++ b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
-@@ -659,11 +659,12 @@ async fn reconnect_exhaustion_and_unknown_initial_thread_stay_offline() -> Resul
-     assert_eq!(start.elapsed().as_secs(), 120);
-     app.begin_reconnect();
-     app.chat_widget.reconnect_failed();
-+    app.chat_widget.freeze_status_timer_for_snapshot_for_test();
-     assert_snapshot!(
-         "reconnect_failed",
-         format!(
-             "{error}\n{}",
--            render_bottom_popup(&app.chat_widget, /*width*/ 80)
-+            render_bottom_popup(&app.chat_widget, /*width*/ 80).replace('◦', "•")
-         )
-     );
-     tokio::time::resume();
-diff --git a/codex-rs/tui/src/app/tests/disconnect_tests.rs b/codex-rs/tui/src/app/tests/disconnect_tests.rs
-index f54d0eeed3..b60437b955 100644
---- a/codex-rs/tui/src/app/tests/disconnect_tests.rs
-+++ b/codex-rs/tui/src/app/tests/disconnect_tests.rs
-@@ -117,6 +117,7 @@ async fn lost_mutation_reply_preserves_work_without_resubmitting() -> Result<()>
-         (history.session_id, history.text),
-         (id.to_string(), "only once".into())
-     );
-+    app.chat_widget.freeze_status_timer_for_snapshot_for_test();
-     assert_snapshot!(
-         "offline_draft",
-         format!(
-@@ -127,7 +128,7 @@ async fn lost_mutation_reply_preserves_work_without_resubmitting() -> Result<()>
-                     .unwrap()
-                     .display_lines(/*width*/ 80)
-             ),
--            render_bottom_popup(&app.chat_widget, /*width*/ 80)
-+            render_bottom_popup(&app.chat_widget, /*width*/ 80).replace('◦', "•")
-         )
-     );
-     let mut keymap = codex_config::types::TuiKeymap::default();
 diff --git a/codex-rs/tui/src/bottom_pane/request_user_input/render_tests.rs b/codex-rs/tui/src/bottom_pane/request_user_input/render_tests.rs
 index 2bf87d342b..731ed42173 100644
 --- a/codex-rs/tui/src/bottom_pane/request_user_input/render_tests.rs
@@ -56,10 +17,10 @@ index 2bf87d342b..731ed42173 100644
      );
  }
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 2bf960a0f5..fed75767b7 100644
+index f1ef887a07..97f606ce44 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1791,6 +1791,13 @@ impl ChatWidget {
+@@ -1838,6 +1838,13 @@ impl ChatWidget {
          self.bottom_pane.is_task_running()
      }
  
@@ -74,10 +35,10 @@ index 2bf960a0f5..fed75767b7 100644
          let enabled = self.bottom_pane.toggle_vim_enabled();
          let message = if enabled {
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-index 5d2f4693dc..7cb98f11a0 100644
+index 735e01f04c..ae79d086e8 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-@@ -596,7 +596,7 @@ async fn exec_end_without_begin_does_not_flush_unrelated_running_exploring_cell(
+@@ -641,7 +641,7 @@ async fn exec_end_without_begin_does_not_flush_unrelated_running_exploring_cell(
          orphan_blob.contains("• Ran echo repro-marker"),
          "expected orphan end to render a standalone entry: {orphan_blob:?}"
      );
@@ -86,7 +47,7 @@ index 5d2f4693dc..7cb98f11a0 100644
      assert!(
          active.contains("• Exploring"),
          "expected unrelated exploring call to remain active: {active:?}"
-@@ -665,7 +665,7 @@ async fn overlapping_exploring_exec_end_is_not_misclassified_as_orphan() {
+@@ -710,7 +710,7 @@ async fn overlapping_exploring_exec_end_is_not_misclassified_as_orphan() {
          cells.is_empty(),
          "tracked end inside an exploring cell should not render as an orphan"
      );
@@ -95,7 +56,7 @@ index 5d2f4693dc..7cb98f11a0 100644
      assert!(
          active.contains("List ls -la"),
          "expected first command still grouped: {active:?}"
-@@ -753,7 +753,7 @@ async fn unified_exec_unknown_end_with_active_exploring_cell_snapshot() {
+@@ -798,7 +798,7 @@ async fn unified_exec_unknown_end_with_active_exploring_cell_snapshot() {
          .iter()
          .map(|lines| lines_to_single_string(lines))
          .collect::<String>();
@@ -104,100 +65,11 @@ index 5d2f4693dc..7cb98f11a0 100644
      let snapshot = format!("History:\n{history}\nActive:\n{active}");
      assert_chatwidget_snapshot!(
          "unified_exec_unknown_end_with_active_exploring_cell",
-diff --git a/codex-rs/tui/src/chatwidget/tests/guardian.rs b/codex-rs/tui/src/chatwidget/tests/guardian.rs
-index b57de7f58b..9ffd239c50 100644
---- a/codex-rs/tui/src/chatwidget/tests/guardian.rs
-+++ b/codex-rs/tui/src/chatwidget/tests/guardian.rs
-@@ -313,6 +313,7 @@ async fn guardian_denied_exec_renders_warning_and_denied_request() {
-             .expect("Failed to insert history lines in test");
-     }
- 
-+    chat.freeze_status_timer_for_snapshot_for_test();
-     term.draw(|f| {
-         chat.render(f.area(), f.buffer_mut());
-     })
-@@ -320,7 +321,7 @@ async fn guardian_denied_exec_renders_warning_and_denied_request() {
- 
-     assert_chatwidget_snapshot!(
-         "guardian_denied_exec_renders_warning_and_denied_request",
--        normalize_snapshot_paths(term.backend().vt100().screen().contents())
-+        normalize_snapshot_paths(term.backend().vt100().screen().contents()).replace('◦', "•")
-     );
- }
- 
-@@ -455,6 +456,7 @@ async fn guardian_approved_request_permissions_clears_status_without_history() {
- 
-     assert!(drain_insert_history(&mut rx).is_empty());
- 
-+    chat.freeze_status_timer_for_snapshot_for_test();
-     term.draw(|f| {
-         chat.render(f.area(), f.buffer_mut());
-     })
-@@ -462,7 +464,7 @@ async fn guardian_approved_request_permissions_clears_status_without_history() {
- 
-     assert_chatwidget_snapshot!(
-         "guardian_approved_request_permissions_clears_status_without_history",
--        normalize_snapshot_paths(term.backend().vt100().screen().contents())
-+        normalize_snapshot_paths(term.backend().vt100().screen().contents()).replace('◦', "•")
-     );
- }
- 
-@@ -529,6 +531,7 @@ async fn guardian_timed_out_exec_renders_warning_and_timed_out_request() {
-             .expect("Failed to insert history lines in test");
-     }
- 
-+    chat.freeze_status_timer_for_snapshot_for_test();
-     term.draw(|f| {
-         chat.render(f.area(), f.buffer_mut());
-     })
-@@ -536,7 +539,7 @@ async fn guardian_timed_out_exec_renders_warning_and_timed_out_request() {
- 
-     assert_chatwidget_snapshot!(
-         "guardian_timed_out_exec_renders_warning_and_timed_out_request",
--        normalize_snapshot_paths(term.backend().vt100().screen().contents())
-+        normalize_snapshot_paths(term.backend().vt100().screen().contents()).replace('◦', "•")
-     );
- }
- 
-@@ -648,6 +651,7 @@ async fn app_server_guardian_review_denied_renders_denied_request_snapshot() {
-             .expect("Failed to insert history lines in test");
-     }
- 
-+    chat.freeze_status_timer_for_snapshot_for_test();
-     term.draw(|f| {
-         chat.render(f.area(), f.buffer_mut());
-     })
-@@ -655,7 +659,7 @@ async fn app_server_guardian_review_denied_renders_denied_request_snapshot() {
- 
-     assert_chatwidget_snapshot!(
-         "app_server_guardian_review_denied_renders_denied_request",
--        normalize_snapshot_paths(term.backend().vt100().screen().contents())
-+        normalize_snapshot_paths(term.backend().vt100().screen().contents()).replace('◦', "•")
-     );
- }
- 
-@@ -729,6 +733,7 @@ async fn app_server_guardian_review_timed_out_renders_timed_out_request_snapshot
-             .expect("Failed to insert history lines in test");
-     }
- 
-+    chat.freeze_status_timer_for_snapshot_for_test();
-     term.draw(|f| {
-         chat.render(f.area(), f.buffer_mut());
-     })
-@@ -736,7 +741,7 @@ async fn app_server_guardian_review_timed_out_renders_timed_out_request_snapshot
- 
-     assert_chatwidget_snapshot!(
-         "app_server_guardian_review_timed_out_renders_timed_out_request",
--        normalize_snapshot_paths(term.backend().vt100().screen().contents())
-+        normalize_snapshot_paths(term.backend().vt100().screen().contents()).replace('◦', "•")
-     );
- }
- 
 diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-index 9074c5ec03..db0eb169be 100644
+index 3491d386b4..9ad1816496 100644
 --- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-@@ -5621,6 +5621,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5778,6 +5778,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          ),
      );
      reveal_running_hooks(&mut chat);
@@ -205,7 +77,7 @@ index 9074c5ec03..db0eb169be 100644
      let exec_and_hook_running = hook_status_frame(&chat, /*width*/ 80);
  
      end_exec(&mut chat, begin, "done", "", /*exit_code*/ 0);
-@@ -5628,6 +5629,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5785,6 +5786,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          .iter()
          .map(|lines| lines_to_single_string(lines))
          .collect::<String>();
@@ -213,7 +85,7 @@ index 9074c5ec03..db0eb169be 100644
      let hook_running_after_exec = hook_status_frame(&chat, /*width*/ 80);
  
      handle_hook_completed(
-@@ -5640,6 +5642,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5797,6 +5799,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          ),
      );
      assert!(drain_insert_history(&mut rx).is_empty());
@@ -221,7 +93,7 @@ index 9074c5ec03..db0eb169be 100644
      let quiet_hook_completed = hook_status_frame(&chat, /*width*/ 80);
      expire_quiet_hook_linger(&mut chat);
      assert!(chat.active_hook_cell.is_none());
-@@ -5649,6 +5652,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5806,6 +5809,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          format!(
              "exec running:\n{exec_running}\nexec and hook running:\n{exec_and_hook_running}\nhistory after exec:\n{history_after_exec}\nhook running after exec:\n{hook_running_after_exec}\nquiet hook completed:\n{quiet_hook_completed}"
          )

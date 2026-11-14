@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 60e713fcf5..fe8a6b568f 100644
+index 177faa086c..7ab60a9e63 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -829,6 +829,40 @@ pub struct TuiNotificationSettings {
+@@ -831,6 +831,40 @@ pub struct TuiNotificationSettings {
      /// regardless of focus. Defaults to `unfocused`.
      #[serde(default, rename = "notification_condition")]
      pub condition: NotificationCondition,
@@ -44,10 +44,10 @@ index 60e713fcf5..fe8a6b568f 100644
  
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index f5149c6efd..ad7a2520c2 100644
+index 5f72e108ec..0ba9f2a906 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -5389,6 +5389,18 @@
+@@ -5542,6 +5542,18 @@
            "default": "auto",
            "description": "Notification method to use for terminal notifications. Defaults to `auto`."
          },
@@ -66,7 +66,7 @@ index f5149c6efd..ad7a2520c2 100644
          "notifications": {
            "allOf": [
              {
-@@ -6518,6 +6530,25 @@
+@@ -6832,6 +6844,25 @@
        },
        "type": "object"
      },
@@ -93,10 +93,10 @@ index f5149c6efd..ad7a2520c2 100644
        "additionalProperties": false,
        "description": "Pager context keybindings for transcript and static overlays.",
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 8b2548f7ea..39c1a2e981 100644
+index 1be838e1dd..104c796ce5 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -14223,3 +14223,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
+@@ -14289,3 +14289,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
  
      Ok(())
  }
@@ -135,10 +135,10 @@ index 8b2548f7ea..39c1a2e981 100644
 +    assert_eq!(sound.command, None);
 +}
 diff --git a/codex-rs/tui/src/app/agents_overview.rs b/codex-rs/tui/src/app/agents_overview.rs
-index 8559f1272f..4d6c43fbaa 100644
+index 6ef505771a..efeba3318f 100644
 --- a/codex-rs/tui/src/app/agents_overview.rs
 +++ b/codex-rs/tui/src/app/agents_overview.rs
-@@ -753,6 +753,7 @@ impl App {
+@@ -808,6 +808,7 @@ impl App {
              tui.set_notification_settings(
                  self.local_settings.tui.notification_settings.method,
                  self.local_settings.tui.notification_settings.condition,
@@ -146,6 +146,18 @@ index 8559f1272f..4d6c43fbaa 100644
              );
              self.file_search
                  .update_search_dir(self.config.cwd.to_path_buf());
+diff --git a/codex-rs/tui/src/app/backend_selection.rs b/codex-rs/tui/src/app/backend_selection.rs
+index ef345a41b0..69a02e6bd5 100644
+--- a/codex-rs/tui/src/app/backend_selection.rs
++++ b/codex-rs/tui/src/app/backend_selection.rs
+@@ -295,6 +295,7 @@ impl App {
+         tui.set_notification_settings(
+             self.local_settings.tui.notification_settings.method,
+             self.local_settings.tui.notification_settings.condition,
++            self.local_settings.tui.notification_settings.sound.clone(),
+         );
+         if let Some(draft) = draft {
+             if responsive_cloud_switch {
 diff --git a/codex-rs/tui/src/app/config_panel_tests.rs b/codex-rs/tui/src/app/config_panel_tests.rs
 index 039670f165..4979fe4a60 100644
 --- a/codex-rs/tui/src/app/config_panel_tests.rs
@@ -159,10 +171,10 @@ index 039670f165..4979fe4a60 100644
      app.chat_widget.open_config_panel();
      app.chat_widget.handle_key_event(KeyCode::Right.into());
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 9203adf62c..af31b93868 100644
+index ac4d2b0376..7966484b13 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -1446,6 +1446,7 @@ impl App {
+@@ -1763,6 +1763,7 @@ impl App {
          tui.set_notification_settings(
              self.local_settings.tui.notification_settings.method,
              self.local_settings.tui.notification_settings.condition,
@@ -171,10 +183,10 @@ index 9203adf62c..af31b93868 100644
          self.file_search
              .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index fca1ef21b6..7a47edbec9 100644
+index 4ca036004a..612a8de65a 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -323,6 +323,7 @@ impl App {
+@@ -339,6 +339,7 @@ impl App {
          tui.set_notification_settings(
              local_settings.tui.notification_settings.method,
              local_settings.tui.notification_settings.condition,
@@ -183,7 +195,7 @@ index fca1ef21b6..7a47edbec9 100644
  
          let harness_overrides = startup_try!(normalize_harness_overrides_for_cwd(
 diff --git a/codex-rs/tui/src/app/working_directory.rs b/codex-rs/tui/src/app/working_directory.rs
-index b15fb9af8a..56c4356a6c 100644
+index 7a3a7966fb..d4fc487777 100644
 --- a/codex-rs/tui/src/app/working_directory.rs
 +++ b/codex-rs/tui/src/app/working_directory.rs
 @@ -588,7 +588,7 @@ impl App {
@@ -196,12 +208,12 @@ index b15fb9af8a..56c4356a6c 100644
              tracing::warn!(%error, "failed to clear ambient pet image");
          }
 diff --git a/codex-rs/tui/src/notifications/mod.rs b/codex-rs/tui/src/notifications/mod.rs
-index 5e2053c838..c9c5cb3064 100644
+index 260c026ab7..19e4bc14ce 100644
 --- a/codex-rs/tui/src/notifications/mod.rs
 +++ b/codex-rs/tui/src/notifications/mod.rs
-@@ -1,14 +1,17 @@
+@@ -1,15 +1,18 @@
  mod bel;
- mod osc9;
+ mod osc;
 +mod sound;
  
  use std::io;
@@ -212,12 +224,13 @@ index 5e2053c838..c9c5cb3064 100644
  use codex_terminal_detection::TerminalInfo;
  use codex_terminal_detection::TerminalName;
  use codex_terminal_detection::terminal_info;
- use osc9::Osc9Backend;
+ use osc::OscBackend;
+ use osc::OscProtocol;
 +use sound::play_notification_sound;
  
  #[derive(Debug)]
  pub enum DesktopNotificationBackend {
-@@ -46,10 +49,29 @@ impl DesktopNotificationBackend {
+@@ -51,10 +54,29 @@ impl DesktopNotificationBackend {
      }
  }
  
@@ -247,7 +260,7 @@ index 5e2053c838..c9c5cb3064 100644
  fn supports_osc9(terminal: &TerminalInfo) -> bool {
      matches!(
          terminal.name,
-@@ -64,6 +86,7 @@ fn supports_osc9(terminal: &TerminalInfo) -> bool {
+@@ -69,6 +91,7 @@ fn supports_osc9(terminal: &TerminalInfo) -> bool {
  #[cfg(test)]
  mod tests {
      use super::detect_backend;
@@ -256,7 +269,7 @@ index 5e2053c838..c9c5cb3064 100644
      use codex_config::types::NotificationMethod;
      use codex_terminal_detection::TerminalInfo;
 @@ -97,6 +120,19 @@ mod tests {
-         ));
+         }
      }
  
 +    #[test]
@@ -785,10 +798,10 @@ index 0000000000..149efcb458
 +    }
 +}
 diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
-index 25c70c4e51..9fcc5b9b82 100644
+index d5b1ac0b9d..d383e9821d 100644
 --- a/codex-rs/tui/src/tui.rs
 +++ b/codex-rs/tui/src/tui.rs
-@@ -49,6 +49,7 @@ use crate::custom_terminal::Terminal as CustomTerminal;
+@@ -50,6 +50,7 @@ use crate::custom_terminal::Terminal as CustomTerminal;
  use crate::insert_history::HistoryLineWrapPolicy;
  use crate::notifications::DesktopNotificationBackend;
  use crate::notifications::detect_backend;
@@ -796,7 +809,7 @@ index 25c70c4e51..9fcc5b9b82 100644
  use crate::terminal_hyperlinks::HyperlinkLine;
  use crate::terminal_hyperlinks::plain_hyperlink_lines;
  use crate::tui::alternate_screen::ALTERNATE_SCREEN;
-@@ -60,6 +61,7 @@ use crate::tui::screen_size::ScreenSizePolicy;
+@@ -61,6 +62,7 @@ use crate::tui::screen_size::ScreenSizePolicy;
  use crate::tui::scrollback::ScrollbackStrategy;
  use codex_config::types::NotificationCondition;
  use codex_config::types::NotificationMethod;
@@ -804,7 +817,7 @@ index 25c70c4e51..9fcc5b9b82 100644
  
  mod alternate_screen;
  mod event_stream;
-@@ -713,6 +715,7 @@ pub struct Tui {
+@@ -733,6 +735,7 @@ pub struct Tui {
      pub(crate) terminal_app_over_ssh: bool,
      notification_backend: Option<DesktopNotificationBackend>,
      notification_condition: NotificationCondition,
@@ -812,7 +825,7 @@ index 25c70c4e51..9fcc5b9b82 100644
      scrollback: ScrollbackStrategy,
      // When false, overlays stay on the inline screen.
      alt_screen_enabled: bool,
-@@ -789,6 +792,7 @@ impl Tui {
+@@ -811,6 +814,7 @@ impl Tui {
              terminal_app_over_ssh: false,
              notification_backend: Some(detect_backend(NotificationMethod::default())),
              notification_condition: NotificationCondition::default(),
@@ -820,7 +833,7 @@ index 25c70c4e51..9fcc5b9b82 100644
              scrollback,
              alt_screen_enabled: true,
              owned_screen: false,
-@@ -876,9 +880,11 @@ impl Tui {
+@@ -910,9 +914,11 @@ impl Tui {
          &mut self,
          method: NotificationMethod,
          condition: NotificationCondition,
@@ -832,7 +845,7 @@ index 25c70c4e51..9fcc5b9b82 100644
      }
  
      pub(crate) fn set_notification_condition(&mut self, condition: NotificationCondition) {
-@@ -1064,7 +1070,7 @@ impl Tui {
+@@ -1098,7 +1104,7 @@ impl Tui {
          };
  
          let message = message.as_ref().to_string();
