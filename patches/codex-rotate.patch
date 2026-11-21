@@ -1,3 +1,20 @@
+diff --git a/codex-rs/app-server-client/src/cloud_backend/idle.rs b/codex-rs/app-server-client/src/cloud_backend/idle.rs
+index 3ae171dc07..69657fe8f2 100644
+--- a/codex-rs/app-server-client/src/cloud_backend/idle.rs
++++ b/codex-rs/app-server-client/src/cloud_backend/idle.rs
+@@ -56,7 +56,11 @@ impl Login {
+         }
+         let Ok(Some(auth)) = self
+             .storage
+-            .load_auth_with_modes(/*enable_codex_api_key_env*/ false, Some(&[self.mode]))
++            .load_auth_with_modes(
++                /*enable_codex_api_key_env*/ false,
++                Some(&[self.mode]),
++                /*resolve_rotate*/ true,
++            )
+             .await
+         else {
+             return false;
 diff --git a/codex-rs/app-server/src/application_network.rs b/codex-rs/app-server/src/application_network.rs
 index 1a3223eff5..0778a782f0 100644
 --- a/codex-rs/app-server/src/application_network.rs
@@ -9,10 +26,10 @@ index 1a3223eff5..0778a782f0 100644
 +use codex_protocol::account::PlanType;
  use std::io;
  use std::sync::Arc;
- 
+
 @@ -29,6 +30,109 @@ pub(crate) fn destination_policy(
  }
- 
+
  impl ConfigManager {
 +    /// Reinstalls the local application policy for an admitted personal Rotate owner.
 +    ///
@@ -125,7 +142,7 @@ index 20a63a2d69..75b9c03949 100644
 --- a/codex-rs/app-server/src/application_network_tests.rs
 +++ b/codex-rs/app-server/src/application_network_tests.rs
 @@ -2,11 +2,18 @@
- 
+
  use super::ConfigManager;
  use anyhow::Result;
 +use app_test_support::ChatGptIdTokenClaims;
@@ -435,12 +452,12 @@ index 20a63a2d69..75b9c03949 100644
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
-index 7a2892b598..36fb2a571b 100644
+index d7cc906c88..dc90ccd484 100644
 --- a/codex-rs/app-server/src/lib.rs
 +++ b/codex-rs/app-server/src/lib.rs
-@@ -1565,9 +1565,12 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
+@@ -1569,9 +1569,12 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
  }
- 
+
  fn loader_overrides_with_test_user_config_file(
 -    mut loader_overrides: LoaderOverrides,
 +    loader_overrides: LoaderOverrides,
@@ -453,11 +470,11 @@ index 7a2892b598..36fb2a571b 100644
      if let Some(path) = test_user_config_file {
          let path = AbsolutePathBuf::from_absolute_path(path).map_err(|err| {
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 1fa7a2901f..b4f2f3dc8e 100644
+index c61e4b3b43..fe6563e4ab 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -151,6 +151,8 @@ fn reject_removed_permission_profile(request: &JSONRPCRequest) -> Result<(), JSO
- 
+@@ -153,6 +153,8 @@ fn reject_removed_permission_profile(request: &JSONRPCRequest) -> Result<(), JSO
+
  pub(crate) struct MessageProcessor {
      pub(crate) turn_admission: TurnAdmission,
 +    // Keeps the weak target used by the auth callback alive without creating a cycle.
@@ -465,7 +482,7 @@ index 1fa7a2901f..b4f2f3dc8e 100644
      user_verification: Arc<crate::user_verification::Service>,
      outgoing: Arc<OutgoingMessageSender>,
      startup_warnings: StartupWarnings,
-@@ -314,6 +316,23 @@ impl MessageProcessor {
+@@ -316,6 +318,23 @@ impl MessageProcessor {
              remote_control_handle,
              plugin_startup_tasks,
          } = args;
@@ -489,8 +506,8 @@ index 1fa7a2901f..b4f2f3dc8e 100644
          // Startup credential reads must not open a browser before initialize selects the policy.
          let gateway_login_control =
              codex_login::GatewayLoginControl::for_runtime(&auth_manager.runtime_config());
-@@ -644,6 +663,7 @@ impl MessageProcessor {
- 
+@@ -642,6 +661,7 @@ impl MessageProcessor {
+
          Self {
              turn_admission,
 +            _config_manager_owner: config_manager_owner,
@@ -498,7 +515,7 @@ index 1fa7a2901f..b4f2f3dc8e 100644
              outgoing,
              startup_warnings: StartupWarnings {
 diff --git a/codex-rs/app-server/src/request_processors/account_processor.rs b/codex-rs/app-server/src/request_processors/account_processor.rs
-index 92fb152787..37e0d5641c 100644
+index 3ce6198e30..f5850ab4b6 100644
 --- a/codex-rs/app-server/src/request_processors/account_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/account_processor.rs
 @@ -26,6 +26,7 @@ mod gateway_oauth;
@@ -508,14 +525,14 @@ index 92fb152787..37e0d5641c 100644
 +mod rotate_transition;
  mod workspace_routing;
  mod workspace_switching;
- 
+
 @@ -123,6 +124,7 @@ pub(crate) struct AccountRequestProcessor {
          Arc<std::sync::Mutex<HashMap<String, Arc<codex_model_provider::GatewayAuthManager>>>>,
      _gateway_notifications: Arc<tokio_util::task::AbortOnDropHandle<()>>,
      pub(super) enterprise_login: Arc<enterprise_login::EnterpriseLoginState>,
 +    _rotation_observer: Option<Arc<rotate_transition::RotationObserver>>,
  }
- 
+
  impl AccountRequestProcessor {
 @@ -144,8 +146,13 @@ impl AccountRequestProcessor {
              Arc::clone(&thread_manager),
@@ -531,7 +548,7 @@ index 92fb152787..37e0d5641c 100644
              auth_manager,
              thread_manager,
              outgoing,
-@@ -505,6 +512,7 @@ impl AccountRequestProcessor {
+@@ -506,6 +513,7 @@ impl AccountRequestProcessor {
              self.config.auth_keyring_backend_kind(),
          ) {
              Ok(()) => {
@@ -539,7 +556,7 @@ index 92fb152787..37e0d5641c 100644
                  self.auth_manager.reload().await;
                  self.config_manager.clear_chatgpt_config_loader();
                  Ok(())
-@@ -607,6 +615,7 @@ impl AccountRequestProcessor {
+@@ -608,6 +616,7 @@ impl AccountRequestProcessor {
                  }
              }
              .map_err(|err| internal_error(format!("failed to save Amazon Bedrock auth: {err}")))?;
@@ -547,15 +564,15 @@ index 92fb152787..37e0d5641c 100644
              self.auth_manager.reload().await;
              self.config_manager.clear_chatgpt_config_loader();
              Ok(LoginAccountResponse::AmazonBedrock {})
-@@ -646,6 +655,7 @@ impl AccountRequestProcessor {
+@@ -647,6 +656,7 @@ impl AccountRequestProcessor {
          }
- 
+
          let mut opts = LoginServerOptions {
 +            codex_rotate_helper: config.codex_rotate_helper.clone(),
              open_browser: false,
              codex_streamlined_login,
              login_success_page,
-@@ -913,6 +923,11 @@ impl AccountRequestProcessor {
+@@ -914,6 +924,11 @@ impl AccountRequestProcessor {
          chatgpt_account_id: String,
          chatgpt_plan_type: Option<String>,
      ) -> Result<LoginAccountResponse, JSONRPCErrorError> {
@@ -567,7 +584,7 @@ index 92fb152787..37e0d5641c 100644
          if !self
              .auth_manager
              .is_login_method_allowed(ForcedLoginMethod::Chatgpt)
-@@ -1021,6 +1036,24 @@ impl AccountRequestProcessor {
+@@ -1022,6 +1037,24 @@ impl AccountRequestProcessor {
          &self,
          mut payload_v2: AccountLoginCompletedNotification,
      ) {
@@ -592,10 +609,10 @@ index 92fb152787..37e0d5641c 100644
          if payload_v2.success {
              self.auth_manager.reload().await;
              let auth_changes = self.auth_manager.auth_change_state_receiver();
-@@ -1612,7 +1645,11 @@ pub(crate) async fn logout_configured_account(
+@@ -1614,7 +1647,11 @@ pub(crate) async fn logout_configured_account(
          tracing::warn!("Failed to remove enterprise authorization; continuing account logout");
      }
- 
+
 -    match auth_manager.logout_with_revoke().await {
 +    let logout_result = match config.codex_rotate_helper.clone() {
 +        Some(argv) => auth_manager.logout_with_rotate_helper(argv).await,
@@ -607,10 +624,10 @@ index 92fb152787..37e0d5641c 100644
              return Err(internal_error(format!("logout failed: {err}")));
 diff --git a/codex-rs/app-server/src/request_processors/account_processor/rotate_transition.rs b/codex-rs/app-server/src/request_processors/account_processor/rotate_transition.rs
 new file mode 100644
-index 0000000000..166c9f113a
+index 0000000000..f2b5f83f9b
 --- /dev/null
 +++ b/codex-rs/app-server/src/request_processors/account_processor/rotate_transition.rs
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,49 @@
 +//! UI notification only: request admission happens synchronously in core.
 +//!
 +//! A background observer must never update global cloud policy or initiate an
@@ -648,6 +665,7 @@ index 0000000000..166c9f113a
 +            outgoing
 +                .send_server_notification(ServerNotification::AccountUpdated(
 +                    AccountUpdatedNotification {
++                        reason: None,
 +                        auth_mode: auth
 +                            .as_ref()
 +                            .map(CodexAuth::api_auth_mode)
@@ -661,10 +679,10 @@ index 0000000000..166c9f113a
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/account_rotate.rs b/codex-rs/app-server/tests/suite/v2/account_rotate.rs
 new file mode 100644
-index 0000000000..ac176b5fc3
+index 0000000000..373beb2c74
 --- /dev/null
 +++ b/codex-rs/app-server/tests/suite/v2/account_rotate.rs
-@@ -0,0 +1,616 @@
+@@ -0,0 +1,656 @@
 +use anyhow::Result;
 +use app_test_support::ChatGptIdTokenClaims;
 +use app_test_support::TestAppServer;
@@ -674,6 +692,7 @@ index 0000000000..ac176b5fc3
 +use app_test_support::write_models_cache;
 +use codex_app_server_protocol::Account;
 +use codex_app_server_protocol::AccountLoginCompletedNotification;
++use codex_app_server_protocol::AccountUpdateReason;
 +use codex_app_server_protocol::AccountUpdatedNotification;
 +use codex_app_server_protocol::AuthMode;
 +use codex_app_server_protocol::GetAccountParams;
@@ -913,12 +932,14 @@ index 0000000000..ac176b5fc3
 +    app: &mut TestAppServer,
 +    auth_mode: AuthMode,
 +    plan_type: Option<PlanType>,
++    reason: Option<AccountUpdateReason>,
 +) -> Result<()> {
 +    let updated: AccountUpdatedNotification =
 +        timeout(READ_TIMEOUT, app.read_notification("account/updated")).await??;
 +    assert_eq!(
 +        updated,
 +        AccountUpdatedNotification {
++            reason,
 +            auth_mode: Some(auth_mode),
 +            plan_type
 +        }
@@ -928,7 +949,13 @@ index 0000000000..ac176b5fc3
 +
 +async fn assert_initial_rotate_account(app: &mut TestAppServer) -> Result<()> {
 +    assert_account(app, chatgpt_account()).await?;
-+    assert_updated(app, AuthMode::Chatgpt, Some(PlanType::Pro)).await
++    assert_updated(
++        app,
++        AuthMode::Chatgpt,
++        Some(PlanType::Pro),
++        Some(AccountUpdateReason::WorkspaceRoutingReady),
++    )
++    .await
 +}
 +
 +#[tokio::test]
@@ -986,7 +1013,13 @@ index 0000000000..ac176b5fc3
 +    let response: LoginAccountResponse =
 +        timeout(READ_TIMEOUT, app.read_response(request)).await??;
 +    assert_eq!(response, LoginAccountResponse::ApiKey {});
-+    assert_updated(&mut app, AuthMode::ApiKey, /*plan_type*/ None).await?;
++    assert_updated(
++        &mut app,
++        AuthMode::ApiKey,
++        /*plan_type*/ None,
++        /*reason*/ None,
++    )
++    .await?;
 +    assert_account(&mut app, Account::ApiKey {}).await?;
 +    Ok(())
 +}
@@ -1031,7 +1064,13 @@ index 0000000000..ac176b5fc3
 +    let response: LoginAccountResponse =
 +        timeout(READ_TIMEOUT, app.read_response(request)).await??;
 +    assert_eq!(response, LoginAccountResponse::AmazonBedrock {});
-+    assert_updated(&mut app, expected_auth_mode, /*plan_type*/ None).await?;
++    assert_updated(
++        &mut app,
++        expected_auth_mode,
++        /*plan_type*/ None,
++        /*reason*/ None,
++    )
++    .await?;
 +
 +    let audit_path = codex_home.path().join("helper-audit.txt");
 +    let audit_after_login = std::fs::read_to_string(&audit_path)?;
@@ -1107,6 +1146,7 @@ index 0000000000..ac176b5fc3
 +            assert_eq!(
 +                updated,
 +                AccountUpdatedNotification {
++                    reason: None,
 +                    auth_mode: None,
 +                    plan_type: None
 +                }
@@ -1218,9 +1258,21 @@ index 0000000000..ac176b5fc3
 +    );
 +    match activation {
 +        Activation::Success => {
-+            assert_updated(&mut app, AuthMode::Chatgpt, Some(PlanType::Pro)).await?;
++            assert_updated(
++                &mut app,
++                AuthMode::Chatgpt,
++                Some(PlanType::Pro),
++                /*reason*/ None,
++            )
++            .await?;
 +            assert_account(&mut app, chatgpt_account()).await?;
-+            assert_updated(&mut app, AuthMode::Chatgpt, Some(PlanType::Pro)).await?;
++            assert_updated(
++                &mut app,
++                AuthMode::Chatgpt,
++                Some(PlanType::Pro),
++                /*reason*/ None,
++            )
++            .await?;
 +            let mut second = snapshot;
 +            second["snapshot"]["account_key"] = json!("second-profile");
 +            second["snapshot"]["account_id"] = json!("second-account");
@@ -1253,7 +1305,13 @@ index 0000000000..ac176b5fc3
 +                })
 +                .await?;
 +            let _: TurnStartResponse = timeout(READ_TIMEOUT, app.read_response(request)).await??;
-+            assert_updated(&mut app, AuthMode::Chatgpt, Some(PlanType::Plus)).await?;
++            assert_updated(
++                &mut app,
++                AuthMode::Chatgpt,
++                Some(PlanType::Plus),
++                /*reason*/ None,
++            )
++            .await?;
 +            let completed: TurnCompletedNotification =
 +                timeout(READ_TIMEOUT, app.read_notification("turn/completed")).await??;
 +            assert_eq!(completed.turn.status, TurnStatus::Completed);
@@ -1282,7 +1340,7 @@ index 0000000000..ac176b5fc3
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/mod.rs b/codex-rs/app-server/tests/suite/v2/mod.rs
-index d8ba076fc5..eb24ffdaef 100644
+index 1a650e6b4d..2d88833732 100644
 --- a/codex-rs/app-server/tests/suite/v2/mod.rs
 +++ b/codex-rs/app-server/tests/suite/v2/mod.rs
 @@ -1,4 +1,6 @@
@@ -1291,14 +1349,14 @@ index d8ba076fc5..eb24ffdaef 100644
 +mod account_rotate;
  #[path = "account_system_proxy_tests.rs"]
  mod account_system_proxy;
- 
+
 diff --git a/codex-rs/cli/src/login.rs b/codex-rs/cli/src/login.rs
-index a471e8cd60..5c3e0df50b 100644
+index 9d4ae67b83..d102b6940d 100644
 --- a/codex-rs/cli/src/login.rs
 +++ b/codex-rs/cli/src/login.rs
-@@ -143,21 +143,24 @@ async fn clear_existing_auth_before_login(
+@@ -145,21 +145,24 @@ async fn clear_existing_auth_before_login(
  }
- 
+
  pub async fn login_with_chatgpt(
 +    codex_rotate_helper: Option<Vec<String>>,
      codex_home: PathBuf,
@@ -1323,29 +1381,29 @@ index a471e8cd60..5c3e0df50b 100644
 +        )
 +        .await;
 +    }
- 
+
 -    let opts = ServerOptions::new(
 +    let mut opts = ServerOptions::new(
          codex_home,
          CLIENT_ID.to_string(),
          forced_chatgpt_workspace_id,
-@@ -165,6 +168,7 @@ pub async fn login_with_chatgpt(
+@@ -167,6 +170,7 @@ pub async fn login_with_chatgpt(
          auth_keyring_backend_kind,
          auth_route_config,
      );
 +    opts.codex_rotate_helper = codex_rotate_helper;
      let server = run_login_server(opts)?;
- 
+
      print_login_server_start(server.actual_port, &server.auth_url);
-@@ -243,6 +247,7 @@ pub async fn run_login_with_browser(cli_config_overrides: CliConfigOverrides) ->
- 
+@@ -251,6 +255,7 @@ pub async fn run_login_with_browser(cli_config_overrides: CliConfigOverrides) ->
+
          let effective_chatgpt_workspaces = config.auth_config().effective_chatgpt_workspaces();
          login_with_chatgpt(
 +            config.codex_rotate_helper.clone(),
              config.codex_home.to_path_buf(),
              effective_chatgpt_workspaces,
              config.cli_auth_credentials_store_mode,
-@@ -384,13 +389,15 @@ pub async fn run_login_with_device_code(
+@@ -397,13 +402,15 @@ pub async fn run_login_with_device_code(
              std::process::exit(1);
          }
          let auth_route_config = config.auth_route_config();
@@ -1368,7 +1426,7 @@ index a471e8cd60..5c3e0df50b 100644
          let effective_chatgpt_workspaces = config.auth_config().effective_chatgpt_workspaces();
          let mut opts = ServerOptions::new(
              config.codex_home.to_path_buf(),
-@@ -400,6 +407,7 @@ pub async fn run_login_with_device_code(
+@@ -413,6 +420,7 @@ pub async fn run_login_with_device_code(
              config.auth_keyring_backend_kind(),
              auth_route_config,
          );
@@ -1376,7 +1434,7 @@ index a471e8cd60..5c3e0df50b 100644
          if let Some(iss) = issuer_base_url {
              opts.issuer = iss;
          }
-@@ -428,13 +436,15 @@ pub async fn run_login_with_device_code_fallback_to_browser(
+@@ -456,13 +464,15 @@ pub async fn run_login_with_device_code_fallback_to_browser(
          std::process::exit(1);
      }
      let auth_route_config = config.auth_route_config();
@@ -1396,10 +1454,10 @@ index a471e8cd60..5c3e0df50b 100644
 +        )
 +        .await;
 +    }
- 
+
      let effective_chatgpt_workspaces = config.auth_config().effective_chatgpt_workspaces();
      let mut opts = ServerOptions::new(
-@@ -445,6 +455,7 @@ pub async fn run_login_with_device_code_fallback_to_browser(
+@@ -473,6 +483,7 @@ pub async fn run_login_with_device_code_fallback_to_browser(
          config.auth_keyring_backend_kind(),
          auth_route_config,
      );
@@ -1407,7 +1465,7 @@ index a471e8cd60..5c3e0df50b 100644
      if let Some(iss) = issuer_base_url {
          opts.issuer = iss;
      }
-@@ -582,8 +593,10 @@ pub async fn run_logout(cli_config_overrides: CliConfigOverrides) -> ! {
+@@ -610,8 +621,10 @@ pub async fn run_logout(cli_config_overrides: CliConfigOverrides) -> ! {
          let Some(profile) = &config.mcp_enterprise_managed_auth else {
              return Ok::<_, anyhow::Error>(None);
          };
@@ -1420,10 +1478,10 @@ index a471e8cd60..5c3e0df50b 100644
              .load_auth(/*enable_codex_api_key_env*/ false)
              .await?;
          let Some(scope) = ema_auth_scope(auth.as_ref()) else {
-@@ -607,18 +620,46 @@ pub async fn run_logout(cli_config_overrides: CliConfigOverrides) -> ! {
+@@ -635,18 +648,46 @@ pub async fn run_logout(cli_config_overrides: CliConfigOverrides) -> ! {
          eprintln!("Warning: failed to remove enterprise authorization; continuing account logout");
      }
- 
+
 -    let logged_out = match logout_with_revoke(
 -        &config.codex_home,
 -        config.cli_auth_credentials_store_mode,
@@ -1480,13 +1538,13 @@ index a471e8cd60..5c3e0df50b 100644
      };
      drop(enterprise_guard);
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 340861ba53..6afcea53bb 100644
+index c485a2e614..6e13fc7e97 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
-@@ -286,6 +286,9 @@ pub struct ConfigToml {
+@@ -296,6 +296,9 @@ pub struct ConfigToml {
      #[serde(default)]
      pub forced_login_method: Option<ForcedLoginMethod>,
- 
+
 +    /// Personal credential authority command, executed without a shell.
 +    pub codex_rotate_helper: Option<Vec<String>>,
 +
@@ -1494,13 +1552,13 @@ index 340861ba53..6afcea53bb 100644
      /// file (default): Use a file in the Codex home directory.
      /// keyring: Use an OS-specific keyring service.
 diff --git a/codex-rs/core-plugins/src/manager.rs b/codex-rs/core-plugins/src/manager.rs
-index 02b7f35608..4655b46245 100644
+index d410c26b79..d799f86da3 100644
 --- a/codex-rs/core-plugins/src/manager.rs
 +++ b/codex-rs/core-plugins/src/manager.rs
-@@ -1841,6 +1841,25 @@ impl PluginsManager {
+@@ -1954,6 +1954,25 @@ impl PluginsManager {
          Ok(RemoteInstalledPluginSyncGuard { _permit: permit })
      }
- 
+
 +    /// Waits until no installed-bundle pass or direct remote plugin mutation holds the gate.
 +    ///
 +    /// A reconcile fences metadata-refresh publication until it commits, so a caller that needs
@@ -1524,13 +1582,13 @@ index 02b7f35608..4655b46245 100644
      ///
      /// The shared gate orders this blocking path with background bundle synchronization. A
 diff --git a/codex-rs/core-plugins/src/manager_tests.rs b/codex-rs/core-plugins/src/manager_tests.rs
-index 8c1320e72c..69f78e3485 100644
+index 3134884b67..5f6f6018b2 100644
 --- a/codex-rs/core-plugins/src/manager_tests.rs
 +++ b/codex-rs/core-plugins/src/manager_tests.rs
-@@ -7585,6 +7585,100 @@ remote_plugin = true
+@@ -7788,6 +7788,100 @@ remote_plugin = true
      server.verify().await;
  }
- 
+
 +#[tokio::test]
 +async fn waiting_for_remote_installed_sync_publishes_snapshot_fenced_by_reconcile() {
 +    let codex_home = TempDir::new().unwrap();
@@ -1581,12 +1639,12 @@ index 8c1320e72c..69f78e3485 100644
 +        /*on_effective_plugins_changed*/ None,
 +        InstalledPluginSyncSource::Startup,
 +    );
-+    while manager
++    while !manager
 +        .remote_installed_plugins_cache
 +        .read()
 +        .unwrap()
-+        .reconciliation_generation
-+        .is_none()
++        .reconciliation
++        .is_running()
 +    {
 +        tokio::task::yield_now().await;
 +    }
@@ -1629,12 +1687,12 @@ index 8c1320e72c..69f78e3485 100644
  async fn reconcile_remote_installed_plugins_reports_cached_state_changes() {
      let codex_home = TempDir::new().unwrap();
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index f986742fe0..d0b550eab6 100644
+index 557e727ae1..6378080997 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -7887,6 +7887,13 @@
+@@ -8127,6 +8127,13 @@
        ],
-       "description": "Cloud-owned feature settings."
+       "description": "Code Mode session settings."
      },
 +    "codex_rotate_helper": {
 +      "description": "Personal credential authority command, executed without a shell.",
@@ -1647,10 +1705,10 @@ index f986742fe0..d0b550eab6 100644
        "description": "Compact prompt used for history compaction.",
        "type": "string"
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index 4de194dbd8..2a62e3058b 100644
+index 8bb56feb75..ab1a950f26 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
-@@ -76,6 +76,9 @@ use codex_login::AuthManager;
+@@ -79,6 +79,9 @@ use codex_login::AuthManager;
  use codex_login::CodexAuth;
  use codex_login::RefreshTokenError;
  use codex_login::UnauthorizedRecovery;
@@ -1660,7 +1718,7 @@ index 4de194dbd8..2a62e3058b 100644
  use codex_login::default_client::add_originator_header;
  use codex_otel::SessionTelemetry;
  use codex_otel::WEBSOCKET_CONTINUATION_COUNT_METRIC;
-@@ -328,6 +331,9 @@ pub struct ModelClient {
+@@ -335,6 +338,9 @@ pub struct ModelClient {
  /// the previous turn's sticky-routing token into the next turn, which violates the client/server
  /// contract and can cause routing bugs.
  pub struct ModelClientSession {
@@ -1670,14 +1728,14 @@ index 4de194dbd8..2a62e3058b 100644
      client: ModelClient,
      websocket_session: WebsocketSession,
      /// Turn state for sticky routing.
-@@ -347,8 +353,14 @@ pub struct ModelClientSession {
+@@ -354,8 +360,14 @@ pub struct ModelClientSession {
  /// Executes HTTP Responses requests without owning a turn's WebSocket state.
  pub(crate) struct ResponsesHttpExecutor<'a> {
      client: &'a ModelClient,
 +    rotate_step_auth: Option<CodexAuth>,
 +    rotate_step_residency: Option<ResidencyRequirement>,
  }
- 
+
 +/// Adopts each Codex Rotate request identity and returns the routing state owned by it.
 +pub(crate) type RotateTurnStateBinding<'b> =
 +    dyn FnMut(Option<&CodexAuth>) -> Arc<OnceLock<String>> + Send + 'b;
@@ -1685,15 +1743,15 @@ index 4de194dbd8..2a62e3058b 100644
  #[derive(Debug, Clone)]
  struct LastResponse {
      response_id: String,
-@@ -363,6 +375,7 @@ struct WebsocketContinuation {
- 
+@@ -370,6 +382,7 @@ struct WebsocketContinuation {
+
  #[derive(Debug, Default)]
  struct WebsocketSession {
 +    rotation: Option<codex_login::auth::RotateIdentity>,
      connection: Option<ApiWebSocketConnection>,
      // Outer None means no successful handshake yet. The inner revision is optional for
      // providers without managed auth. Keep it across resets so retries compare to the last socket.
-@@ -754,10 +767,25 @@ impl ModelClient {
+@@ -781,10 +794,25 @@ impl ModelClient {
              websocket_session.auth_owner = auth_owner;
          }
          ModelClientSession {
@@ -1717,9 +1775,9 @@ index 4de194dbd8..2a62e3058b 100644
          }
 +        client
      }
- 
+
      pub(crate) fn auth_manager(&self) -> Option<Arc<AuthManager>> {
-@@ -1344,32 +1372,125 @@ impl ModelClient {
+@@ -1384,32 +1412,125 @@ impl ModelClient {
      /// This centralizes setup used by both prewarm and normal request paths so they stay in
      /// lockstep when auth/provider resolution changes.
      async fn current_client_setup(&self, routing: ClientRouting) -> Result<CurrentClientSetup> {
@@ -1727,7 +1785,7 @@ index 4de194dbd8..2a62e3058b 100644
 +        self.current_client_setup_for_request(routing, None, None, None)
              .await
      }
- 
+
 +    async fn current_client_setup_for_request(
 +        &self,
 +        routing: ClientRouting,
@@ -1786,7 +1844,7 @@ index 4de194dbd8..2a62e3058b 100644
          )
          .await
      }
- 
+
 +    /// Resolves a request from one Codex Rotate snapshot, bypassing runtime auth selection.
 +    /// Returns `None` when the selected login is not managed by the rotate helper.
 +    async fn rotate_client_setup(
@@ -1851,7 +1909,7 @@ index 4de194dbd8..2a62e3058b 100644
      fn responses_headers(&self, auth: Option<&CodexAuth>, model: &str) -> ApiHeaderMap {
          self.codex_responses_headers
              .as_ref()
-@@ -1488,13 +1609,28 @@ impl ModelClient {
+@@ -1529,13 +1650,28 @@ impl ModelClient {
              self.state.auth_env_telemetry.clone(),
          );
          let websocket_connect_timeout = self.state.provider.info().websocket_connect_timeout();
@@ -1881,7 +1939,7 @@ index 4de194dbd8..2a62e3058b 100644
                  /*turn_state*/ None,
                  Some(websocket_telemetry),
              ),
-@@ -1612,11 +1748,52 @@ impl ModelClientSession {
+@@ -1653,11 +1789,52 @@ impl ModelClientSession {
              .replace(Arc::clone(tools));
          previous.is_some_and(|previous| previous != *tools)
      }
@@ -1912,7 +1970,7 @@ index 4de194dbd8..2a62e3058b 100644
 +        self.websocket_session.reset(Some("other"));
 +    }
  }
- 
+
  impl<'a> ResponsesHttpExecutor<'a> {
      pub(crate) fn new(client: &'a ModelClient) -> Self {
 -        Self { client }
@@ -1933,9 +1991,9 @@ index 4de194dbd8..2a62e3058b 100644
 +        self.rotate_step_residency = residency;
 +        self
      }
- 
+
      #[allow(clippy::too_many_arguments)]
-@@ -1758,11 +1935,23 @@ impl ModelClientSession {
+@@ -1799,11 +1976,23 @@ impl ModelClientSession {
              .map(AuthManager::unauthorized_recovery);
          let mut provider_auth_recovery_attempted = false;
          let mut pending_retry = PendingUnauthorizedRetry::default();
@@ -1960,7 +2018,7 @@ index 4de194dbd8..2a62e3058b 100644
              let auth_context = AuthRequestTelemetryContext::new(
                  client_setup.auth.as_ref().map(CodexAuth::auth_mode),
                  client_setup.api_auth.as_ref(),
-@@ -1811,6 +2000,7 @@ impl ModelClientSession {
+@@ -1852,6 +2041,7 @@ impl ModelClientSession {
                      pending_retry = PendingUnauthorizedRetry::from_recovery(
                          handle_unauthorized(
                              unauthorized_transport,
@@ -1968,15 +2026,15 @@ index 4de194dbd8..2a62e3058b 100644
                              &mut auth_recovery,
                              &mut provider_auth_recovery_attempted,
                              session_telemetry,
-@@ -1974,6 +2164,7 @@ impl ResponsesHttpExecutor<'_> {
+@@ -2015,6 +2205,7 @@ impl ResponsesHttpExecutor<'_> {
          turn_state: &Arc<OnceLock<String>>,
          expected_auth_owner: Option<AuthOwner>,
          event_sender: Option<&Sender<ProtocolEvent>>,
 +        mut rotate_turn_state: Option<&mut RotateTurnStateBinding<'_>>,
-         prompt: &Prompt,
+         prompt: &Arc<Prompt>,
          model_info: &ModelInfo,
          session_telemetry: &SessionTelemetry,
-@@ -1989,16 +2180,31 @@ impl ResponsesHttpExecutor<'_> {
+@@ -2028,16 +2219,31 @@ impl ResponsesHttpExecutor<'_> {
              .map(AuthManager::unauthorized_recovery);
          let mut provider_auth_recovery_attempted = false;
          let mut pending_retry = PendingUnauthorizedRetry::default();
@@ -2009,7 +2067,7 @@ index 4de194dbd8..2a62e3058b 100644
              let include_internal = self
                  .client
                  .state
-@@ -2025,7 +2231,7 @@ impl ResponsesHttpExecutor<'_> {
+@@ -2064,7 +2270,7 @@ impl ResponsesHttpExecutor<'_> {
              let compression = self.responses_request_compression(client_setup.auth.as_ref());
              let mut options = self
                  .build_responses_options(
@@ -2018,7 +2076,7 @@ index 4de194dbd8..2a62e3058b 100644
                      responses_metadata,
                      compression,
                      model_info.use_responses_lite,
-@@ -2136,6 +2342,7 @@ impl ResponsesHttpExecutor<'_> {
+@@ -2188,6 +2394,7 @@ impl ResponsesHttpExecutor<'_> {
                      pending_retry = PendingUnauthorizedRetry::from_recovery(
                          handle_unauthorized(
                              unauthorized_transport,
@@ -2026,7 +2084,7 @@ index 4de194dbd8..2a62e3058b 100644
                              &mut auth_recovery,
                              &mut provider_auth_recovery_attempted,
                              session_telemetry,
-@@ -2207,13 +2414,25 @@ impl ModelClientSession {
+@@ -2257,13 +2464,25 @@ impl ModelClientSession {
              .map(AuthManager::unauthorized_recovery);
          let mut provider_auth_recovery_attempted = false;
          let mut pending_retry = PendingUnauthorizedRetry::default();
@@ -2053,7 +2111,7 @@ index 4de194dbd8..2a62e3058b 100644
              let include_internal = self
                  .client
                  .state
-@@ -2290,6 +2509,7 @@ impl ModelClientSession {
+@@ -2343,6 +2562,7 @@ impl ModelClientSession {
                      pending_retry = PendingUnauthorizedRetry::from_recovery(
                          handle_unauthorized(
                              unauthorized_transport,
@@ -2061,10 +2119,10 @@ index 4de194dbd8..2a62e3058b 100644
                              &mut auth_recovery,
                              &mut provider_auth_recovery_attempted,
                              session_telemetry,
-@@ -2639,11 +2859,21 @@ impl ModelClientSession {
+@@ -2757,11 +2977,21 @@ impl ModelClientSession {
                      }
                  }
- 
+
 -                ResponsesHttpExecutor::new(&self.client)
 +                // The executor borrows a client snapshot so each retry can rebind session routing.
 +                let client = self.client.clone();
@@ -2086,10 +2144,10 @@ index 4de194dbd8..2a62e3058b 100644
                          prompt,
                          model_info,
                          session_telemetry,
-@@ -3054,8 +3284,13 @@ fn emit_auth_recovery_event(
+@@ -3208,8 +3438,13 @@ fn emit_auth_recovery_event(
      }
  }
- 
+
 +#[allow(
 +    clippy::too_many_arguments,
 +    reason = "Keep the rejected request snapshot explicit beside existing recovery state"
@@ -2100,7 +2158,7 @@ index 4de194dbd8..2a62e3058b 100644
      auth_recovery: &mut Option<UnauthorizedRecovery>,
      provider_auth_recovery_attempted: &mut bool,
      session_telemetry: &SessionTelemetry,
-@@ -3063,6 +3298,20 @@ async fn handle_unauthorized(
+@@ -3217,6 +3452,20 @@ async fn handle_unauthorized(
      event_sender: Option<&Sender<ProtocolEvent>>,
      turn_id: Option<&str>,
  ) -> Result<UnauthorizedRecoveryExecution> {
@@ -2122,16 +2180,16 @@ index 4de194dbd8..2a62e3058b 100644
      if !*provider_auth_recovery_attempted {
          *provider_auth_recovery_attempted = true;
 diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
-index 4bf90c4227..ee0d4e919a 100644
+index 36416ad3ad..07bd92ea1e 100644
 --- a/codex-rs/core/src/client_tests.rs
 +++ b/codex-rs/core/src/client_tests.rs
-@@ -114,8 +114,141 @@ use wiremock::ResponseTemplate;
+@@ -115,8 +115,141 @@ use wiremock::ResponseTemplate;
  use wiremock::matchers::method;
  use wiremock::matchers::path;
- 
+
 +const TEST_CHATGPT_ID_TOKEN: &str = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfdXNlcl9pZCI6InVzZXItMTIzNDUiLCJ1c2VyX2lkIjoidXNlci0xMjM0NSIsImNoYXRncHRfcGxhbl90eXBlIjoicHJvIiwiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjb3VudC0xMjMifX0.c2ln";
  const TEST_INSTALLATION_ID: &str = "11111111-1111-4111-8111-111111111111";
- 
+
 +#[cfg(unix)]
 +#[tokio::test]
 +async fn rotate_revision_change_resets_continuation_and_turn_routing() {
@@ -2267,7 +2325,7 @@ index 4bf90c4227..ee0d4e919a 100644
  fn test_model_client(session_source: SessionSource) -> ModelClient {
      test_model_client_with_thread_id(ThreadId::new(), session_source)
  }
-@@ -1865,6 +1998,7 @@ async fn bedrock_unauthorized_error_uses_provider_mapping() {
+@@ -1888,6 +2021,7 @@ async fn bedrock_unauthorized_error_uses_provider_mapping() {
                      .to_string(),
              ),
          },
@@ -2275,7 +2333,7 @@ index 4bf90c4227..ee0d4e919a 100644
          &mut auth_recovery,
          &mut provider_auth_recovery_attempted,
          &test_session_telemetry(),
-@@ -1962,6 +2096,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
+@@ -1985,6 +2119,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
          let (event_sender, event_receiver) = async_channel::unbounded();
          let result = super::handle_unauthorized(
              unauthorized(),
@@ -2283,7 +2341,7 @@ index 4bf90c4227..ee0d4e919a 100644
              &mut auth_recovery,
              &mut provider_auth_recovery_attempted,
              &telemetry,
-@@ -1981,6 +2116,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
+@@ -2004,6 +2139,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
              );
              super::handle_unauthorized(
                  unauthorized(),
@@ -2291,98 +2349,11 @@ index 4bf90c4227..ee0d4e919a 100644
                  &mut auth_recovery,
                  &mut provider_auth_recovery_attempted,
                  &telemetry,
-diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 8b71c87f6d..f17fb6664f 100644
---- a/codex-rs/core/src/codex_thread.rs
-+++ b/codex-rs/core/src/codex_thread.rs
-@@ -1084,7 +1084,7 @@ impl CodexThread {
-             // This history-only API runs without run_turn, so it owns its initial step.
-             let step_context = self
-                 .session
--                .capture_step_context(Arc::clone(&turn_context), &CancellationToken::new())
-+                .capture_uncancellable_step_context(Arc::clone(&turn_context))
-                 .await?;
-             self.session
-                 .record_context_updates_and_set_reference_context_item(step_context.as_ref())
 diff --git a/codex-rs/core/src/compact.rs b/codex-rs/core/src/compact.rs
-index 4aa7e07adf..4e5fdf9178 100644
+index 497a8f5fa0..ba25f5488d 100644
 --- a/codex-rs/core/src/compact.rs
 +++ b/codex-rs/core/src/compact.rs
-@@ -117,13 +117,14 @@ fn assemble_compaction_history(
- 
- pub(crate) async fn run_inline_auto_compact_task(
-     sess: Arc<Session>,
--    turn_context: Arc<TurnContext>,
-+    step_context: Arc<StepContext>,
-     replacement_step_context: Arc<StepContext>,
-     world_state: Arc<WorldState>,
-     reason: CompactionReason,
-     phase: CompactionPhase,
- ) -> CodexResult<()> {
--    let prompt = turn_context
-+    let prompt = step_context
-+        .turn
-         .config
-         .compact_prompt
-         .as_deref()
-@@ -137,7 +138,7 @@ pub(crate) async fn run_inline_auto_compact_task(
- 
-     run_compact_task_inner(
-         sess,
--        turn_context,
-+        step_context,
-         replacement_step_context,
-         input,
-         world_state,
-@@ -160,7 +161,7 @@ pub(crate) async fn run_compact_task(
- ) -> CodexResult<()> {
-     run_compact_task_inner(
-         sess.clone(),
--        Arc::clone(&step_context.turn),
-+        Arc::clone(&step_context),
-         step_context,
-         input,
-         world_state,
-@@ -177,12 +178,13 @@ pub(crate) async fn run_compact_task(
- 
- async fn run_compact_task_inner(
-     sess: Arc<Session>,
--    turn_context: Arc<TurnContext>,
-+    step_context: Arc<StepContext>,
-     replacement_step_context: Arc<StepContext>,
-     input: Vec<UserInput>,
-     world_state: Arc<WorldState>,
-     compaction_metadata: CompactionTurnMetadata,
- ) -> CodexResult<()> {
-+    let turn_context = Arc::clone(&step_context.turn);
-     let trigger = compaction_metadata.trigger();
-     let reason = compaction_metadata.reason();
-     let phase = compaction_metadata.phase();
-@@ -213,7 +215,7 @@ async fn run_compact_task_inner(
-     }
-     let result = run_compact_task_inner_impl(
-         Arc::clone(&sess),
--        Arc::clone(&turn_context),
-+        step_context,
-         replacement_step_context,
-         input,
-         world_state,
-@@ -263,12 +265,13 @@ async fn run_compact_task_inner(
- 
- async fn run_compact_task_inner_impl(
-     sess: Arc<Session>,
--    turn_context: Arc<TurnContext>,
-+    step_context: Arc<StepContext>,
-     replacement_step_context: Arc<StepContext>,
-     input: Vec<UserInput>,
-     world_state: Arc<WorldState>,
-     compaction_metadata: CompactionTurnMetadata,
- ) -> CodexResult<String> {
-+    let turn_context = Arc::clone(&step_context.turn);
-     let compaction_item = TurnItem::ContextCompaction(ContextCompactionItem::new());
-     sess.emit_turn_item_started(&turn_context, &compaction_item)
-         .await;
-@@ -296,6 +299,11 @@ async fn run_compact_task_inner_impl(
+@@ -307,6 +307,11 @@ async fn run_compact_task_inner_impl(
      // Reuse one client session so turn-scoped state (sticky routing and websocket incremental
      // request tracking) survives retries within this compact turn.
      let mut client_session = sess.services.model_client.new_session();
@@ -2395,10 +2366,10 @@ index 4aa7e07adf..4e5fdf9178 100644
          // Clone is required because of the loop
          let mut turn_input = history
 diff --git a/codex-rs/core/src/compact_remote_v2.rs b/codex-rs/core/src/compact_remote_v2.rs
-index 5656fb486b..d17ae019e6 100644
+index 92d6d486e8..e15d4bae87 100644
 --- a/codex-rs/core/src/compact_remote_v2.rs
 +++ b/codex-rs/core/src/compact_remote_v2.rs
-@@ -307,12 +307,37 @@ async fn run_remote_compaction_request_v2(
+@@ -322,11 +322,37 @@ async fn run_remote_compaction_request_v2(
              let trace = InferenceTraceContext::disabled();
              // Replay the routing token without letting this request change foreground routing.
              let turn_state = Arc::new(turn_state.clone().map(OnceLock::from).unwrap_or_default());
@@ -2429,16 +2400,15 @@ index 5656fb486b..d17ae019e6 100644
 +                }
 +                Arc::clone(&routing_turn_state)
 +            };
-             let stream = tokio::select! {
-                 biased;
-                 _ = cancellation.cancelled() => return Err(CodexErr::TurnAborted),
-                 stream = http_executor.stream_responses_http(
--                    &turn_state, auth_owner.clone(), /*event_sender*/ None, prompt, &settings.model_info, &step_context.session_telemetry, effort,
-+                    &turn_state, auth_owner.clone(), /*event_sender*/ None, Some(&mut rebind_routing), prompt, &settings.model_info, &step_context.session_telemetry, effort,
-                     settings.reasoning_summary, settings.service_tier.clone(), responses_metadata,
-                     &trace,
-                 ) => stream?,
-@@ -333,6 +358,11 @@ async fn run_remote_compaction_request_v2(
+             let send = http_executor.stream_responses_http(
+                 &turn_state,
+                 auth_owner.clone(),
+                 /*event_sender*/ None,
++                Some(&mut rebind_routing),
+                 prompt,
+                 &settings.model_info,
+                 &step_context.session_telemetry,
+@@ -359,6 +385,11 @@ async fn run_remote_compaction_request_v2(
          .info()
          .stream_max_retries()
          .min(MAX_REMOTE_COMPACTION_V2_STREAM_RETRIES);
@@ -2448,14 +2418,14 @@ index 5656fb486b..d17ae019e6 100644
 +        step_context.rotate_http_client_factory.clone(),
 +    );
      let mut retry_state = ResponsesStreamRetryState::default();
-     loop {
-         let result = match client_session
+     let cancellation = &step_context.turn_cancellation;
+     let interrupt_request = cancellation.child_token();
 diff --git a/codex-rs/core/src/config/auth_keyring.rs b/codex-rs/core/src/config/auth_keyring.rs
 index e3445010d8..a8ad8cf079 100644
 --- a/codex-rs/core/src/config/auth_keyring.rs
 +++ b/codex-rs/core/src/config/auth_keyring.rs
 @@ -19,6 +19,7 @@ impl Config {
- 
+
      pub fn auth_config(&self) -> AuthConfig {
          AuthConfig {
 +            codex_rotate_helper: self.codex_rotate_helper.clone(),
@@ -2471,22 +2441,22 @@ index e3445010d8..a8ad8cf079 100644
          auth_credentials_store_mode: config.cli_auth_credentials_store.unwrap_or_default(),
          keyring_backend_kind: resolve_bootstrap_auth_keyring_backend_kind(bootstrap_config)?,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index aad2cb4c7a..7a68879883 100644
+index dba260a907..5cd8c4fd3f 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -1163,6 +1163,9 @@ pub struct Config {
+@@ -1167,6 +1167,9 @@ pub struct Config {
      /// When set, restricts the login mechanism users may use.
      pub forced_login_method: Option<ForcedLoginMethod>,
- 
+
 +    /// Personal credential authority command, executed without a shell.
 +    pub codex_rotate_helper: Option<Vec<String>>,
 +
      /// Explicit or feature-derived web search mode.
      pub web_search_mode: Constrained<WebSearchMode>,
- 
-@@ -1504,6 +1507,9 @@ pub struct TerminalResizeReflowConfig {
+
+@@ -1526,6 +1529,9 @@ pub struct TerminalResizeReflowConfig {
  }
- 
+
  impl AuthManagerConfig for Config {
 +    fn codex_rotate_helper(&self) -> Option<Vec<String>> {
 +        self.codex_rotate_helper.clone()
@@ -2494,7 +2464,7 @@ index aad2cb4c7a..7a68879883 100644
      fn codex_home(&self) -> PathBuf {
          self.codex_home.to_path_buf()
      }
-@@ -4807,6 +4813,7 @@ impl Config {
+@@ -4907,6 +4913,7 @@ impl Config {
              experimental_thread_store: thread_store_config(cfg.experimental_thread_store),
              forced_chatgpt_workspace_id,
              forced_login_method,
@@ -2503,7 +2473,7 @@ index aad2cb4c7a..7a68879883 100644
              web_search_config,
              experimental_request_user_input_enabled,
 diff --git a/codex-rs/core/src/lib.rs b/codex-rs/core/src/lib.rs
-index b143c4e526..64ae9b96c2 100644
+index e9a20c44c4..003ebe8f15 100644
 --- a/codex-rs/core/src/lib.rs
 +++ b/codex-rs/core/src/lib.rs
 @@ -3,6 +3,7 @@
@@ -2512,21 +2482,21 @@ index b143c4e526..64ae9b96c2 100644
  // the TUI or the tracing stack).
 +#![recursion_limit = "256"]
  #![deny(clippy::print_stdout, clippy::print_stderr)]
- 
+
  mod apply_patch;
 diff --git a/codex-rs/core/src/prompt_debug.rs b/codex-rs/core/src/prompt_debug.rs
-index 9a8b6d8278..1238a52771 100644
+index 16912fe62c..63774bbe9a 100644
 --- a/codex-rs/core/src/prompt_debug.rs
 +++ b/codex-rs/core/src/prompt_debug.rs
-@@ -11,7 +11,6 @@ use codex_protocol::error::Result as CodexResult;
- use codex_protocol::models::ResponseItem;
+@@ -12,7 +12,6 @@ use codex_protocol::models::ResponseItem;
  use codex_protocol::protocol::SessionSource;
  use codex_protocol::user_input::UserInput;
+ use codex_user_input::ResolvedUserInput;
 -use tokio_util::sync::CancellationToken;
- 
+
  use crate::ThreadStoreBuilder;
  use crate::config::Config;
-@@ -93,7 +92,7 @@ pub(crate) async fn build_prompt_input_from_session(
+@@ -95,7 +94,7 @@ async fn build_prompt_input_from_session(
      let turn_context = sess.new_default_turn().await;
      // Prompt debugging builds a standalone request without entering run_turn.
      let step_context = sess
@@ -2536,7 +2506,7 @@ index 9a8b6d8278..1238a52771 100644
      sess.record_context_updates_and_set_reference_context_item(step_context.as_ref())
          .await?;
 diff --git a/codex-rs/core/src/session/mcp.rs b/codex-rs/core/src/session/mcp.rs
-index b2ec905920..7986236cef 100644
+index bc3e2ac358..97669ab21f 100644
 --- a/codex-rs/core/src/session/mcp.rs
 +++ b/codex-rs/core/src/session/mcp.rs
 @@ -1,3 +1,6 @@
@@ -2546,10 +2516,10 @@ index b2ec905920..7986236cef 100644
  use super::*;
  use crate::McpRefreshReason;
  use crate::environment_selection::TurnEnvironmentSnapshot;
-@@ -199,8 +202,15 @@ impl Session {
+@@ -232,8 +235,15 @@ impl Session {
          self.reconcile_mcp_runtime().await;
      }
- 
+
 -    /// Reconcile pending state under the session permit.
 -    async fn reconcile_mcp_runtime(self: &Arc<Self>) {
 +    /// Reconcile pending state under the session permit. Returns false when publication fails
@@ -2564,10 +2534,10 @@ index b2ec905920..7986236cef 100644
          loop {
              // Compare and rebuild from current environments, not choices saved for a future turn.
              let environments = self.services.turn_environments.snapshot().await;
-@@ -220,8 +230,14 @@ impl Session {
+@@ -253,8 +263,14 @@ impl Session {
                  self.mark_mcp_runtime_dirty(McpRefreshReason::RuntimeAuthChanged);
              }
- 
+
 -            let Some(mut refresh_invalidation) = self.mcp_refresh.claim(self.thread_id) else {
 -                return;
 +            let mut refresh_invalidation = match rounds.claim(&self.mcp_refresh, self.thread_id) {
@@ -2581,7 +2551,7 @@ index b2ec905920..7986236cef 100644
              };
              let auth = self.services.auth_manager.auth().await;
              // Capture after claiming the refresh so a new invalidation cannot be consumed
-@@ -272,13 +288,18 @@ impl Session {
+@@ -305,13 +321,18 @@ impl Session {
                      executor_capability_discovery_v2.as_deref(),
                  )
                  .await;
@@ -2607,16 +2577,16 @@ index b2ec905920..7986236cef 100644
              refresh_invalidation.published = true;
          }
      }
-@@ -403,7 +424,7 @@ impl Session {
+@@ -436,7 +457,7 @@ impl Session {
              mcp_projection,
              &ready_selected_capability_roots,
              Some(self.mcp_elicitation_reviewer()),
 -        );
 +        )?;
          anyhow::ensure!(
-             input.mcp_servers.contains_key(CODEX_APPS_MCP_SERVER_NAME),
-             "unknown MCP server '{CODEX_APPS_MCP_SERVER_NAME}'"
-@@ -432,7 +453,7 @@ impl Session {
+             input
+                 .mcp_servers
+@@ -469,7 +490,7 @@ impl Session {
          selected_capability_roots: &[ResolvedSelectedCapabilityRoot],
          required_servers: &[String],
          required_plugins: &HashSet<String>,
@@ -2625,8 +2595,8 @@ index b2ec905920..7986236cef 100644
          let ready_selected_capability_roots =
              Self::ready_selected_capability_roots(selected_capability_roots);
          if self
-@@ -492,6 +513,31 @@ impl Session {
-             }
+@@ -536,6 +557,31 @@ impl Session {
+             .await;
              self.refresh_mcp_if_dirty().await;
          }
 +        // Keep the refresh publication gate through identity validation and
@@ -2654,11 +2624,11 @@ index b2ec905920..7986236cef 100644
 +        } else {
 +            None
 +        };
-         let required_servers = required_servers
-             .iter()
-             .chain(&recovered_oauth_servers)
-@@ -504,10 +550,10 @@ impl Session {
-             .current_binding_with_requirements(&required_servers, required_plugins)
+         self.wait_for_apps_tool_refresh().await;
+         if let Some(binding) = self
+             .services
+@@ -547,10 +593,10 @@ impl Session {
+             )
              .await
          {
 -            return binding;
@@ -2668,9 +2638,9 @@ index b2ec905920..7986236cef 100644
 -        Arc::new(codex_mcp::McpBinding::empty(config))
 +        Ok(Arc::new(codex_mcp::McpBinding::empty(config)))
      }
- 
+
      fn discovery_sandbox(
-@@ -966,13 +1012,18 @@ impl Session {
+@@ -1011,13 +1057,18 @@ impl Session {
                  executor_capability_discovery_v2.as_deref(),
              )
              .await;
@@ -2695,23 +2665,23 @@ index b2ec905920..7986236cef 100644
 +        }
          refresh_invalidation.published = true;
      }
- 
+
 diff --git a/codex-rs/core/src/session/mcp_refresh.rs b/codex-rs/core/src/session/mcp_refresh.rs
-index d2a94f32d2..bd6e47e993 100644
+index 5cc6b69110..ab05ce804e 100644
 --- a/codex-rs/core/src/session/mcp_refresh.rs
 +++ b/codex-rs/core/src/session/mcp_refresh.rs
-@@ -2,6 +2,7 @@ use crate::McpRefreshReason;
- use codex_protocol::ThreadId;
- use std::collections::BTreeSet;
+@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
  use std::sync::Mutex;
+ use std::sync::atomic::AtomicBool;
+ use std::sync::atomic::Ordering;
 +use std::time::Duration;
  use tokio::sync::AcquireError;
  use tokio::sync::Semaphore;
  use tokio::sync::SemaphorePermit;
-@@ -80,6 +81,22 @@ impl McpRefresh {
+@@ -93,6 +94,22 @@ impl McpRefresh {
          }
      }
- 
+
 +    /// Keep a self-invalidating publisher bounded without losing pending work.
 +    pub(super) fn claim_with_budget(
 +        &self,
@@ -2731,10 +2701,10 @@ index d2a94f32d2..bd6e47e993 100644
      #[tracing::instrument(name = "mcp.runtime.refresh_wait", skip_all)]
      pub(super) async fn acquire(&self) -> Result<SemaphorePermit<'_>, AcquireError> {
          self.gate.acquire().await
-@@ -90,6 +107,64 @@ impl McpRefresh {
+@@ -103,6 +120,64 @@ impl McpRefresh {
      }
  }
- 
+
 +/// Publications allowed before an in-gate refresh pauses to let a
 +/// self-invalidating publisher settle.
 +const PUBLICATIONS_PER_ROUND: usize = 2;
@@ -2797,10 +2767,10 @@ index d2a94f32d2..bd6e47e993 100644
  pub(super) struct McpRefreshInvalidationGuard<'a> {
      refresh: &'a McpRefresh,
 diff --git a/codex-rs/core/src/session/mcp_refresh_tests.rs b/codex-rs/core/src/session/mcp_refresh_tests.rs
-index cb2d402b96..6fcbf1cc52 100644
+index 0f6026c3f7..a1443edf03 100644
 --- a/codex-rs/core/src/session/mcp_refresh_tests.rs
 +++ b/codex-rs/core/src/session/mcp_refresh_tests.rs
-@@ -34,3 +34,103 @@ fn refresh_keeps_concurrent_invalidations_and_restores_unpublished_causes() {
+@@ -49,3 +49,103 @@ fn refresh_keeps_concurrent_invalidations_and_restores_unpublished_causes() {
      drop(next);
      assert!(refresh.claim(thread_id).is_none());
  }
@@ -2905,19 +2875,19 @@ index cb2d402b96..6fcbf1cc52 100644
 +    assert!(refresh.is_pending());
 +}
 diff --git a/codex-rs/core/src/session/mcp_runtime.rs b/codex-rs/core/src/session/mcp_runtime.rs
-index 7b26b2712c..3772836d75 100644
+index 21958ab925..161b19a588 100644
 --- a/codex-rs/core/src/session/mcp_runtime.rs
 +++ b/codex-rs/core/src/session/mcp_runtime.rs
-@@ -133,7 +133,7 @@ impl Session {
+@@ -132,7 +132,7 @@ impl Session {
              "session_init.mcp_manager_init",
              otel.name = "session_init.mcp_manager_init",
          ))
 -        .await;
 +        .await?;
- 
+
          self.services.mcp_runtime.validate_required_servers().await
      }
-@@ -282,7 +282,7 @@ impl Session {
+@@ -265,7 +265,7 @@ impl Session {
          mcp_projection: McpRuntimeProjection,
          ready_selected_capability_roots: &[SelectedCapabilityRoot],
          elicitation_reviewer: Option<ElicitationReviewerHandle>,
@@ -2926,7 +2896,7 @@ index 7b26b2712c..3772836d75 100644
          let mcp_projection = self
              .project_selected_environment_mcp_servers(
                  &desired.config,
-@@ -296,11 +296,12 @@ impl Session {
+@@ -279,11 +279,12 @@ impl Session {
              mcp_projection,
              ready_selected_capability_roots,
              elicitation_reviewer,
@@ -2938,29 +2908,23 @@ index 7b26b2712c..3772836d75 100644
          self.services.thread_extension_data.insert(selected_plugins);
 +        Ok(())
      }
- 
-     pub(super) fn build_mcp_runtime_input(
-@@ -309,8 +310,18 @@ impl Session {
+
+     /// Freezes the same environment and permission inputs for status reads and runtime publication.
+@@ -350,8 +351,12 @@ impl Session {
          mcp_projection: McpRuntimeProjection,
          ready_selected_capability_roots: &[SelectedCapabilityRoot],
          elicitation_reviewer: Option<ElicitationReviewerHandle>,
 -    ) -> McpRuntimeInput {
 +    ) -> anyhow::Result<McpRuntimeInput> {
          let auth = desired.auth.clone();
-+        let auth_manager = match auth
-+            .as_ref()
-+            .filter(|auth| auth.rotate_identity().is_some())
-+        {
-+            Some(auth) => self
-+                .services
-+                .auth_manager
-+                .for_request_snapshot(auth.clone())?,
++        let auth_manager = match auth.as_ref().filter(|auth| auth.rotate_identity().is_some()) {
++            Some(auth) => self.services.auth_manager.for_request_snapshot(auth.clone())?,
 +            None => Arc::clone(&self.services.auth_manager),
 +        };
          let McpRuntimeProjection {
              mut config,
              plugins_available,
-@@ -371,7 +382,7 @@ impl Session {
+@@ -367,7 +372,7 @@ impl Session {
          let mcp_config = Arc::new(config);
          let runtime_context =
              self.mcp_runtime_context(&desired.environments, &desired.local_process_cwd);
@@ -2969,7 +2933,7 @@ index 7b26b2712c..3772836d75 100644
              network_policy_metadata: None,
              runtime_auth: desired
                  .config
-@@ -407,9 +418,9 @@ impl Session {
+@@ -403,9 +408,9 @@ impl Session {
              codex_apps_tools_cache_key: connector_runtime_context_key(auth.as_ref()),
              client_mcp_extensions: self.services.client_mcp_extensions.for_mcp_servers(),
              auth,
@@ -2982,21 +2946,21 @@ index 7b26b2712c..3772836d75 100644
      }
  }
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 22162fbe24..614b81cb84 100644
+index 758e77b615..40ae712248 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -281,6 +281,7 @@ mod retained_context;
- mod review;
- mod rollout_budget;
+@@ -285,6 +285,7 @@ mod rollout_budget;
  mod rollout_reconstruction;
+ mod sampling_interrupt;
+ pub(crate) use sampling_interrupt::SamplingInterrupt;
 +mod rotate_step;
  #[allow(clippy::module_inception)]
  pub(crate) mod session;
  pub(crate) mod startup_prewarm;
-@@ -4285,6 +4286,27 @@ impl Session {
+@@ -4312,6 +4313,27 @@ impl Session {
          .await
      }
- 
+
 +    /// Captures a step for a request outside `run_turn` that has no turn to interrupt.
 +    ///
 +    /// Without a cancellation source, waiting for the selected account's plugin sync keeps the
@@ -3021,7 +2985,7 @@ index 22162fbe24..614b81cb84 100644
      /// Captures and retains a step with the required MCP startup dependencies.
      pub(crate) async fn capture_step_context_with_required_mcp_servers(
          self: &Arc<Self>,
-@@ -4299,6 +4321,7 @@ impl Session {
+@@ -4326,6 +4348,7 @@ impl Session {
                  cancellation_token,
                  required_servers,
                  required_plugins,
@@ -3029,7 +2993,7 @@ index 22162fbe24..614b81cb84 100644
              )
              .await?;
          self.set_last_known_step_context(&step_context).await;
-@@ -4317,6 +4340,7 @@ impl Session {
+@@ -4344,6 +4367,7 @@ impl Session {
              cancellation_token,
              /*required_servers*/ &[],
              /*required_plugins*/ &HashSet::new(),
@@ -3037,14 +3001,9 @@ index 22162fbe24..614b81cb84 100644
          )
          .await
      }
-@@ -4333,36 +4357,26 @@ impl Session {
-         }
-     }
- 
--    #[expect(
--        clippy::await_holding_invalid_type,
--        reason = "step settings and both environment snapshots must be captured under active_turn then state"
--    )]
+@@ -4365,31 +4389,25 @@ impl Session {
+         reason = "step settings and environments require active_turn then state; cloud snapshots require the catalog publication lock"
+     )]
      #[tracing::instrument(name = "step_context.capture", level = "info", skip_all)]
 -    async fn capture_step_context_inner(
 +    async fn capture_prepared_step_context(
@@ -3087,15 +3046,15 @@ index 22162fbe24..614b81cb84 100644
          if self.inherits_root_service_tier(&turn_context.session_source) {
              let root_service_tier = tokio::select! {
                  biased;
-@@ -4515,6 +4529,7 @@ impl Session {
-                 )),
-                 turn::prepare_tool_recommendations(self.as_ref(), turn_context.as_ref()),
+@@ -4549,6 +4567,7 @@ impl Session {
+                     }
+                 },
              );
 +            let mcp = mcp?;
              let search = crate::model_search::resolve(
                  turn_context.as_ref(),
                  &settings,
-@@ -4650,6 +4665,8 @@ impl Session {
+@@ -4686,6 +4705,8 @@ impl Session {
                  .enabled(Feature::InstantInterrupt)
                  .then(CancellationToken::new),
              realtime: self.conversation.snapshot().await,
@@ -3927,7 +3886,7 @@ index 0000000000..c62eb9eddc
 +    assert_eq!(fixture.installed_requests().await, 1);
 +}
 diff --git a/codex-rs/core/src/session/step_context.rs b/codex-rs/core/src/session/step_context.rs
-index 4da137bc3f..7dcffce300 100644
+index 6041bf0f46..143913d721 100644
 --- a/codex-rs/core/src/session/step_context.rs
 +++ b/codex-rs/core/src/session/step_context.rs
 @@ -13,6 +13,8 @@ use crate::tools::router::ToolRouter;
@@ -3939,7 +3898,7 @@ index 4da137bc3f..7dcffce300 100644
  use codex_mcp::McpBinding;
  use codex_model_provider_info::AMAZON_BEDROCK_PROVIDER_ID;
  use codex_model_provider_info::AMAZON_BEDROCK_RUNTIME_PROVIDER_ID;
-@@ -35,6 +37,10 @@ pub(crate) struct StepContext {
+@@ -37,6 +39,10 @@ pub(crate) struct StepContext {
      pub(crate) preempt: Option<CancellationToken>,
      /// Realtime call activity and instructions captured for this sampling request.
      pub(crate) realtime: RealtimeConversationSnapshot,
@@ -3951,10 +3910,10 @@ index 4da137bc3f..7dcffce300 100644
      pub(crate) settings: Arc<ResolvedStepSettings>,
      /// Frozen turn preferences resolved against this step's captured model.
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 39dcd3cd54..53a0686abc 100644
+index 14a1905d1c..8d5dbd8a57 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -304,6 +304,8 @@ impl StepContext {
+@@ -311,6 +311,8 @@ impl StepContext {
                  .features
                  .enabled(Feature::InstantInterrupt)
                  .then(tokio_util::sync::CancellationToken::new),
@@ -3963,7 +3922,7 @@ index 39dcd3cd54..53a0686abc 100644
              token_budget: token_budget::resolve_token_budget(
                  turn.configured_token_budget.as_ref(),
                  turn.use_model_token_budget_defaults,
-@@ -6436,16 +6438,18 @@ async fn mcp_runtime_keeps_local_backend_without_a_selected_local_environment()
+@@ -6500,16 +6502,18 @@ async fn mcp_runtime_keeps_local_backend_without_a_selected_local_environment()
          .await;
      Arc::make_mut(&mut desired.config).prefer_mxc = true;
      desired.environments.environments.clear();
@@ -3992,30 +3951,21 @@ index 39dcd3cd54..53a0686abc 100644
      assert_eq!(
          runtime.config.environment_use_mxc,
          HashMap::from([(DEFAULT_MCP_SERVER_ENVIRONMENT_ID.to_string(), cfg!(windows))])
-@@ -9631,7 +9635,8 @@ async fn refresh_mcp_servers_uses_latest_state_for_existing_turns() {
+@@ -9716,7 +9720,8 @@ async fn refresh_mcp_servers_uses_latest_state_for_existing_turns() {
              /*required_servers*/ &[],
              /*required_plugins*/ &HashSet::new(),
          )
 -        .await;
 +        .await
 +        .expect("MCP runtime should remain available");
- 
+
      let configured_servers = codex_mcp::configured_mcp_servers(new_step.mcp.config());
      assert_eq!(
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index d775099466..37849f4c94 100644
+index fd555b57ec..bdaf044948 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -1775,7 +1775,7 @@ async fn run_auto_compact(
-             );
-             run_inline_auto_compact_task(
-                 Arc::clone(sess),
--                Arc::clone(turn_context),
-+                step_context,
-                 replacement_step_context,
-                 world_state,
-                 reason,
-@@ -2030,6 +2030,18 @@ async fn run_sampling_request(
+@@ -2093,6 +2093,18 @@ async fn run_sampling_request(
                      return Err(err);
                  }
                  CodexErrorDetails::UsageLimitReached(e) => {
@@ -4034,7 +3984,7 @@ index d775099466..37849f4c94 100644
                      let rate_limits = e.rate_limits.clone();
                      if let Some(rate_limits) = rate_limits {
                          sess.update_rate_limits(&turn_context, *rate_limits).await;
-@@ -2992,6 +3004,11 @@ async fn try_run_sampling_request(
+@@ -3015,6 +3027,11 @@ async fn try_run_sampling_request(
      } else {
          None
      };
@@ -4044,17 +3994,17 @@ index d775099466..37849f4c94 100644
 +        step_context.rotate_http_client_factory.clone(),
 +    );
      let mut resampling = crate::guardian::ResponseResampling::new(&sess);
-     let mut stream_request = async |prompt: &Prompt| {
-         client_session
-@@ -3044,6 +3061,7 @@ async fn try_run_sampling_request(
+     let prompt = Arc::new(prompt);
+     let interrupt_at_boundary = SamplingInterrupt::enabled(&turn_context);
+@@ -3082,6 +3099,7 @@ async fn try_run_sampling_request(
+         Box<dyn ToolArgumentDiffConsumer>,
      )> = None;
-     let mut should_emit_turn_diff = false;
      let mut should_emit_token_count = false;
 +    let mut rotate_rate_limits = None;
      const MAX_ANALYTICS_TOOL_CALL_IDS_PER_RESPONSE: usize = 256;
      let mut analytics_tool_call_ids = Vec::new();
      let reasoning_effort = step_context
-@@ -3513,6 +3531,14 @@ async fn try_run_sampling_request(
+@@ -3579,6 +3597,14 @@ async fn try_run_sampling_request(
                  includes_reasoning = included;
              }
              ResponseEvent::RateLimits(snapshot) => {
@@ -4069,10 +4019,10 @@ index d775099466..37849f4c94 100644
                  // Update internal state with latest rate limits, but defer sending until
                  // token usage is available to avoid duplicate TokenCount events.
                  sess.record_rate_limits_info(snapshot).await;
-@@ -3788,6 +3814,15 @@ async fn try_run_sampling_request(
-     )
-     .await;
- 
+@@ -3850,6 +3876,15 @@ async fn try_run_sampling_request(
+         *unfinished_plan_id = state.plan_item_state.unfinished_id();
+     }
+
 +    if let (Some(auth), Some(limits)) = (&step_context.rotate_auth, rotate_rate_limits) {
 +        // Flush semantic output first. At most one bounded advisory write per
 +        // attempt runs before the next model-step acquisition, without spawning.
@@ -4082,41 +4032,41 @@ index d775099466..37849f4c94 100644
 +            .await;
 +    }
 +
-     if !in_flight.is_empty() {
+     if !in_flight.is_empty() || !completed_tools.is_empty() {
          let _tool_blocking_timing_guard = turn_context
              .turn_timing_state
 diff --git a/codex-rs/core/src/session/turn_start_mcp_tests.rs b/codex-rs/core/src/session/turn_start_mcp_tests.rs
-index 65eae0ba8c..0f6b352058 100644
+index c0f4084622..8155af6a8e 100644
 --- a/codex-rs/core/src/session/turn_start_mcp_tests.rs
 +++ b/codex-rs/core/src/session/turn_start_mcp_tests.rs
-@@ -66,7 +66,8 @@ async fn turn_start_refreshes_dirty_mcp_reuses_clean_runtime_and_cancels_discove
+@@ -64,7 +64,8 @@ async fn step_discovery_reconciles_mcp_skips_prewarm_and_releases_lock_on_cancel
          .await;
      session
          .mcp_runtime_for_step(&prewarm, &[], &[], &HashSet::new())
 -        .await;
 +        .await
 +        .expect("prewarm MCP runtime");
+     assert!(recorder.keys.lock().expect("recorded keys").is_empty());
      let initial_key = recorder.client.cache_key();
- 
-     for turn in 0..4 {
-@@ -114,7 +115,8 @@ async fn turn_start_refreshes_dirty_mcp_reuses_clean_runtime_and_cancels_discove
-             // Prewarm must also skip discovery while a regular turn is active.
-             session
-                 .mcp_runtime_for_step(&prewarm, &[], &[], &HashSet::new())
--                .await;
-+                .await
-+                .expect("prewarm MCP runtime");
-         }
-         let (cancellation_token, done) = {
-             let active_turn = session.active_turn.lock().await;
+
+@@ -98,7 +99,8 @@ async fn step_discovery_reconciles_mcp_skips_prewarm_and_releases_lock_on_cancel
+     // Prewarm also skips discovery while a regular turn is preparing a step.
+     session
+         .mcp_runtime_for_step(&prewarm, &[], &[], &HashSet::new())
+-        .await;
++        .await
++        .expect("prewarm MCP runtime");
+     assert_eq!(recorder.keys.lock().expect("recorded keys").len(), 1);
+     cancellation.cancel();
+     assert!(capture.await.is_err());
 diff --git a/codex-rs/core/src/tools/registry.rs b/codex-rs/core/src/tools/registry.rs
-index 1976726bdc..f62f593243 100644
+index 6b78419ca7..1a5f53bf0c 100644
 --- a/codex-rs/core/src/tools/registry.rs
 +++ b/codex-rs/core/src/tools/registry.rs
-@@ -1058,7 +1058,21 @@ async fn handle_any_tool(
- ) -> Result<AnyToolResult, FunctionCallError> {
-     let call_id = invocation.call_id.clone();
-     let payload = invocation.payload.clone();
+@@ -1136,7 +1136,21 @@ async fn handle_any_tool(
+     if let Some(state) = call_state {
+         let _ = state.handler_started_at.set(Instant::now());
+     }
 -    let output = tool.handle(invocation.clone()).await?;
 +    let handle = tool.handle(invocation.clone());
 +    // Tool dispatch runs in its own task, so preparation's task-local scope
@@ -4137,10 +4087,10 @@ index 1976726bdc..f62f593243 100644
          CoreToolRuntime::post_tool_use_payload(tool, &invocation, output.as_ref());
      let result = AnyToolResult {
 diff --git a/codex-rs/core/tests/suite/mod.rs b/codex-rs/core/tests/suite/mod.rs
-index b1f7a42313..e8fd691fa8 100644
+index 756524d6c5..de3c376738 100644
 --- a/codex-rs/core/tests/suite/mod.rs
 +++ b/codex-rs/core/tests/suite/mod.rs
-@@ -216,6 +216,10 @@ mod rollout_compression;
+@@ -217,6 +217,10 @@ mod rollout_compression;
  mod rollout_list_find;
  mod runtime_auth;
  mod runtime_auth_denials;
@@ -4152,22 +4102,22 @@ index b1f7a42313..e8fd691fa8 100644
  mod safety_check_downgrade;
  mod scenarios;
 diff --git a/codex-rs/core/tests/suite/request_plugin_install.rs b/codex-rs/core/tests/suite/request_plugin_install.rs
-index 834e338eff..ff2f3913f6 100644
+index bc28be7c6b..a5554be6c7 100644
 --- a/codex-rs/core/tests/suite/request_plugin_install.rs
 +++ b/codex-rs/core/tests/suite/request_plugin_install.rs
-@@ -131,7 +131,7 @@ fn tool_names(body: &Value) -> Vec<String> {
+@@ -134,7 +134,7 @@ fn tool_names(body: &Value) -> Vec<String> {
          .unwrap_or_default()
  }
- 
+
 -fn configure_apps_without_search_tool(config: &mut Config, apps_base_url: &str) {
 +pub(super) fn configure_apps_without_search_tool(config: &mut Config, apps_base_url: &str) {
      for feature in [
          Feature::Apps,
          Feature::Plugins,
-@@ -328,7 +328,10 @@ async fn start_gated_step_preparation(test: &TestCodex, server: &MockServer) ->
+@@ -331,7 +331,10 @@ async fn start_gated_step_preparation(test: &TestCodex, server: &MockServer) ->
          .map_err(Into::into)
  }
- 
+
 -async fn start_install_turn(test: &TestCodex, prompt: &str) -> Result<ElicitationRequestEvent> {
 +pub(super) async fn start_install_turn(
 +    test: &TestCodex,
@@ -4176,10 +4126,10 @@ index 834e338eff..ff2f3913f6 100644
      let (sandbox_policy, permission_profile) =
          turn_permission_fields(PermissionProfile::Disabled, test.config.cwd.as_path());
      test.codex
-@@ -361,7 +364,7 @@ async fn start_install_turn(test: &TestCodex, prompt: &str) -> Result<Elicitatio
+@@ -364,7 +367,7 @@ async fn start_install_turn(test: &TestCodex, prompt: &str) -> Result<Elicitatio
      .await)
  }
- 
+
 -async fn resolve_install_elicitation(
 +pub(super) async fn resolve_install_elicitation(
      test: &TestCodex,
@@ -4387,10 +4337,10 @@ index 0000000000..65d16fcbdb
 +}
 diff --git a/codex-rs/core/tests/suite/rotate_step.rs b/codex-rs/core/tests/suite/rotate_step.rs
 new file mode 100644
-index 0000000000..74932708e0
+index 0000000000..949479f9ec
 --- /dev/null
 +++ b/codex-rs/core/tests/suite/rotate_step.rs
-@@ -0,0 +1,324 @@
+@@ -0,0 +1,326 @@
 +//! Offline request-boundary regression using the real helper and plugin paths.
 +
 +use anyhow::Result;
@@ -4412,8 +4362,10 @@ index 0000000000..74932708e0
 +use codex_mcp::McpRuntime;
 +use codex_mcp::McpRuntimeContext;
 +use codex_mcp::McpRuntimeInput;
++use codex_mcp::McpServerKey;
 +use codex_mcp::McpStartupPolicy;
 +use codex_mcp::McpToolCatalogCache;
++use codex_mcp::McpToolStartup;
 +use codex_protocol::mcp::ClientMcpExtensions;
 +use codex_protocol::protocol::AskForApproval;
 +use codex_protocol::protocol::EventMsg;
@@ -4644,7 +4596,7 @@ index 0000000000..74932708e0
 +        plugins_available: false,
 +        ready_selected_capability_roots: Vec::new(),
 +        mcp_servers: HashMap::from([(
-+            CODEX_APPS_MCP_SERVER_NAME.to_string(),
++            McpServerKey::unscoped(CODEX_APPS_MCP_SERVER_NAME),
 +            EffectiveMcpServer::from_host_config(server_config),
 +        )]),
 +        submit_id: "retained-account-a".into(),
@@ -4680,7 +4632,7 @@ index 0000000000..74932708e0
 +            Some(json!({"title": "Lunch", "starts_at": "2026-09-12T12:00:00Z"})),
 +            /*meta*/ None,
 +            /*requested_timeout*/ None,
-+            /*wait_for_server*/ true,
++            McpToolStartup::Wait,
 +        )
 +        .await?;
 +    assert_eq!(result.result.is_error, Some(false));
@@ -4729,11 +4681,11 @@ index b1956bf2b9..c744a16ab4 100644
 +        }
          self
      }
- 
+
 @@ -243,6 +245,14 @@ impl NetworkPolicy {
          self.state.is_some()
      }
- 
+
 +    /// Whether a policy is loaded for this account; destinations still require a permit.
 +    pub fn is_available(&self) -> bool {
 +        self.state.as_ref().is_none_or(|state| {
@@ -4752,7 +4704,7 @@ index 9a3df938f4..0c06f10fa5 100644
 @@ -34,6 +34,56 @@ const WORKSPACE_ID_ALLOWED: &str = "123e4567-e89b-42d3-a456-426614174000";
  const WORKSPACE_ID_SECOND_ALLOWED: &str = "123e4567-e89b-42d3-a456-426614174001";
  const WORKSPACE_ID_DISALLOWED: &str = "123e4567-e89b-42d3-a456-426614174002";
- 
+
 +#[tokio::test]
 +async fn rotate_snapshot_never_uses_native_proactive_refresh_or_persistence() {
 +    let home = tempdir().unwrap();
@@ -4815,7 +4767,7 @@ index 9a3df938f4..0c06f10fa5 100644
          auth_credentials_store_mode: AuthCredentialsStoreMode::File,
          keyring_backend_kind: AuthKeyringBackendKind::Direct,
 @@ -2371,6 +2422,7 @@ impl AuthManagerConfig for TestAuthManagerConfig {
- 
+
  fn test_auth_manager_config(codex_home: &Path) -> TestAuthManagerConfig {
      TestAuthManagerConfig(AuthConfig {
 +        codex_rotate_helper: None,
@@ -4824,7 +4776,7 @@ index 9a3df938f4..0c06f10fa5 100644
          keyring_backend_kind: AuthKeyringBackendKind::Direct,
 @@ -2954,6 +3006,7 @@ async fn enforce_login_restrictions_logs_out_for_personal_access_token_workspace
      .expect("personal access token login should succeed");
- 
+
      let config = AuthConfig {
 +        codex_rotate_helper: None,
          codex_home: codex_home.path().to_path_buf(),
@@ -4832,7 +4784,7 @@ index 9a3df938f4..0c06f10fa5 100644
          keyring_backend_kind: AuthKeyringBackendKind::default(),
 @@ -3080,6 +3133,7 @@ async fn enforce_login_restrictions_logs_out_for_agent_identity_workspace_mismat
      .expect("seed agent identity auth");
- 
+
      let config = AuthConfig {
 +        codex_rotate_helper: None,
          codex_home: codex_home.path().to_path_buf(),
@@ -4845,7 +4797,7 @@ index 9d8af7f09a..b88fb7bc69 100644
 @@ -278,6 +278,30 @@ pub fn create_client_for_route(
      )
  }
- 
+
 +/// Builds a routed client with an explicit per-request residency policy.
 +pub fn create_client_for_route_with_residency(
 +    http_client_factory: &HttpClientFactory,
@@ -4876,7 +4828,7 @@ index 9d8af7f09a..b88fb7bc69 100644
 @@ -505,6 +529,16 @@ pub fn default_headers() -> HeaderMap {
      headers
  }
- 
+
 +/// Returns shared headers with an explicit immutable residency policy.
 +pub fn default_headers_with_residency(residency: Option<ResidencyRequirement>) -> HeaderMap {
 +    let mut headers = default_headers();
@@ -4891,7 +4843,7 @@ index 9d8af7f09a..b88fb7bc69 100644
      std::env::var("CODEX_SANDBOX").as_deref() == Ok("seatbelt")
  }
 diff --git a/codex-rs/login/src/auth/manager.rs b/codex-rs/login/src/auth/manager.rs
-index 7a3a2e68aa..2cbd87c5bd 100644
+index 4e8f825ab2..204894cf7f 100644
 --- a/codex-rs/login/src/auth/manager.rs
 +++ b/codex-rs/login/src/auth/manager.rs
 @@ -10,6 +10,8 @@ pub use account_grant::AccountOAuthGrantLease;
@@ -4900,7 +4852,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
  use account_grant::same_account_login;
 +#[cfg(test)]
 +mod application_network_refresh_tests;
- 
+
  use chrono::Utc;
  use http::StatusCode;
 @@ -60,6 +62,11 @@ use super::change_state::same_login;
@@ -4921,12 +4873,12 @@ index 7a3a2e68aa..2cbd87c5bd 100644
      storage: Arc<dyn AuthStorageBackend>,
 +    rotation: Option<RotateIdentity>,
  }
- 
+
  #[derive(Debug, Clone)]
 @@ -245,6 +253,10 @@ pub const REVOKE_TOKEN_URL_OVERRIDE_ENV_VAR: &str = "CODEX_REVOKE_TOKEN_URL_OVER
  pub const CLIENT_ID_OVERRIDE_ENV_VAR: &str = "CODEX_APP_SERVER_LOGIN_CLIENT_ID";
  static NEXT_DUMMY_AUTH_ID: AtomicU64 = AtomicU64::new(1);
- 
+
 +tokio::task_local! {
 +    static ROTATE_REQUEST_AUTH: (usize, CodexAuth);
 +}
@@ -4949,7 +4901,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
 +
      /// Returns the provider's current auth value.
      fn resolve(&self) -> ExternalAuthFuture<'_, CodexAuth>;
- 
+
 @@ -487,7 +508,11 @@ impl CodexAuth {
                      storage_mode,
                      keyring_backend_kind,
@@ -4974,7 +4926,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
 +            rotation: None,
 +        })
      }
- 
+
      /// Constructs in-memory ChatGPT auth from externally managed tokens.
 @@ -950,6 +979,114 @@ impl CodexAuth {
              workload_identity: None,
@@ -5089,17 +5041,17 @@ index 7a3a2e68aa..2cbd87c5bd 100644
 +        }))
 +    }
  }
- 
+
  impl ManagedChatGptAgentIdentityBinding {
 @@ -1283,6 +1420,7 @@ pub fn load_auth_dot_json(
- 
+
  #[derive(Debug, Clone, PartialEq, Eq)]
  pub struct AuthConfig {
 +    pub codex_rotate_helper: Option<Vec<String>>,
      pub codex_home: PathBuf,
      pub auth_credentials_store_mode: AuthCredentialsStoreMode,
      pub keyring_backend_kind: AuthKeyringBackendKind,
-@@ -1331,15 +1469,63 @@ impl AuthConfig {
+@@ -1331,8 +1469,12 @@ impl AuthConfig {
          &self,
          enable_codex_api_key_env: bool,
      ) -> std::io::Result<Option<CodexAuth>> {
@@ -5112,8 +5064,9 @@ index 7a3a2e68aa..2cbd87c5bd 100644
 +        )
 +        .await
      }
- 
-     async fn load_auth_with_modes(
+
+     /// Applies the mode filter to the selected source before hydrating its credentials.
+@@ -1341,7 +1483,51 @@ impl AuthConfig {
          &self,
          enable_codex_api_key_env: bool,
          allowed_auth_modes: Option<&[AuthMode]>,
@@ -5165,20 +5118,20 @@ index 7a3a2e68aa..2cbd87c5bd 100644
          let allowed_login_methods = self.allowed_login_methods();
          let workspaces = self.effective_chatgpt_workspaces();
          let agent_identity_authapi_base_url =
-@@ -1943,7 +2129,8 @@ impl AuthDotJson {
+@@ -1945,7 +2131,8 @@ impl AuthDotJson {
          })
      }
- 
+
 -    pub(super) fn resolved_mode(&self) -> AuthMode {
 +    /// Returns the persisted authentication mode, including legacy file inference.
 +    pub fn resolved_mode(&self) -> AuthMode {
          if let Some(mode) = self.auth_mode {
              return mode;
          }
-@@ -2223,6 +2410,13 @@ impl UnauthorizedRecovery {
+@@ -2225,6 +2412,13 @@ impl UnauthorizedRecovery {
      }
  }
- 
+
 +type ApplicationNetworkPolicyRefreshCallback = dyn Fn(
 +        CodexAuth,
 +        codex_http_client::NetworkPolicyRevision,
@@ -5189,7 +5142,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
  /// Central manager providing a single source of truth for stored
  /// authentication data. It loads once (or on preference change) and then
  /// hands out cloned `CodexAuth` values so the rest of the program has a
-@@ -2237,6 +2431,8 @@ pub struct AuthManager {
+@@ -2239,6 +2433,8 @@ pub struct AuthManager {
      auth_change_tx: watch::Sender<u64>,
      auth_change_state_tx: watch::Sender<AuthChangeState>,
      workspace_routing_resolver: OnceLock<Weak<dyn WorkspaceRoutingResolver>>,
@@ -5198,7 +5151,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
      enable_codex_api_key_env: bool,
      auth_credentials_store_mode: AuthCredentialsStoreMode,
      keyring_backend_kind: AuthKeyringBackendKind,
-@@ -2265,6 +2461,11 @@ pub struct AuthManager {
+@@ -2267,6 +2463,11 @@ pub struct AuthManager {
  /// `codex_core::config::Config`, but this trait keeps `codex-login` independent
  /// from `codex-core`.
  pub trait AuthManagerConfig {
@@ -5209,10 +5162,10 @@ index 7a3a2e68aa..2cbd87c5bd 100644
 +
      /// Returns the Codex home directory used for auth storage.
      fn codex_home(&self) -> PathBuf;
- 
-@@ -2330,6 +2531,127 @@ fn default_agent_identity_authapi_base_url() -> Option<String> {
+
+@@ -2332,6 +2533,127 @@ fn default_agent_identity_authapi_base_url() -> Option<String> {
  }
- 
+
  impl AuthManager {
 +    /// Registers the configuration owner's synchronous request-admission refresh.
 +    pub fn set_application_network_policy_refresh_callback<F, Fut>(
@@ -5338,7 +5291,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
      /// Returns the application policy associated with this account owner.
      pub fn application_network_policy(&self) -> codex_http_client::NetworkPolicy {
          self.auth_route_config.application_network_policy().clone()
-@@ -2357,6 +2679,7 @@ impl AuthManager {
+@@ -2359,6 +2681,7 @@ impl AuthManager {
      ) -> Self {
          Self::new_from_auth_config(
              AuthConfig {
@@ -5346,7 +5299,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
                  codex_home,
                  auth_credentials_store_mode,
                  keyring_backend_kind,
-@@ -2378,11 +2701,16 @@ impl AuthManager {
+@@ -2380,11 +2703,16 @@ impl AuthManager {
          allowed_auth_modes: Option<Vec<AuthMode>>,
      ) -> Self {
          let managed_auth = auth_config
@@ -5364,7 +5317,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
              codex_home,
              auth_credentials_store_mode,
              keyring_backend_kind,
-@@ -2404,6 +2732,7 @@ impl AuthManager {
+@@ -2406,6 +2734,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -5372,7 +5325,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
              enable_codex_api_key_env,
              auth_credentials_store_mode,
              keyring_backend_kind,
-@@ -2484,6 +2813,7 @@ impl AuthManager {
+@@ -2486,6 +2815,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -5380,7 +5333,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
              enable_codex_api_key_env: false,
              auth_credentials_store_mode: if external_auth.is_some() {
                  AuthCredentialsStoreMode::Ephemeral
-@@ -2521,6 +2851,7 @@ impl AuthManager {
+@@ -2523,6 +2853,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -5388,7 +5341,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
              enable_codex_api_key_env: false,
              auth_credentials_store_mode: AuthCredentialsStoreMode::File,
              keyring_backend_kind: AuthKeyringBackendKind::default(),
-@@ -2558,6 +2889,7 @@ impl AuthManager {
+@@ -2560,6 +2891,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -5396,7 +5349,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
              enable_codex_api_key_env: false,
              auth_credentials_store_mode: AuthCredentialsStoreMode::File,
              keyring_backend_kind: AuthKeyringBackendKind::default(),
-@@ -2602,6 +2934,7 @@ impl AuthManager {
+@@ -2604,6 +2936,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -5404,8 +5357,8 @@ index 7a3a2e68aa..2cbd87c5bd 100644
              enable_codex_api_key_env: false,
              auth_credentials_store_mode: AuthCredentialsStoreMode::File,
              keyring_backend_kind: AuthKeyringBackendKind::default(),
-@@ -2628,6 +2961,9 @@ impl AuthManager {
- 
+@@ -2630,6 +2963,9 @@ impl AuthManager {
+
      /// Current cached auth (clone) without attempting a refresh.
      pub fn auth_cached(&self) -> Option<CodexAuth> {
 +        if let Some(auth) = self.scoped_request_auth() {
@@ -5414,7 +5367,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
          self.inner
              .read()
              .ok()
-@@ -2699,6 +3035,15 @@ impl AuthManager {
+@@ -2701,6 +3037,15 @@ impl AuthManager {
      /// a guarded reload and then refreshes only if the on-disk auth is unchanged.
      #[instrument(level = "trace", skip_all)]
      pub async fn auth(&self) -> Option<CodexAuth> {
@@ -5430,7 +5383,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
          if self.has_external_auth() {
              self.reload_inner().await.ok()?;
              return self.auth_cached();
-@@ -2717,7 +3062,12 @@ impl AuthManager {
+@@ -2719,7 +3064,12 @@ impl AuthManager {
      /// Refreshes auth, then captures credentials and their account-bound factory together.
      /// The auth read lock prevents an identity change between the two snapshots.
      pub async fn auth_with_http_client_factory(&self) -> Option<(CodexAuth, HttpClientFactory)> {
@@ -5444,7 +5397,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
          let cached = self.inner.read().ok()?;
          Some((cached.auth.clone()?, self.http_client_factory()))
      }
-@@ -2730,6 +3080,17 @@ impl AuthManager {
+@@ -2732,6 +3082,17 @@ impl AuthManager {
          let Some(auth) = self.auth().await else {
              return Ok(None);
          };
@@ -5462,7 +5415,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
          if policy == AgentIdentityAuthPolicy::ChatGptAuth && matches!(auth, CodexAuth::Chatgpt(_)) {
              let _bootstrap_permit = self
                  .agent_identity_lock
-@@ -2738,7 +3099,7 @@ impl AuthManager {
+@@ -2740,7 +3101,7 @@ impl AuthManager {
                  .map_err(std::io::Error::other)?;
              let effective_chatgpt_workspaces = self.effective_chatgpt_workspaces();
              let cooldown_key = ManagedChatGptAgentIdentityBinding::from_auth(
@@ -5471,7 +5424,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
                  effective_chatgpt_workspaces.clone(),
              )
              .and_then(|binding| {
-@@ -3226,11 +3587,20 @@ impl AuthManager {
+@@ -3228,11 +3589,20 @@ impl AuthManager {
          &self,
          external_auth: Arc<dyn ExternalAuth>,
      ) -> Result<(), RefreshTokenError> {
@@ -5492,10 +5445,10 @@ index 7a3a2e68aa..2cbd87c5bd 100644
 +        }
          self.install_external_auth(external_auth).await
      }
- 
-@@ -3251,7 +3621,11 @@ impl AuthManager {
+
+@@ -3253,7 +3623,11 @@ impl AuthManager {
      }
- 
+
      pub fn clear_external_auth(&self) {
 -        if self.workload_identity_selected {
 +        if self.workload_identity_selected
@@ -5506,10 +5459,10 @@ index 7a3a2e68aa..2cbd87c5bd 100644
              return;
          }
          if let Ok(mut external_auth) = self.external_auth.write()
-@@ -3307,6 +3681,12 @@ impl AuthManager {
+@@ -3309,6 +3683,12 @@ impl AuthManager {
          self.external_auth_provider().is_some()
      }
- 
+
 +    /// Whether first-party requests are owned by the personal credential authority.
 +    pub fn has_rotate_helper(&self) -> bool {
 +        self.external_auth_provider()
@@ -5519,7 +5472,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
      pub fn is_workload_identity_selected(&self) -> bool {
          self.workload_identity_selected
      }
-@@ -3408,6 +3788,13 @@ impl AuthManager {
+@@ -3410,6 +3790,13 @@ impl AuthManager {
          allowed_auth_modes: Option<Vec<AuthMode>>,
      ) -> Result<Arc<Self>, AuthManagerInitializationError> {
          let external_auth = WorkloadIdentityExternalAuth::from_process_config(&auth_config)?;
@@ -5533,7 +5486,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
          let mut manager =
              Self::new_from_auth_config(auth_config, enable_codex_api_key_env, allowed_auth_modes)
                  .await;
-@@ -3418,9 +3805,222 @@ impl AuthManager {
+@@ -3420,9 +3807,222 @@ impl AuthManager {
                  .install_external_auth(Arc::new(external_auth))
                  .await?;
          }
@@ -5564,7 +5517,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
 +        }
          Ok(manager)
      }
- 
+
 +    /// Acquires one immutable request snapshot, with optional same-owner retry pinning.
 +    pub async fn auth_for_request(
 +        &self,
@@ -5756,10 +5709,10 @@ index 7a3a2e68aa..2cbd87c5bd 100644
      pub fn unauthorized_recovery(self: &Arc<Self>) -> UnauthorizedRecovery {
          UnauthorizedRecovery::new(Arc::clone(self))
      }
-@@ -3591,12 +4191,42 @@ impl AuthManager {
+@@ -3593,12 +4193,42 @@ impl AuthManager {
          result
      }
- 
+
 -    /// Log out by deleting credentials from the selected storage backend and the
 -    /// ephemeral store. Returns `Ok(true)` if credentials were removed, `Ok(false)`
 -    /// if none were present. On success, reloads the in-memory auth cache so
@@ -5803,8 +5756,8 @@ index 7a3a2e68aa..2cbd87c5bd 100644
          let removed = logout_all_stores(
              &self.codex_home,
              self.auth_credentials_store_mode,
-@@ -3611,6 +4241,9 @@ impl AuthManager {
- 
+@@ -3613,6 +4243,9 @@ impl AuthManager {
+
      pub async fn logout_with_revoke(&self) -> std::io::Result<bool> {
          self.ensure_logout_allowed()?;
 +        if self.has_rotate_helper() {
@@ -5813,9 +5766,9 @@ index 7a3a2e68aa..2cbd87c5bd 100644
          let auth_dot_json = self
              .auth_cached()
              .and_then(|auth| auth.get_current_auth_json());
-@@ -3631,6 +4264,14 @@ impl AuthManager {
+@@ -3633,6 +4266,14 @@ impl AuthManager {
      }
- 
+
      fn ensure_logout_allowed(&self) -> std::io::Result<()> {
 +        if self
 +            .external_auth_provider()
@@ -5828,9 +5781,9 @@ index 7a3a2e68aa..2cbd87c5bd 100644
          if self.workload_identity_selected {
              return Err(std::io::Error::new(
                  std::io::ErrorKind::PermissionDenied,
-@@ -3656,6 +4297,9 @@ impl AuthManager {
+@@ -3658,6 +4299,9 @@ impl AuthManager {
      }
- 
+
      fn proactive_refresh_reason(auth: &CodexAuth) -> Option<RefreshReason> {
 +        if auth.rotate_identity().is_some() {
 +            return None;
@@ -5838,7 +5791,7 @@ index 7a3a2e68aa..2cbd87c5bd 100644
          let chatgpt_auth = match auth {
              CodexAuth::Chatgpt(chatgpt_auth) => chatgpt_auth,
              _ => return None,
-@@ -3745,6 +4389,11 @@ impl AuthManager {
+@@ -3747,6 +4391,11 @@ impl AuthManager {
          tokens: TokenData,
          reason: RefreshReason,
      ) -> Result<(), RefreshTokenError> {
@@ -5850,8 +5803,8 @@ index 7a3a2e68aa..2cbd87c5bd 100644
          let endpoint = refresh_token_endpoint(tokens.oauth_provenance.as_ref());
          let client_id = tokens
              .oauth_provenance
-@@ -3817,6 +4466,7 @@ impl AuthManager {
- 
+@@ -3819,6 +4468,7 @@ impl AuthManager {
+
  fn auth_config_from(config: &impl AuthManagerConfig) -> AuthConfig {
      AuthConfig {
 +        codex_rotate_helper: config.codex_rotate_helper(),
@@ -6237,7 +6190,7 @@ index 7ea499ff3c..eacf11d1dd 100644
  mod manager;
  mod revoke;
 +mod rotate;
- 
+
  pub use api_key::is_fedramp_api_key;
  pub use auth_headers::AuthHeaders;
 @@ -29,4 +30,6 @@ pub use change_state::RequestAuthChange;
@@ -7342,10 +7295,10 @@ index 0000000000..727cc139e3
 +    );
 +}
 diff --git a/codex-rs/login/src/auth/workload_identity_tests.rs b/codex-rs/login/src/auth/workload_identity_tests.rs
-index fe635dd589..6a3bb9961a 100644
+index adcfc458ce..958b947c6a 100644
 --- a/codex-rs/login/src/auth/workload_identity_tests.rs
 +++ b/codex-rs/login/src/auth/workload_identity_tests.rs
-@@ -617,6 +617,7 @@ async fn resolved_product_obeys_login_and_workspace_restrictions() {
+@@ -771,6 +771,7 @@ async fn resolved_product_obeys_login_and_workspace_restrictions() {
                  forced_chatgpt_workspace_id: workspace.map(|id| vec![id.to_string()]),
                  managed_auth_policy: Default::default(),
                  auth_route_config: auth_route_config(OutboundProxyPolicy::ReqwestDefault),
@@ -7360,7 +7313,7 @@ index be183a52e9..f1af3aefd9 100644
 @@ -36,6 +36,12 @@ impl AuthRouteConfig {
          self
      }
- 
+
 +    /// Replaces the content factory while preserving any local bootstrap route.
 +    pub fn with_http_client_factory(mut self, factory: HttpClientFactory) -> Self {
 +        self.http_client_factory = factory;
@@ -7441,12 +7394,12 @@ index 98295d8cf8..3097425a53 100644
          issuer: opts.issuer.clone(),
          client_id: opts.client_id.clone(),
 diff --git a/codex-rs/login/tests/suite/login_server_e2e.rs b/codex-rs/login/tests/suite/login_server_e2e.rs
-index d53d066136..e9584cd972 100644
+index 13195803df..2e20fe373d 100644
 --- a/codex-rs/login/tests/suite/login_server_e2e.rs
 +++ b/codex-rs/login/tests/suite/login_server_e2e.rs
 @@ -139,6 +139,7 @@ async fn end_to_end_login_flow_persists_auth_json() -> Result<()> {
      .with_local_bootstrap_factory(factory.with_network_policy(local_policy));
- 
+
      let opts = ServerOptions {
 +        codex_rotate_helper: None,
          codex_home: server_home,
@@ -7470,7 +7423,7 @@ index d53d066136..e9584cd972 100644
          auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
 @@ -349,6 +352,7 @@ async fn login_server_includes_forced_workspaces_as_one_query_param() -> Result<
      let state = "state-multi".to_string();
- 
+
      let opts = ServerOptions {
 +        codex_rotate_helper: None,
          codex_home,
@@ -7478,7 +7431,7 @@ index d53d066136..e9584cd972 100644
          auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
 @@ -394,6 +398,7 @@ async fn forced_chatgpt_workspace_id_mismatch_blocks_login() -> Result<()> {
      let state = "state-mismatch".to_string();
- 
+
      let opts = ServerOptions {
 +        codex_rotate_helper: None,
          codex_home: codex_home.clone(),
@@ -7486,7 +7439,7 @@ index d53d066136..e9584cd972 100644
          auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
 @@ -458,6 +463,7 @@ async fn oauth_access_denied_missing_entitlement_blocks_login_with_clear_error()
      let state = "state-entitlement".to_string();
- 
+
      let opts = ServerOptions {
 +        codex_rotate_helper: None,
          codex_home: codex_home.clone(),
@@ -7494,23 +7447,23 @@ index d53d066136..e9584cd972 100644
          auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
 @@ -530,6 +536,7 @@ async fn oauth_access_denied_unknown_reason_uses_generic_error_page() -> Result<
      let state = "state-generic-denial".to_string();
- 
+
      let opts = ServerOptions {
 +        codex_rotate_helper: None,
          codex_home: codex_home.clone(),
          cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
          auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
-@@ -681,6 +688,7 @@ async fn cancels_previous_login_server_when_port_is_in_use() -> Result<()> {
+@@ -682,6 +689,7 @@ async fn cancels_previous_login_server_when_port_is_in_use() -> Result<()> {
      let first_codex_home = first_tmp.path().to_path_buf();
- 
+
      let first_opts = ServerOptions {
 +        codex_rotate_helper: None,
          codex_home: first_codex_home,
          cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
          auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
-@@ -706,6 +714,7 @@ async fn cancels_previous_login_server_when_port_is_in_use() -> Result<()> {
+@@ -707,6 +715,7 @@ async fn cancels_previous_login_server_when_port_is_in_use() -> Result<()> {
      let second_codex_home = second_tmp.path().to_path_buf();
- 
+
      let second_opts = ServerOptions {
 +        codex_rotate_helper: None,
          codex_home: second_codex_home,
@@ -7523,12 +7476,12 @@ index 78c2497907..a294a4e95c 100644
 @@ -390,12 +390,12 @@ pub(crate) async fn resolve_provider_auth_for_scope(
          return resolve_provider_auth(auth, provider).map(ResolvedProviderAuth::new);
      }
- 
+
 -    let Some(auth_manager) = auth_manager else {
 +    let (Some(auth_manager), Some(snapshot)) = (auth_manager, auth) else {
          return resolve_provider_auth(auth, provider).map(ResolvedProviderAuth::new);
      };
- 
+
      match auth_manager
 -        .agent_identity_auth(agent_identity_policy, session_source)
 +        .agent_identity_auth_for_snapshot(snapshot, agent_identity_policy, session_source)
@@ -7536,13 +7489,13 @@ index 78c2497907..a294a4e95c 100644
      {
          Ok(Some(agent_identity_auth)) => Ok(ResolvedProviderAuth::for_agent_identity(
 diff --git a/codex-rs/model-provider/src/provider.rs b/codex-rs/model-provider/src/provider.rs
-index e0c73083b7..685c594d25 100644
+index daf061505e..c145a270f8 100644
 --- a/codex-rs/model-provider/src/provider.rs
 +++ b/codex-rs/model-provider/src/provider.rs
-@@ -211,6 +211,42 @@ pub trait ModelProvider: fmt::Debug + Send + Sync {
+@@ -214,6 +214,42 @@ pub trait ModelProvider: fmt::Debug + Send + Sync {
      /// Returns the current provider-scoped auth value, if one is configured.
      fn auth(&self) -> ModelProviderFuture<'_, Option<CodexAuth>>;
- 
+
 +    /// Resolves a first-party request from one immutable credential snapshot.
 +    /// Non-rotation providers retain their existing customized auth and routing.
 +    fn rotate_request_setup<'a>(
@@ -7581,7 +7534,7 @@ index e0c73083b7..685c594d25 100644
 +
      /// Returns the current app-visible account state for this provider.
      fn account_state(&self) -> ProviderAccountResult;
- 
+
 diff --git a/codex-rs/model-provider/src/request_setup.rs b/codex-rs/model-provider/src/request_setup.rs
 index 2fc3ce4a8d..994fc144ce 100644
 --- a/codex-rs/model-provider/src/request_setup.rs
@@ -7637,10 +7590,10 @@ index 2fc3ce4a8d..994fc144ce 100644
          Ok(ReqwestTransport::from_http_client(client))
      }
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 6b3f581db4..613e258b1a 100644
+index 4ad3cf1595..b31054ced8 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -388,6 +388,7 @@ async fn new_config(
+@@ -392,6 +392,7 @@ async fn new_config(
          experimental_thread_store: ThreadStoreConfig::Local,
          forced_chatgpt_workspace_id: auth_config.forced_chatgpt_workspace_id.clone(),
          forced_login_method: auth_config.forced_login_method,

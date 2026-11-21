@@ -1,208 +1,25 @@
-diff --git a/codex-rs/agent-identity/src/lib.rs b/codex-rs/agent-identity/src/lib.rs
-index 8323e1d9e7..a580f13d21 100644
---- a/codex-rs/agent-identity/src/lib.rs
-+++ b/codex-rs/agent-identity/src/lib.rs
-@@ -565,7 +565,6 @@ fn signing_key_from_private_key_pkcs8_base64(private_key_pkcs8_base64: &str) ->
- 
- #[cfg(test)]
- mod tests {
--    use base64::Engine as _;
-     use ed25519_dalek::Signature;
-     use ed25519_dalek::Verifier as _;
-     use jsonwebtoken::EncodingKey;
-diff --git a/codex-rs/app-server-client/src/cloud_backend/mod.rs b/codex-rs/app-server-client/src/cloud_backend/mod.rs
-index 057a41c64a..f7432c40f0 100644
---- a/codex-rs/app-server-client/src/cloud_backend/mod.rs
-+++ b/codex-rs/app-server-client/src/cloud_backend/mod.rs
-@@ -92,9 +92,11 @@ impl Replies {
-         // A server can close Attach immediately after returning successful headers.
-         // A healthy idle stream needs no event to prove that it is ready.
-         let first_event = match tokio::task::unconstrained(stream.next()).now_or_never() {
--            Some(None | Some(Err(_))) => bail!(
--                "Cloud conversation activated but its stream did not connect. Reopen it before sending."
--            ),
-+            Some(None | Some(Err(_))) => {
-+                bail!(
-+                    "Cloud conversation activated but its stream did not connect. Reopen it before sending."
-+                );
-+            }
-             Some(Some(Ok(event))) => Some(event),
-             None => None,
-         };
-diff --git a/codex-rs/app-server-client/src/cloud_backend/requests.rs b/codex-rs/app-server-client/src/cloud_backend/requests.rs
-index 7c01d5ca1a..fb395b2d11 100644
---- a/codex-rs/app-server-client/src/cloud_backend/requests.rs
-+++ b/codex-rs/app-server-client/src/cloud_backend/requests.rs
-@@ -152,7 +152,7 @@ impl Requests {
-                     Some(protocol::ThreadItemsListCursor::Opaque(cursor)) => Some(cursor),
-                     None => None,
-                     Some(protocol::ThreadItemsListCursor::Anchor(_)) => {
--                        bail!("Cloud item anchors are not supported yet.")
-+                        bail!("Cloud item anchors are not supported yet.");
-                     }
-                 };
-                 let page = self
-@@ -285,7 +285,7 @@ fn thread_list_query(params: protocol::ThreadListParams) -> Result<cloud::Thread
-             Some(protocol::ThreadSortKey::UpdatedAt) => cloud::ThreadSortKey::UpdatedAt,
-             Some(protocol::ThreadSortKey::RecencyAt) => cloud::ThreadSortKey::RecencyAt,
-             Some(protocol::ThreadSortKey::SectionPosition) => {
--                bail!("Cloud section ordering is not supported yet.")
-+                bail!("Cloud section ordering is not supported yet.");
-             }
-         },
-         sort_direction: match params.sort_direction {
-@@ -408,18 +408,22 @@ fn admitted_message(outcome: cloud::AdmissionOutcome) -> Result<CloudUserMessage
-         cloud::AdmissionOutcome::Duplicate { turn_id } => {
-             CloudUserMessageReceipt::Duplicate { turn_id }
-         }
--        cloud::AdmissionOutcome::Queued { .. } => bail!(
--            "Cloud already accepted this message without returning a turn. Reopen the conversation to see its status before sending again."
--        ),
-+        cloud::AdmissionOutcome::Queued { .. } => {
-+            bail!(
-+                "Cloud already accepted this message without returning a turn. Reopen the conversation to see its status before sending again."
-+            );
-+        }
-     })
- }
- 
- fn admitted_turn(outcome: cloud::AdmissionOutcome) -> Result<protocol::Turn> {
-     match admitted_message(outcome)? {
-         CloudUserMessageReceipt::Started(turn) | CloudUserMessageReceipt::Steered(turn) => Ok(turn),
--        CloudUserMessageReceipt::Duplicate { .. } => bail!(
--            "Cloud already accepted this message without returning a turn. Reopen the conversation to see its status before sending again."
--        ),
-+        CloudUserMessageReceipt::Duplicate { .. } => {
-+            bail!(
-+                "Cloud already accepted this message without returning a turn. Reopen the conversation to see its status before sending again."
-+            );
-+        }
-     }
- }
- 
-diff --git a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
-index 06224d5a72..f8da480dbf 100644
---- a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
-+++ b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
-@@ -153,7 +153,7 @@ impl SessionRuntime {
-     fn allocate_cell_id(&self) -> Result<CellId, Error> {
-         self.inner
-             .next_cell_id
--            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next_cell_id| {
-+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |next_cell_id| {
-                 next_cell_id.checked_add(1)
-             })
-             .map(|cell_id| CellId::new(cell_id.to_string()))
-diff --git a/codex-rs/core/src/tools/executed_tool_calls.rs b/codex-rs/core/src/tools/executed_tool_calls.rs
-index 43c62916b7..d81df7d275 100644
---- a/codex-rs/core/src/tools/executed_tool_calls.rs
-+++ b/codex-rs/core/src/tools/executed_tool_calls.rs
-@@ -368,7 +368,7 @@ impl ExecutedToolCalls {
-     fn reserve_direct_call(&self) -> Option<DirectCallPermit> {
-         let recording = Arc::downgrade(&self.lock_state().as_ref()?.recording);
-         self.pending_direct_calls
--            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |pending| {
-+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |pending| {
-                 (pending < MAX_PENDING_EXECUTED_TOOL_CALLS).then_some(pending + 1)
-             })
-             .ok()?;
-diff --git a/codex-rs/core/tests/common/apps_test_server.rs b/codex-rs/core/tests/common/apps_test_server.rs
-index 3d090cbdea..b51231602a 100644
---- a/codex-rs/core/tests/common/apps_test_server.rs
-+++ b/codex-rs/core/tests/common/apps_test_server.rs
-@@ -565,7 +565,7 @@ impl Respond for CodexAppsJsonRpcResponder {
-                     .as_ref()
-                     .is_some_and(|remaining| {
-                         remaining
--                            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
-+                            .try_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
-                                 remaining.checked_sub(1)
-                             })
-                             .is_ok()
-diff --git a/codex-rs/diagnostics/src/lib.rs b/codex-rs/diagnostics/src/lib.rs
-index a966e4aee5..91b878b390 100644
---- a/codex-rs/diagnostics/src/lib.rs
-+++ b/codex-rs/diagnostics/src/lib.rs
-@@ -32,7 +32,7 @@ impl Gauge {
-     pub fn decrement(&self) {
-         let _ = self
-             .value
--            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-                 Some(value.saturating_sub(1))
-             });
-     }
+diff --git a/codex-rs/app-server/tests/suite/v2/sleep.rs b/codex-rs/app-server/tests/suite/v2/sleep.rs
+index 66e5d7ea01..4fa5bae1cb 100644
+--- a/codex-rs/app-server/tests/suite/v2/sleep.rs
++++ b/codex-rs/app-server/tests/suite/v2/sleep.rs
+@@ -5,11 +5,8 @@ use codex_app_server_protocol::ClientRequest;
+ use codex_app_server_protocol::ItemStartedNotification;
+ use codex_app_server_protocol::ThreadItemPayload;
+ use codex_app_server_protocol::ThreadStartParams;
+-use codex_app_server_protocol::ThreadStartResponse;
+-use codex_app_server_protocol::TurnCompletedNotification;
+ use codex_app_server_protocol::TurnStartParams;
+ use codex_app_server_protocol::TurnStartResponse;
+-use codex_app_server_protocol::TurnStatus;
+ use codex_app_server_protocol::UserInput as V2UserInput;
+ use core_test_support::responses;
+ use pretty_assertions::assert_eq;
 diff --git a/codex-rs/rust-toolchain.toml b/codex-rs/rust-toolchain.toml
-index 910c65114e..67e3d88cb5 100644
+index d73899d67f..67e3d88cb5 100644
 --- a/codex-rs/rust-toolchain.toml
 +++ b/codex-rs/rust-toolchain.toml
 @@ -1,3 +1,3 @@
  [toolchain]
--channel = "1.95.0"
+-channel = "1.99.1"
 +channel = "stable"
  components = ["clippy", "rustfmt", "rust-src"]
-diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index d6e2f6f26a..ddd8ec9707 100644
---- a/codex-rs/tui/src/app/reconnect.rs
-+++ b/codex-rs/tui/src/app/reconnect.rs
-@@ -138,7 +138,7 @@ pub(super) async fn reconnect(
-         }
-     }
-     tracing::warn!(stage, "automatic reconnect timed out");
--    color_eyre::eyre::bail!("Automatic reconnect timed out while {stage}.")
-+    color_eyre::eyre::bail!("Automatic reconnect timed out while {stage}.");
- }
- 
- impl App {
-diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-index f0496740c5..5b8e38ea06 100644
---- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-+++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-@@ -1222,7 +1222,7 @@ async fn command_center_new_checkout_and_worktree_preserve_source_and_default_br
-                     return Ok::<_, color_eyre::Report>(());
-                 }
-             }
--            color_eyre::eyre::bail!("permissions menu event stream closed")
-+            color_eyre::eyre::bail!("permissions menu event stream closed");
-         })
-         .await??;
-         app.chat_widget.handle_key_event(KeyCode::Up.into());
-diff --git a/codex-rs/tui/src/app/user_verification_tests.rs b/codex-rs/tui/src/app/user_verification_tests.rs
-index ec21bb947e..9bf779f36d 100644
---- a/codex-rs/tui/src/app/user_verification_tests.rs
-+++ b/codex-rs/tui/src/app/user_verification_tests.rs
-@@ -194,7 +194,7 @@ async fn run_verification_rpc_scenario(scenario: RpcScenario) -> color_eyre::Res
-                 }
-             }
-         }
--        color_eyre::eyre::bail!("connection closed before the elicitation response")
-+        color_eyre::eyre::bail!("connection closed before the elicitation response");
-     });
-     let client = crate::connect_remote_app_server(endpoint).await?;
-     let mode = if scenario == RpcScenario::RemoteWorkspace {
-diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
-index 06e71e3c7b..defb36147d 100644
---- a/codex-rs/tui/src/app_backtrack.rs
-+++ b/codex-rs/tui/src/app_backtrack.rs
-@@ -680,7 +680,7 @@ pub(crate) fn backtrack_revert_before_turn_id(
-         }
-     }
- 
--    bail!("the selected prompt was not found in the persisted thread")
-+    bail!("the selected prompt was not found in the persisted thread");
- }
- 
- /// Returns whether a turn is the reconstructed inline-review child with duplicated prompt inputs.
-diff --git a/codex-rs/tui/src/app_server_connection.rs b/codex-rs/tui/src/app_server_connection.rs
-index cfb203e6a8..4a13063eba 100644
---- a/codex-rs/tui/src/app_server_connection.rs
-+++ b/codex-rs/tui/src/app_server_connection.rs
-@@ -20,7 +20,7 @@ pub(crate) async fn connect(target: &AppServerTarget) -> color_eyre::Result<AppS
-             color_eyre::eyre::bail!("Reopen Codex to reconnect the cloud backend.");
-         }
-         AppServerTarget::Embedded => {
--            color_eyre::eyre::bail!("embedded sessions have no remote connection")
-+            color_eyre::eyre::bail!("embedded sessions have no remote connection");
-         }
-         #[cfg(windows)]
-         AppServerTarget::LocalDaemon {

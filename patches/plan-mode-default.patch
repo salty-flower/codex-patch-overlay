@@ -1,11 +1,11 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 7ab60a9e63..d73b8aca60 100644
+index 77bffe3124..e6cd3fa82e 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -967,6 +967,19 @@ pub struct Tui {
+@@ -999,6 +999,19 @@ pub struct Tui {
      #[serde(default)]
      pub raw_output_mode: bool,
- 
+
 +    /// Start the TUI in the specified collaboration mode (plan/default).
 +    ///
 +    /// When set to `"plan"`, the TUI launches in Plan mode instead of the
@@ -23,10 +23,10 @@ index 7ab60a9e63..d73b8aca60 100644
      /// Defaults to `true`; alternate-screen restrictions take precedence.
      #[serde(default = "default_true")]
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 0ba9f2a906..c4f4bfa888 100644
+index 8969395cfd..8eeba92dc2 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -3080,6 +3080,14 @@
+@@ -3148,6 +3148,14 @@
        ],
        "description": "Selected microphone inputs. Scalars preserve existing single-channel configuration."
      },
@@ -41,7 +41,7 @@ index 0ba9f2a906..c4f4bfa888 100644
      "ModelAvailabilityNuxConfig": {
        "additionalProperties": {
          "format": "uint32",
-@@ -5262,6 +5270,15 @@
+@@ -5446,6 +5454,15 @@
            "description": "Deselect read-only transcript or footer text after Copy on select confirms delivery. Editable composer selections remain visible. Defaults to `false` and has no effect when Copy on select is off.",
            "type": "boolean"
          },
@@ -58,10 +58,10 @@ index 0ba9f2a906..c4f4bfa888 100644
            "additionalProperties": {
              "additionalProperties": {
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 104c796ce5..4928dbf015 100644
+index c02b59004e..edf51b25cc 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -1390,6 +1390,7 @@ fn config_toml_deserializes_model_availability_nux() {
+@@ -1459,6 +1459,7 @@ fn config_toml_deserializes_model_availability_nux() {
      assert_eq!(
          cfg.tui.expect("tui config should deserialize"),
          Tui {
@@ -69,7 +69,7 @@ index 104c796ce5..4928dbf015 100644
              default_hosts: Default::default(),
              notification_settings: TuiNotificationSettings::default(),
              animations: true,
-@@ -4759,6 +4760,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
+@@ -4786,6 +4787,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
      assert_eq!(
          tui,
          Tui {
@@ -78,10 +78,10 @@ index 104c796ce5..4928dbf015 100644
              notification_settings: TuiNotificationSettings::default(),
              animations: true,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index baf6aa6647..231b55f767 100644
+index 1006e07ec0..5dc57d7c84 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -110,6 +110,7 @@ use codex_protocol::MemoryVersion;
+@@ -114,6 +114,7 @@ use codex_protocol::MemoryVersion;
  use codex_protocol::config_types::AltScreenMode;
  use codex_protocol::config_types::AutoCompactTokenLimitScope;
  use codex_protocol::config_types::ForcedLoginMethod;
@@ -89,16 +89,16 @@ index baf6aa6647..231b55f767 100644
  use codex_protocol::config_types::Personality;
  use codex_protocol::config_types::ReasoningSummary;
  use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
-@@ -878,6 +879,8 @@ pub struct Config {
+@@ -874,6 +875,8 @@ pub struct Config {
      pub tui_right_click_paste: codex_config::types::RightClickPaste,
- 
+
      /// Start the TUI in the specified collaboration mode (plan/default).
 +    /// When `Some(ModeKind::Plan)`, the TUI launches in Plan mode.
 +    pub tui_default_collaboration_mode: Option<ModeKind>,
- 
+
      /// Controls whether the TUI uses the terminal's alternate screen buffer.
      ///
-@@ -4844,6 +4847,10 @@ impl Config {
+@@ -4946,6 +4949,10 @@ impl Config {
                  .as_ref()
                  .map(|tui| tui.right_click_paste)
                  .unwrap_or_default(),
@@ -110,10 +110,10 @@ index baf6aa6647..231b55f767 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 80bb021eae..a4c281d14d 100644
+index afe4fb0236..ad7de8ffff 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -314,6 +314,7 @@ async fn new_config(
+@@ -316,6 +316,7 @@ async fn new_config(
          tui_terminal_title: None,
          tui_theme: None,
          tui_raw_output_mode: false,
@@ -122,12 +122,12 @@ index 80bb021eae..a4c281d14d 100644
          tui_pet_anchor: TuiPetAnchor::Composer,
          terminal_resize_reflow: TerminalResizeReflowConfig::default(),
 diff --git a/codex-rs/tui/src/chatwidget/settings.rs b/codex-rs/tui/src/chatwidget/settings.rs
-index bc61ae5d15..de669503f0 100644
+index a1345c5954..4c05880c29 100644
 --- a/codex-rs/tui/src/chatwidget/settings.rs
 +++ b/codex-rs/tui/src/chatwidget/settings.rs
-@@ -458,11 +458,14 @@ impl ChatWidget {
+@@ -464,11 +464,14 @@ impl ChatWidget {
      }
- 
+
      pub(super) fn initial_collaboration_mask(
 -        _config: &Config,
 +        config: &Config,
@@ -143,7 +143,7 @@ index bc61ae5d15..de669503f0 100644
              mask.model = Some(model_override.to_string());
          }
 diff --git a/codex-rs/tui/src/local_settings.rs b/codex-rs/tui/src/local_settings.rs
-index 0d8477b271..fa8dce0d6a 100644
+index 07f23e5488..d3b9bca7df 100644
 --- a/codex-rs/tui/src/local_settings.rs
 +++ b/codex-rs/tui/src/local_settings.rs
 @@ -63,6 +63,7 @@ impl LocalSettings {
