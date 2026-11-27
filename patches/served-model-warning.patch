@@ -121,7 +121,7 @@ index 3750c82674..159da0e4be 100644
              | ResponseEvent::TurnModerationMetadata(_)
              | ResponseEvent::GuardianAssessment(_)
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 0bbe95859a..4b130a83c2 100644
+index 3643b8a11c..bd85d2d4aa 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
 @@ -4968,6 +4968,34 @@ impl Session {
@@ -160,7 +160,7 @@ index 0bbe95859a..4b130a83c2 100644
          self: &Arc<Self>,
          turn_context: &Arc<TurnContext>,
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index c17d1af223..e42931681a 100644
+index df1237a717..e9b3867494 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
 @@ -3631,6 +3631,19 @@ async fn try_run_sampling_request(

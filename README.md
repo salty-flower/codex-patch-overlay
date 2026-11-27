@@ -53,11 +53,14 @@ Even when enabled, every directory below the temporary root through `CODEX_HOME`
 Symlinks below the temporary root remain rejected; macOS's system `/tmp` alias is allowed.
 Normal command completion removes the per-process alias directory; upstream's `--version` exits without running destructors, leaving a stale directory for the next invocation to clean.
 
-## Personal account switching
+## External ChatGPT auth helper
 
-Account switching is opt-in through `chatgpt_auth_helper`.
-The key was named `codex_rotate_helper` through `codex-0.171.0-patch.1`; the old name is now ignored as an unknown key and no longer enables the helper.
-The `codex-rotate` helper is a separate dependency, included in neither the release tarballs nor this Nix overlay.
+ChatGPT credentials can come from an opt-in external helper configured with `chatgpt_auth_helper`.
+Codex runs the helper as a version-1 JSON RPC process, without a shell, and never sees its refresh credentials.
+The helper decides which accounts may enroll and which one is selected;
+Codex only refuses FedRAMP accounts, whose traffic needs a routing edge this transport does not provide.
+
+The known helper implementation is `codex-rotate`, a separate dependency included in neither the release tarballs nor this Nix overlay.
 Its maintained source currently lives in the private machine-state repository; obtain access or supply a compatible version-1 helper separately.
 With access to a machine-state checkout, build its exported `codex-rotate` flake package on `aarch64-darwin` or `x86_64-linux`:
 
@@ -77,8 +80,18 @@ Add this top-level key to your Codex `config.toml`, using the installed helper's
 chatgpt_auth_helper = ["/absolute/path/bin/codex-rotate", "--config", "/absolute/path/codex-rotate.json", "rpc"]
 ```
 
-Run the patched `codex login` or `codex login --device-auth` to enroll and select a fresh account directly through the helper.
-Only personal Free, Go, Plus, Pro and ProLite accounts are supported; managed, Business, Enterprise, Edu and unknown account contexts are rejected.
+The key was named `codex_rotate_helper` through `codex-0.171.0-patch.1`; the old name is now ignored as an unknown key and no longer enables the helper.
+
+Run the patched `codex login` or `codex login --device-auth` to enroll a fresh account directly through the helper.
+When the helper refuses an enrollment, the browser page and the CLI show the helper's own message.
+When it enrolls an account without selecting it, they show the helper's notice and the previous account stays in use.
+
+Workspace accounts work like personal ones; requests carry the selected credential's own ChatGPT account ID.
+Business, Enterprise, Edu and Sci workspaces normally receive their administrator's managed cloud configuration.
+Helper credentials never load it, so Codex accepts such an account only when the helper's snapshot declares `managed_config: "not_applied"`.
+Without that declaration the request fails; with it the account runs without the workspace's managed configuration.
+While a credential carries a helper `notice`, the TUI shows it in the footer.
+
 To import an existing `auth.json`, first stop every native or proxy process that can refresh those credentials, and keep those old refresh writers stopped:
 
 ```sh

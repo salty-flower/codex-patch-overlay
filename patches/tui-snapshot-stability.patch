@@ -44,10 +44,10 @@ index 1efcc1a62e..5729003a85 100644
      ]),
  ]
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 450a2c7af5..18471b9cc1 100644
+index ea0686e21a..4cfe131715 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1852,6 +1852,13 @@ impl ChatWidget {
+@@ -1855,6 +1855,13 @@ impl ChatWidget {
          self.bottom_pane.is_task_running()
      }
  

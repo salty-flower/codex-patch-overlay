@@ -36,7 +36,7 @@ index ec5d83ad73..310888cfb7 100644
      ///
      /// When set to `"plan"`, the TUI launches in Plan mode instead of the
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 3a1f68b5f5..60d050f71c 100644
+index afea7624da..1c5b48dfc3 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -5900,6 +5900,15 @@
@@ -200,7 +200,7 @@ index 9303d6a3b4..3fa101fa34 100644
  async fn runtime_config_resolves_disable_paste_burst() -> anyhow::Result<()> {
      for (toml, expected) in [
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 29e62ea6a6..316338f2e2 100644
+index 3aaf308551..38e428eaca 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
 @@ -67,6 +67,7 @@ use codex_config::types::ToolSuggestDiscoverable;
@@ -235,7 +235,7 @@ index 29e62ea6a6..316338f2e2 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 9192a56ad6..b7d3f8dfe8 100644
+index c473e02356..6bcb504245 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
 @@ -318,6 +318,7 @@ async fn new_config(
@@ -247,10 +247,10 @@ index 9192a56ad6..b7d3f8dfe8 100644
          tui_pet: None,
          tui_pet_anchor: TuiPetAnchor::Composer,
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 18471b9cc1..b42b27c501 100644
+index 4cfe131715..c63fad7d46 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -2067,9 +2067,11 @@ impl ChatWidget {
+@@ -2070,9 +2070,11 @@ impl ChatWidget {
      /// tick are unchanged. Stable sources still require a revision bump when their content changes.
      pub(crate) fn active_cell_transcript_key(&self) -> Option<ActiveCellTranscriptKey> {
          let cell = self.transcript.active_cell.as_ref();
@@ -262,7 +262,7 @@ index 18471b9cc1..b42b27c501 100644
              && self
                  .realtime_conversation
                  .live_transcript_cells()
-@@ -2080,8 +2082,9 @@ impl ChatWidget {
+@@ -2083,8 +2085,9 @@ impl ChatWidget {
          {
              return None;
          }
@@ -273,7 +273,7 @@ index 18471b9cc1..b42b27c501 100644
              rate_limit_reset_hint.map(|cell| cell as &dyn HistoryCell),
          ];
          Some(ActiveCellTranscriptKey {
-@@ -2102,6 +2105,7 @@ impl ChatWidget {
+@@ -2105,6 +2108,7 @@ impl ChatWidget {
                  .unwrap_or(/*default*/ false),
              animation_tick: cell
                  .and_then(|cell| cell.transcript_animation_tick())

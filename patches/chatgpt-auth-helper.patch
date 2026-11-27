@@ -15,19 +15,54 @@ index 3ae171dc07..d251382a9c 100644
              .await
          else {
              return false;
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+index ca66bb5fdf..dbb8dbe48e 100644
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -1621,6 +1621,13 @@ client_request_definitions! {
+         response: v2::GetAccountResponse,
+     },
+ 
++    #[experimental("account/credentialNotice/read")]
++    GetAccountCredentialNotice => "account/credentialNotice/read" {
++        params: v2::GetAccountCredentialNoticeParams,
++        serialization: global("account-auth"),
++        response: v2::GetAccountCredentialNoticeResponse,
++    },
++
+     /// DEPRECATED APIs below
+     GetConversationSummary => "getConversationSummary" {
+         params: v1::GetConversationSummaryParams,
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/account.rs b/codex-rs/app-server-protocol/src/protocol/v2/account.rs
+index 84ea960b27..ae58f322e5 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/account.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/account.rs
+@@ -591,6 +591,20 @@ pub struct GetAccountParams {
+     pub refresh_token: bool,
+ }
+ 
++#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct GetAccountCredentialNoticeParams {}
++
++#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct GetAccountCredentialNoticeResponse {
++    /// Single-line text the configured ChatGPT auth helper asks clients to show
++    /// while the current account's credentials are in use.
++    pub notice: Option<String>,
++}
++
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS, ExperimentalApi)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
 diff --git a/codex-rs/app-server/src/application_network.rs b/codex-rs/app-server/src/application_network.rs
-index 1a3223eff5..ff8eef04e2 100644
+index 1a3223eff5..f9a440a88c 100644
 --- a/codex-rs/app-server/src/application_network.rs
 +++ b/codex-rs/app-server/src/application_network.rs
-@@ -9,6 +9,7 @@ use codex_config::CloudConfigBundleLoader;
- use codex_config::NetworkDomainPermissionToml;
- use codex_http_client::DestinationPolicy;
- use codex_http_client::NetworkPolicyDenied;
-+use codex_protocol::account::PlanType;
- use std::io;
- use std::sync::Arc;
- 
-@@ -29,6 +30,109 @@ pub(crate) fn destination_policy(
+@@ -29,6 +29,98 @@ pub(crate) fn destination_policy(
  }
  
  impl ConfigManager {
@@ -36,26 +71,15 @@ index 1a3223eff5..ff8eef04e2 100644
 +    /// Auth helper identities never load a cloud configuration bundle.
 +    /// Requiring the previous snapshot to prove that it contained no cloud bundle keeps
 +    /// this recovery path from reusing another account's cached managed policy.
-+    pub(crate) async fn refresh_personal_application_network_policy(
++    pub(crate) async fn refresh_auth_helper_application_network_policy(
 +        &self,
 +        auth: &codex_login::CodexAuth,
 +        expected_revision: codex_http_client::NetworkPolicyRevision,
 +    ) -> io::Result<()> {
-+        if auth.auth_helper_identity().is_none()
-+            || !matches!(
-+                auth.account_plan_type(),
-+                Some(
-+                    PlanType::Free
-+                        | PlanType::Go
-+                        | PlanType::Plus
-+                        | PlanType::Pro
-+                        | PlanType::ProLite
-+                )
-+            )
-+        {
++        if auth.auth_helper_identity().is_none() {
 +            return Err(io::Error::new(
 +                io::ErrorKind::PermissionDenied,
-+                "application network policy refresh requires a personal ChatGPT auth helper owner",
++                "application network policy refresh requires a ChatGPT auth helper owner",
 +            ));
 +        }
 +
@@ -138,7 +162,7 @@ index 1a3223eff5..ff8eef04e2 100644
          &self,
      ) -> io::Result<codex_config::loader::LocalApplicationRequirements> {
 diff --git a/codex-rs/app-server/src/application_network_tests.rs b/codex-rs/app-server/src/application_network_tests.rs
-index 20a63a2d69..a964c7ce78 100644
+index 20a63a2d69..fe83ccb02c 100644
 --- a/codex-rs/app-server/src/application_network_tests.rs
 +++ b/codex-rs/app-server/src/application_network_tests.rs
 @@ -2,11 +2,18 @@
@@ -238,7 +262,7 @@ index 20a63a2d69..a964c7ce78 100644
 +
 +#[cfg(unix)]
 +#[tokio::test]
-+async fn personal_owner_refresh_restores_local_network_restrictions() -> Result<()> {
++async fn auth_helper_owner_refresh_restores_local_network_restrictions() -> Result<()> {
 +    let home = tempdir()?;
 +    let cloud_loads = Arc::new(AtomicUsize::new(0));
 +    let cloud_config_bundle = CloudConfigBundleLoader::from_getter({
@@ -265,7 +289,7 @@ index 20a63a2d69..a964c7ce78 100644
 +    manager.network_policy.policy().invalidate();
 +    let revision = manager.network_policy.policy().revision();
 +    manager
-+        .refresh_personal_application_network_policy(&auth, revision)
++        .refresh_auth_helper_application_network_policy(&auth, revision)
 +        .await?;
 +
 +    assert_eq!(cloud_loads.load(Ordering::SeqCst), 1);
@@ -275,7 +299,7 @@ index 20a63a2d69..a964c7ce78 100644
 +
 +#[cfg(unix)]
 +#[tokio::test]
-+async fn personal_owner_refresh_rejects_missing_or_managed_policy_snapshots() -> Result<()> {
++async fn auth_helper_owner_refresh_rejects_missing_or_managed_policy_snapshots() -> Result<()> {
 +    let auth = auth_helper_personal_auth().await?;
 +
 +    let missing_home = tempdir()?;
@@ -287,7 +311,7 @@ index 20a63a2d69..a964c7ce78 100644
 +    let revision = missing.network_policy.policy().revision();
 +    assert!(
 +        missing
-+            .refresh_personal_application_network_policy(&auth, revision)
++            .refresh_auth_helper_application_network_policy(&auth, revision)
 +            .await
 +            .is_err()
 +    );
@@ -311,7 +335,7 @@ index 20a63a2d69..a964c7ce78 100644
 +    let revision = managed.network_policy.policy().revision();
 +    assert!(
 +        managed
-+            .refresh_personal_application_network_policy(&auth, revision)
++            .refresh_auth_helper_application_network_policy(&auth, revision)
 +            .await
 +            .is_err()
 +    );
@@ -328,7 +352,7 @@ index 20a63a2d69..a964c7ce78 100644
 +
 +#[cfg(unix)]
 +#[tokio::test]
-+async fn personal_owner_refresh_keeps_policy_unavailable_after_local_requirements_failure()
++async fn auth_helper_owner_refresh_keeps_policy_unavailable_after_local_requirements_failure()
 +-> Result<()> {
 +    let home = tempdir()?;
 +    let (manager, requirements) = manager_with_local_requirements(
@@ -344,7 +368,7 @@ index 20a63a2d69..a964c7ce78 100644
 +    let auth = auth_helper_personal_auth().await?;
 +    assert!(
 +        manager
-+            .refresh_personal_application_network_policy(&auth, revision)
++            .refresh_auth_helper_application_network_policy(&auth, revision)
 +            .await
 +            .is_err()
 +    );
@@ -369,8 +393,8 @@ index 20a63a2d69..a964c7ce78 100644
 +
 +#[cfg(unix)]
 +#[tokio::test]
-+async fn personal_owner_refresh_does_not_publish_after_admission_revision_goes_stale() -> Result<()>
-+{
++async fn auth_helper_owner_refresh_does_not_publish_after_admission_revision_goes_stale()
++-> Result<()> {
 +    let home = tempdir()?;
 +    let (manager, _) = manager_with_local_requirements(
 +        home.path(),
@@ -389,7 +413,7 @@ index 20a63a2d69..a964c7ce78 100644
 +        let manager = manager.clone();
 +        async move {
 +            manager
-+                .refresh_personal_application_network_policy(&auth, admitted_revision)
++                .refresh_auth_helper_application_network_policy(&auth, admitted_revision)
 +                .await
 +        }
 +    });
@@ -429,7 +453,7 @@ index 20a63a2d69..a964c7ce78 100644
 +
 +#[cfg(unix)]
 +#[tokio::test]
-+async fn personal_owner_refresh_rejects_auth_without_auth_helper_identity() -> Result<()> {
++async fn auth_helper_owner_refresh_rejects_auth_without_auth_helper_identity() -> Result<()> {
 +    let home = tempdir()?;
 +    let (manager, _) = manager_with_local_requirements(
 +        home.path(),
@@ -441,7 +465,7 @@ index 20a63a2d69..a964c7ce78 100644
 +
 +    assert!(
 +        manager
-+            .refresh_personal_application_network_policy(
++            .refresh_auth_helper_application_network_policy(
 +                &auth,
 +                manager.network_policy.policy().revision(),
 +            )
@@ -470,7 +494,7 @@ index ba0ad99159..dfd1ec969c 100644
      if let Some(path) = test_user_config_file {
          let path = AbsolutePathBuf::from_absolute_path(path).map_err(|err| {
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index c2b5f79092..8b63cbe03e 100644
+index c2b5f79092..90d054d7cf 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
 @@ -154,6 +154,8 @@ fn reject_removed_permission_profile(request: &JSONRPCRequest) -> Result<(), JSO
@@ -496,7 +520,7 @@ index c2b5f79092..8b63cbe03e 100644
 +                        std::io::Error::other("application network policy owner is unavailable")
 +                    })?;
 +                    config_manager
-+                        .refresh_personal_application_network_policy(&auth, expected_revision)
++                        .refresh_auth_helper_application_network_policy(&auth, expected_revision)
 +                        .await
 +                }
 +            },
@@ -514,19 +538,39 @@ index c2b5f79092..8b63cbe03e 100644
              user_verification,
              outgoing,
              startup_warnings: StartupWarnings {
+@@ -2056,6 +2076,11 @@ impl MessageProcessor {
+             ClientRequest::GetAccountRateLimits { params, .. } => {
+                 self.account_processor.get_account_rate_limits(params).await
+             }
++            ClientRequest::GetAccountCredentialNotice { .. } => Ok(Some(
++                self.account_processor
++                    .get_account_credential_notice()
++                    .into(),
++            )),
+             ClientRequest::ConsumeAccountRateLimitResetCredit { params, .. } => {
+                 self.account_processor
+                     .consume_account_rate_limit_reset_credit(params)
 diff --git a/codex-rs/app-server/src/request_processors/account_processor.rs b/codex-rs/app-server/src/request_processors/account_processor.rs
-index ca98e7e1ab..36e9149d32 100644
+index ca98e7e1ab..e2310c45c4 100644
 --- a/codex-rs/app-server/src/request_processors/account_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/account_processor.rs
-@@ -27,6 +27,7 @@ mod gateway_oauth;
- mod gcp_setup;
- mod rate_limit_resets;
- mod security_setup;
-+mod auth_helper_transition;
- mod workspace_routing;
- mod workspace_switching;
+@@ -10,6 +10,7 @@ use crate::outgoing_message::AccountNotification;
+ use chrono::DateTime;
+ use codex_app_server_protocol::BedrockProviderId;
+ use codex_app_server_protocol::DesktopOnboardingEntrypoint;
++use codex_app_server_protocol::GetAccountCredentialNoticeResponse;
+ use codex_app_server_protocol::GetAccountRateLimitsParams;
+ use codex_core::McpRefreshReason;
+ use codex_login::LoginOnboardingEntrypoint;
+@@ -19,6 +20,7 @@ use codex_model_provider::is_supported_amazon_bedrock_region;
+ use codex_otel::auth_storage::AuthStorageOriginator;
+ use codex_rmcp_client::EnterpriseOAuthCredentialGuard;
  
-@@ -124,6 +125,7 @@ pub(crate) struct AccountRequestProcessor {
++mod auth_helper_transition;
+ mod backend_client;
+ mod bedrock_gov_cloud;
+ mod bedrock_setup;
+@@ -124,6 +126,7 @@ pub(crate) struct AccountRequestProcessor {
          Arc<std::sync::Mutex<HashMap<String, Arc<codex_model_provider::GatewayAuthManager>>>>,
      _gateway_notifications: Arc<tokio_util::task::AbortOnDropHandle<()>>,
      pub(super) enterprise_login: Arc<enterprise_login::EnterpriseLoginState>,
@@ -534,21 +578,40 @@ index ca98e7e1ab..36e9149d32 100644
  }
  
  impl AccountRequestProcessor {
-@@ -145,8 +147,13 @@ impl AccountRequestProcessor {
+@@ -145,8 +148,12 @@ impl AccountRequestProcessor {
              Arc::clone(&thread_manager),
              config_manager.clone(),
          ));
-+        let helper_observer = config
-+            .chatgpt_auth_helper
-+            .is_some()
-+            .then(|| auth_helper_transition::observe(Arc::clone(&auth_manager), Arc::clone(&outgoing)));
++        let helper_observer = config.chatgpt_auth_helper.is_some().then(|| {
++            auth_helper_transition::observe(Arc::clone(&auth_manager), Arc::clone(&outgoing))
++        });
          let processor = Arc::new(Self {
              _gateway_notifications: Arc::new(gateway_notifications),
 +            _helper_observer: helper_observer,
              auth_manager,
              thread_manager,
              outgoing,
-@@ -514,6 +521,7 @@ impl AccountRequestProcessor {
+@@ -207,6 +214,19 @@ impl AccountRequestProcessor {
+             .map(|response| Some(response.into()))
+     }
+ 
++    /// The current credential's auth helper notice, or a generic fallback when the
++    /// helper declared the workspace's managed configuration as not applied.
++    pub(crate) fn get_account_credential_notice(&self) -> GetAccountCredentialNoticeResponse {
++        let notice = self.auth_manager.auth_cached().and_then(|auth| {
++            auth.auth_helper_notice().map(str::to_string).or_else(|| {
++                auth.auth_helper_managed_config_not_applied().then(|| {
++                    "This account's workspace managed configuration is not applied.".to_string()
++                })
++            })
++        });
++        GetAccountCredentialNoticeResponse { notice }
++    }
++
+     pub(crate) async fn get_account_rate_limits(
+         &self,
+         params: Option<GetAccountRateLimitsParams>,
+@@ -514,6 +534,7 @@ impl AccountRequestProcessor {
              self.config.auth_keyring_backend_kind(),
          ) {
              Ok(()) => {
@@ -556,7 +619,7 @@ index ca98e7e1ab..36e9149d32 100644
                  self.auth_manager.reload().await;
                  self.config_manager.clear_chatgpt_config_loader();
                  Ok(())
-@@ -618,6 +626,7 @@ impl AccountRequestProcessor {
+@@ -618,6 +639,7 @@ impl AccountRequestProcessor {
                  }
              }
              .map_err(|err| internal_error(format!("failed to save Amazon Bedrock auth: {err}")))?;
@@ -564,7 +627,7 @@ index ca98e7e1ab..36e9149d32 100644
              self.auth_manager.reload().await;
              self.config_manager.clear_chatgpt_config_loader();
              Ok(LoginAccountResponse::AmazonBedrock {})
-@@ -657,6 +666,7 @@ impl AccountRequestProcessor {
+@@ -657,6 +679,7 @@ impl AccountRequestProcessor {
          }
  
          let mut opts = LoginServerOptions {
@@ -572,44 +635,83 @@ index ca98e7e1ab..36e9149d32 100644
              open_browser: false,
              codex_streamlined_login,
              login_success_page,
-@@ -924,6 +934,11 @@ impl AccountRequestProcessor {
+@@ -924,6 +947,11 @@ impl AccountRequestProcessor {
          chatgpt_account_id: String,
          chatgpt_plan_type: Option<String>,
      ) -> Result<LoginAccountResponse, JSONRPCErrorError> {
 +        if self.config.chatgpt_auth_helper.is_some() {
 +            return Err(invalid_request(
-+                "ChatGPT auth helper owns ChatGPT authentication; use browser or device-code login to enroll a personal account",
++                "The ChatGPT auth helper owns ChatGPT authentication; use browser or device-code login to enroll an account",
 +            ));
 +        }
          if !self
              .auth_manager
              .is_login_method_allowed(ForcedLoginMethod::Chatgpt)
-@@ -1033,6 +1048,24 @@ impl AccountRequestProcessor {
+@@ -1033,6 +1061,37 @@ impl AccountRequestProcessor {
          &self,
          mut payload_v2: AccountLoginCompletedNotification,
      ) {
 +        if payload_v2.success
 +            && let Some(argv) = self.config.chatgpt_auth_helper.clone()
++            && !native_non_chatgpt_login_retained(&self.config)
 +        {
 +            let activation = async {
 +                let helper = codex_login::auth::ChatgptAuthHelper::new(argv)?;
++                // An enrollment the helper left unselected can leave it with no selected
++                // account; the login still succeeded and the helper's notice said what to do.
++                match helper.acquire(/*model*/ None, /*pinned*/ None).await {
++                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
++                    Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
++                        return Err(error);
++                    }
++                    _ => {}
++                }
 +                self.auth_manager
 +                    .set_external_auth(Arc::new(helper))
 +                    .await
 +                    .map_err(std::io::Error::other)
 +            }
 +            .await;
-+            if activation.is_err() {
++            if let Err(error) = activation {
 +                payload_v2.success = false;
-+                payload_v2.error = Some(
-+                    "The account was enrolled but ChatGPT auth helper activation failed; check the configured chatgpt_auth_helper before retrying".to_string(),
-+                );
++                payload_v2.error = Some(if error.kind() == std::io::ErrorKind::PermissionDenied {
++                    // The helper asked the user to act before this account can be used.
++                    error.to_string()
++                } else {
++                    "The account was enrolled but ChatGPT auth helper activation failed; check the configured chatgpt_auth_helper before retrying".to_string()
++                });
 +            }
 +        }
          if payload_v2.success {
              self.auth_manager.reload().await;
              let auth_changes = self.auth_manager.auth_change_state_receiver();
-@@ -1628,7 +1661,11 @@ pub(crate) async fn logout_configured_account(
+@@ -1573,6 +1632,25 @@ fn workspace_messages_feature_disabled(err: &BackendRequestError) -> bool {
+     err.status().is_some_and(|status| status.as_u16() == 404)
+ }
+ 
++/// An auth helper enrollment that left the previous selection in use keeps an explicit
++/// API-key or token login; only a selected enrollment replaces it.
++fn native_non_chatgpt_login_retained(config: &Config) -> bool {
++    codex_login::load_auth_dot_json(
++        &config.codex_home,
++        config.cli_auth_credentials_store_mode,
++        config.auth_keyring_backend_kind(),
++    )
++    .ok()
++    .flatten()
++    .is_some_and(|stored| {
++        !matches!(
++            stored.resolved_mode(),
++            codex_protocol::auth::AuthMode::Chatgpt
++                | codex_protocol::auth::AuthMode::ChatgptAuthTokens
++        )
++    })
++}
++
+ /// Remove account credentials using the current account's policy, even during startup recovery.
+ pub(crate) async fn logout_configured_account(
+     config_manager: &ConfigManager,
+@@ -1628,7 +1706,11 @@ pub(crate) async fn logout_configured_account(
          tracing::warn!("Failed to remove enterprise authorization; continuing account logout");
      }
  
@@ -679,10 +781,10 @@ index 0000000000..ee29a77872
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/account_auth_helper.rs b/codex-rs/app-server/tests/suite/v2/account_auth_helper.rs
 new file mode 100644
-index 0000000000..eba608428d
+index 0000000000..94665e9c9f
 --- /dev/null
 +++ b/codex-rs/app-server/tests/suite/v2/account_auth_helper.rs
-@@ -0,0 +1,656 @@
+@@ -0,0 +1,746 @@
 +use anyhow::Result;
 +use app_test_support::ChatGptIdTokenClaims;
 +use app_test_support::TestAppServer;
@@ -695,6 +797,7 @@ index 0000000000..eba608428d
 +use codex_app_server_protocol::AccountUpdateReason;
 +use codex_app_server_protocol::AccountUpdatedNotification;
 +use codex_app_server_protocol::AuthMode;
++use codex_app_server_protocol::GetAccountCredentialNoticeResponse;
 +use codex_app_server_protocol::GetAccountParams;
 +use codex_app_server_protocol::GetAccountResponse;
 +use codex_app_server_protocol::JSONRPCErrorError;
@@ -988,7 +1091,7 @@ index 0000000000..eba608428d
 +    .await??;
 +    assert_eq!(error.error, JSONRPCErrorError {
 +        code: -32600,
-+        message: "ChatGPT auth helper owns ChatGPT authentication; use browser or device-code login to enroll a personal account".into(),
++        message: "The ChatGPT auth helper owns ChatGPT authentication; use browser or device-code login to enroll an account".into(),
 +        data: None,
 +    });
 +    assert_account(&mut app, Account::ApiKey {}).await?;
@@ -1339,6 +1442,95 @@ index 0000000000..eba608428d
 +    }
 +    Ok(())
 +}
++
++#[tokio::test]
++async fn auth_helper_workspace_credential_uses_its_account_and_shows_the_helper_notice()
++-> Result<()> {
++    let codex_home = TempDir::new()?;
++    let server = MockServer::start().await;
++    let notice = "Organization account work: workspace admin policies not applied.";
++    let id_token = encode_id_token(
++        &ChatGptIdTokenClaims::new()
++            .email("helper@example.com")
++            .plan_type("business")
++            .chatgpt_user_id("helper-user")
++            .chatgpt_account_id("helper-account"),
++    )?;
++    write_config(
++        codex_home.path(),
++        &server.uri(),
++        json!({"version": 1, "ok": true, "snapshot": {
++            "account_key": "workspace-profile", "account_id": "helper-account",
++            "selection_epoch": 1, "credential_revision": 1,
++            "access_token": "synthetic-access", "id_token": id_token,
++            "expires_at": chrono::Utc::now().timestamp() + 3600,
++            "managed_config": "not_applied", "notice": notice
++        }}),
++    )
++    .await?;
++    // The model turn below needs the automatic environment.
++    let mut app = start_app(codex_home.path(), &server, /*with_auto_env*/ true).await?;
++    let workspace_account = Account::Chatgpt {
++        email: Some("helper@example.com".into()),
++        plan_type: PlanType::Business,
++        workspace_name: None,
++    };
++    assert_account(&mut app, workspace_account.clone()).await?;
++    assert_updated(
++        &mut app,
++        AuthMode::Chatgpt,
++        Some(PlanType::Business),
++        Some(AccountUpdateReason::WorkspaceRoutingReady),
++    )
++    .await?;
++    let request = app
++        .send_request("account/credentialNotice/read", Some(json!({})))
++        .await?;
++    let response: GetAccountCredentialNoticeResponse =
++        timeout(READ_TIMEOUT, app.read_response(request)).await??;
++    assert_eq!(response.notice.as_deref(), Some(notice));
++
++    mount_model_response(&server).await?;
++    let started = timeout(READ_TIMEOUT, app.start_thread(ThreadStartParams::default())).await??;
++    let request = app
++        .send_turn_start_request(TurnStartParams {
++            thread_id: started.thread.id.clone(),
++            input: vec![UserInput::Text {
++                text: "Use the workspace account.".to_string(),
++                text_elements: Vec::new(),
++            }],
++            ..Default::default()
++        })
++        .await?;
++    let _: TurnStartResponse = timeout(READ_TIMEOUT, app.read_response(request)).await??;
++    let completed: TurnCompletedNotification =
++        timeout(READ_TIMEOUT, app.read_notification("turn/completed")).await??;
++    assert_eq!(completed.turn.status, TurnStatus::Completed);
++
++    let requests = server.received_requests().await.unwrap_or_default();
++    let model_requests = requests
++        .iter()
++        .filter(|request| request.url.path() == "/v1/responses")
++        .collect::<Vec<_>>();
++    assert!(!model_requests.is_empty());
++    for request in model_requests {
++        assert_eq!(
++            request
++                .headers
++                .get("chatgpt-account-id")
++                .and_then(|value| value.to_str().ok()),
++            Some("helper-account")
++        );
++    }
++    assert!(
++        !requests
++            .iter()
++            .any(|request| request.url.path().ends_with("/config/bundle")),
++        "a declared helper credential must not load the workspace's cloud config bundle"
++    );
++    assert_account(&mut app, workspace_account).await?;
++    Ok(())
++}
 diff --git a/codex-rs/app-server/tests/suite/v2/mod.rs b/codex-rs/app-server/tests/suite/v2/mod.rs
 index 1a650e6b4d..6147a51947 100644
 --- a/codex-rs/app-server/tests/suite/v2/mod.rs
@@ -1537,15 +1729,138 @@ index 07042577dc..81866ef6be 100644
          }
      };
      drop(enterprise_guard);
+diff --git a/codex-rs/cloud-config/src/bundle_loader.rs b/codex-rs/cloud-config/src/bundle_loader.rs
+index adf3230d65..c88ea4fb13 100644
+--- a/codex-rs/cloud-config/src/bundle_loader.rs
++++ b/codex-rs/cloud-config/src/bundle_loader.rs
+@@ -216,10 +216,12 @@ pub async fn managed_config_bundle_loader_for_auth(
+         )
+         .await;
+     }
+-    // Only skip the policy lookup when the supplied account's plan is known.
+-    if auth
+-        .account_plan_type()
+-        .is_some_and(|plan| plan != PlanType::Unknown && !plan_requires_managed_config(plan))
++    // Only skip the policy lookup when the supplied account's plan is known,
++    // or when its auth helper declared the workspace's managed config as not applied.
++    if auth.auth_helper_managed_config_not_applied()
++        || auth
++            .account_plan_type()
++            .is_some_and(|plan| plan != PlanType::Unknown && !plan_requires_managed_config(plan))
+     {
+         return Ok(CloudConfigBundleLoader::default());
+     }
+diff --git a/codex-rs/cloud-config/src/chatgpt.rs b/codex-rs/cloud-config/src/chatgpt.rs
+index 47a3b2cf24..d985a93254 100644
+--- a/codex-rs/cloud-config/src/chatgpt.rs
++++ b/codex-rs/cloud-config/src/chatgpt.rs
+@@ -19,12 +19,7 @@ const CLOUD_CONFIG_BUNDLE_AUTH_RECOVERY_FAILED_MESSAGE: &str = concat!(
+ );
+ 
+ pub(super) fn plan_requires_managed_config(plan: PlanType) -> bool {
+-    plan.is_business_like()
+-        || plan.is_education_like()
+-        || matches!(
+-            plan,
+-            PlanType::Enterprise | PlanType::Sci | PlanType::SciPlus
+-        )
++    plan.requires_managed_config()
+ }
+ 
+ pub(crate) struct ChatGptSource<C> {
+@@ -42,6 +37,7 @@ impl<C: BundleClient> BundleSource for ChatGptSource<C> {
+     async fn auth(&self) -> Result<Option<CodexAuth>, CloudConfigBundleLoadError> {
+         Ok(self.auth_manager.auth().await.filter(|auth| {
+             auth.uses_codex_backend()
++                && !auth.auth_helper_managed_config_not_applied()
+                 && auth
+                     .account_plan_type()
+                     .is_some_and(plan_requires_managed_config)
+@@ -76,13 +72,24 @@ impl<C: BundleClient> BundleSource for ChatGptSource<C> {
+         }
+         match recovery.next().await {
+             Ok(_) => {
+-                *auth = self.auth_manager.auth().await.ok_or_else(|| {
++                let recovered = self.auth_manager.auth().await.ok_or_else(|| {
+                     BundleRequestError::auth_failure(
+                         status_code,
+                         CLOUD_CONFIG_BUNDLE_AUTH_RECOVERY_FAILED_MESSAGE,
+                         Some("auth_recovery_missing_auth"),
+                     )
+                 })?;
++                // A credential whose auth helper declared the workspace's managed config as
++                // not applied never fetches the bundle, even when it replaced the account
++                // while this fetch was recovering.
++                if recovered.auth_helper_managed_config_not_applied() {
++                    return Err(BundleRequestError::auth_failure(
++                        status_code,
++                        "The current ChatGPT credential does not load workspace managed configuration",
++                        Some("auth_helper_managed_config_not_applied"),
++                    ));
++                }
++                *auth = recovered;
+                 Ok(true)
+             }
+             Err(RefreshTokenError::Transient(_)) => Err(BundleRequestError::Retryable(
+diff --git a/codex-rs/cloud-config/src/service_tests.rs b/codex-rs/cloud-config/src/service_tests.rs
+index 70fd0a02ea..3bbd90f7bb 100644
+--- a/codex-rs/cloud-config/src/service_tests.rs
++++ b/codex-rs/cloud-config/src/service_tests.rs
+@@ -643,6 +643,45 @@ async fn get_bundle_allows_agent_identity_business_plan() {
+     );
+ }
+ 
++#[tokio::test]
++async fn get_bundle_skips_auth_helper_credentials_declared_not_applied() {
++    let auth_claims = json!({
++        "chatgpt_plan_type": "business",
++        "chatgpt_user_id": "user-12345",
++        "chatgpt_account_id": "account-12345",
++    });
++    let payload = json!({
++        "email": "user@example.com",
++        "https://api.openai.com/auth": auth_claims,
++    });
++    let id_token = format!(
++        "{}.{}.{}",
++        URL_SAFE_NO_PAD.encode(br#"{"alg":"none","typ":"JWT"}"#),
++        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).expect("payload")),
++        URL_SAFE_NO_PAD.encode(b"sig"),
++    );
++    let auth = codex_login::test_support::auth_helper_snapshot_auth(json!({
++        "account_key": "workspace-profile", "account_id": "account-12345",
++        "selection_epoch": 1, "credential_revision": 1,
++        "access_token": "helper-access-token", "id_token": id_token,
++        "expires_at": chrono::Utc::now().timestamp() + 3600,
++        "managed_config": "not_applied",
++    }))
++    .expect("declared helper credential");
++    assert!(auth.auth_helper_managed_config_not_applied());
++    let fetcher = Arc::new(StaticBundleClient::new(test_bundle()));
++    let codex_home = tempdir().expect("tempdir");
++    let service = CloudConfigBundleService::new(
++        AuthManager::from_auth_for_testing(auth),
++        fetcher.clone(),
++        codex_home.path().to_path_buf(),
++        CLOUD_CONFIG_BUNDLE_TIMEOUT,
++    );
++
++    assert_eq!(service.load_startup_bundle().await, Ok(None));
++    assert_eq!(fetcher.request_count.load(Ordering::SeqCst), 0);
++}
++
+ #[tokio::test]
+ async fn get_bundle_skips_team_like_business_plans() {
+     for plan_type in [
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index c485a2e614..4a80d487f2 100644
+index c485a2e614..1c793d8ade 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
 @@ -296,6 +296,9 @@ pub struct ConfigToml {
      #[serde(default)]
      pub forced_login_method: Option<ForcedLoginMethod>,
  
-+    /// Personal credential authority command, executed without a shell.
++    /// External ChatGPT credential helper command, executed without a shell.
 +    pub chatgpt_auth_helper: Option<Vec<String>>,
 +
      /// Preferred backend for storing CLI auth credentials.
@@ -1687,7 +2002,7 @@ index 3134884b67..5f6f6018b2 100644
  async fn reconcile_remote_installed_plugins_reports_cached_state_changes() {
      let codex_home = TempDir::new().unwrap();
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 82bd3fa155..15608c8d17 100644
+index 82bd3fa155..afea7624da 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -8178,6 +8178,13 @@
@@ -1695,7 +2010,7 @@ index 82bd3fa155..15608c8d17 100644
        "$ref": "#/definitions/BrowserUseConfigToml"
      },
 +    "chatgpt_auth_helper": {
-+      "description": "Personal credential authority command, executed without a shell.",
++      "description": "External ChatGPT credential helper command, executed without a shell.",
 +      "items": {
 +        "type": "string"
 +      },
@@ -1705,7 +2020,7 @@ index 82bd3fa155..15608c8d17 100644
        "description": "Base URL for requests to ChatGPT (as opposed to the OpenAI API).",
        "type": "string"
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index 324f307a10..49a53d0ae3 100644
+index 324f307a10..b137c9296c 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
 @@ -79,6 +79,9 @@ use codex_login::AuthManager;
@@ -1777,7 +2092,7 @@ index 324f307a10..49a53d0ae3 100644
      }
  
      pub(crate) fn auth_manager(&self) -> Option<Arc<AuthManager>> {
-@@ -1439,26 +1467,58 @@ impl ModelClient {
+@@ -1439,26 +1467,65 @@ impl ModelClient {
      /// This centralizes setup used by both prewarm and normal request paths so they stay in
      /// lockstep when auth/provider resolution changes.
      async fn current_client_setup(&self, routing: ClientRouting) -> Result<CurrentClientSetup> {
@@ -1826,7 +2141,14 @@ index 324f307a10..49a53d0ae3 100644
 +            .auth_manager()
 +            .is_some_and(|manager| manager.has_auth_helper())
 +            && let Some(setup) = self
-+                .auth_helper_client_setup(routing, provider, model, pinned, helper_residency, &scope)
++                .auth_helper_client_setup(
++                    routing,
++                    provider,
++                    model,
++                    pinned,
++                    helper_residency,
++                    &scope,
++                )
 +                .await?
 +        {
 +            return Ok(setup);
@@ -1842,7 +2164,7 @@ index 324f307a10..49a53d0ae3 100644
              routing,
              self.http_client_factory.clone(),
          )
-@@ -1507,6 +1567,67 @@ impl ModelClient {
+@@ -1507,6 +1574,67 @@ impl ModelClient {
          Vec::new()
      }
  
@@ -1910,7 +2232,7 @@ index 324f307a10..49a53d0ae3 100644
      fn responses_headers(&self, auth: Option<&CodexAuth>, model: &str) -> ApiHeaderMap {
          self.codex_responses_headers
              .as_ref()
-@@ -1626,13 +1747,28 @@ impl ModelClient {
+@@ -1626,13 +1754,28 @@ impl ModelClient {
              self.state.auth_env_telemetry.clone(),
          );
          let websocket_connect_timeout = self.state.provider.info().websocket_connect_timeout();
@@ -1940,7 +2262,7 @@ index 324f307a10..49a53d0ae3 100644
                  /*turn_state*/ None,
                  Some(websocket_telemetry),
              ),
-@@ -1750,11 +1886,52 @@ impl ModelClientSession {
+@@ -1750,11 +1893,52 @@ impl ModelClientSession {
              .replace(Arc::clone(tools));
          previous.is_some_and(|previous| previous != *tools)
      }
@@ -1994,7 +2316,7 @@ index 324f307a10..49a53d0ae3 100644
      }
  
      #[allow(clippy::too_many_arguments)]
-@@ -1897,11 +2074,23 @@ impl ModelClientSession {
+@@ -1897,11 +2081,23 @@ impl ModelClientSession {
              .map(AuthManager::unauthorized_recovery);
          let mut provider_auth_recovery_attempted = false;
          let mut pending_retry = PendingUnauthorizedRetry::default();
@@ -2019,7 +2341,7 @@ index 324f307a10..49a53d0ae3 100644
              let auth_context = AuthRequestTelemetryContext::new(
                  client_setup.auth.as_ref().map(CodexAuth::auth_mode),
                  client_setup.api_auth.as_ref(),
-@@ -1950,6 +2139,7 @@ impl ModelClientSession {
+@@ -1950,6 +2146,7 @@ impl ModelClientSession {
                      pending_retry = PendingUnauthorizedRetry::from_recovery(
                          handle_unauthorized(
                              unauthorized_transport,
@@ -2027,7 +2349,7 @@ index 324f307a10..49a53d0ae3 100644
                              &mut auth_recovery,
                              &mut provider_auth_recovery_attempted,
                              session_telemetry,
-@@ -2113,6 +2303,7 @@ impl ResponsesHttpExecutor<'_> {
+@@ -2113,6 +2310,7 @@ impl ResponsesHttpExecutor<'_> {
          turn_state: &Arc<OnceLock<String>>,
          expected_auth_owner: Option<AuthOwner>,
          event_sender: Option<&Sender<ProtocolEvent>>,
@@ -2035,7 +2357,7 @@ index 324f307a10..49a53d0ae3 100644
          prompt: &Arc<Prompt>,
          model_info: &ModelInfo,
          session_telemetry: &SessionTelemetry,
-@@ -2126,16 +2317,31 @@ impl ResponsesHttpExecutor<'_> {
+@@ -2126,16 +2324,31 @@ impl ResponsesHttpExecutor<'_> {
              .map(AuthManager::unauthorized_recovery);
          let mut provider_auth_recovery_attempted = false;
          let mut pending_retry = PendingUnauthorizedRetry::default();
@@ -2068,7 +2390,7 @@ index 324f307a10..49a53d0ae3 100644
              let include_internal = self
                  .client
                  .state
-@@ -2167,7 +2373,7 @@ impl ResponsesHttpExecutor<'_> {
+@@ -2167,7 +2380,7 @@ impl ResponsesHttpExecutor<'_> {
              let compression = self.responses_request_compression(client_setup.auth.as_ref());
              let mut options = self
                  .build_responses_options(
@@ -2077,7 +2399,7 @@ index 324f307a10..49a53d0ae3 100644
                      responses_metadata,
                      compression,
                      model_info.use_responses_lite,
-@@ -2300,6 +2506,7 @@ impl ResponsesHttpExecutor<'_> {
+@@ -2300,6 +2513,7 @@ impl ResponsesHttpExecutor<'_> {
                      pending_retry = PendingUnauthorizedRetry::from_recovery(
                          handle_unauthorized(
                              unauthorized_transport,
@@ -2085,7 +2407,7 @@ index 324f307a10..49a53d0ae3 100644
                              &mut auth_recovery,
                              &mut provider_auth_recovery_attempted,
                              session_telemetry,
-@@ -2369,13 +2576,25 @@ impl ModelClientSession {
+@@ -2369,13 +2583,25 @@ impl ModelClientSession {
              .map(AuthManager::unauthorized_recovery);
          let mut provider_auth_recovery_attempted = false;
          let mut pending_retry = PendingUnauthorizedRetry::default();
@@ -2112,7 +2434,7 @@ index 324f307a10..49a53d0ae3 100644
              let include_internal = self
                  .client
                  .state
-@@ -2460,6 +2679,7 @@ impl ModelClientSession {
+@@ -2460,6 +2686,7 @@ impl ModelClientSession {
                      pending_retry = PendingUnauthorizedRetry::from_recovery(
                          handle_unauthorized(
                              unauthorized_transport,
@@ -2120,7 +2442,7 @@ index 324f307a10..49a53d0ae3 100644
                              &mut auth_recovery,
                              &mut provider_auth_recovery_attempted,
                              session_telemetry,
-@@ -2903,11 +3123,21 @@ impl ModelClientSession {
+@@ -2903,11 +3130,21 @@ impl ModelClientSession {
                      }
                  }
  
@@ -2145,7 +2467,7 @@ index 324f307a10..49a53d0ae3 100644
                          prompt,
                          model_info,
                          session_telemetry,
-@@ -3354,8 +3584,13 @@ fn emit_auth_recovery_event(
+@@ -3354,8 +3591,13 @@ fn emit_auth_recovery_event(
      }
  }
  
@@ -2159,7 +2481,7 @@ index 324f307a10..49a53d0ae3 100644
      auth_recovery: &mut Option<UnauthorizedRecovery>,
      provider_auth_recovery_attempted: &mut bool,
      session_telemetry: &SessionTelemetry,
-@@ -3363,6 +3598,20 @@ async fn handle_unauthorized(
+@@ -3363,6 +3605,22 @@ async fn handle_unauthorized(
      event_sender: Option<&Sender<ProtocolEvent>>,
      turn_id: Option<&str>,
  ) -> Result<UnauthorizedRecoveryExecution> {
@@ -2169,7 +2491,9 @@ index 324f307a10..49a53d0ae3 100644
 +        }
 +        *provider_auth_recovery_attempted = true;
 +        let manager = provider.auth_manager().ok_or_else(|| {
-+            CodexErr::InvalidRequest("ChatGPT auth helper credential authority unavailable".to_string())
++            CodexErr::InvalidRequest(
++                "ChatGPT auth helper credential authority unavailable".to_string(),
++            )
 +        })?;
 +        *request_auth = Some(manager.refresh_request_auth(rejected).await?);
 +        return Ok(UnauthorizedRecoveryExecution {
@@ -2181,10 +2505,10 @@ index 324f307a10..49a53d0ae3 100644
      if !*provider_auth_recovery_attempted {
          *provider_auth_recovery_attempted = true;
 diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
-index f36687303c..7399c14c5b 100644
+index f36687303c..62d2274014 100644
 --- a/codex-rs/core/src/client_tests.rs
 +++ b/codex-rs/core/src/client_tests.rs
-@@ -116,8 +116,141 @@ use wiremock::ResponseTemplate;
+@@ -116,8 +116,142 @@ use wiremock::ResponseTemplate;
  use wiremock::matchers::method;
  use wiremock::matchers::path;
  
@@ -2247,7 +2571,8 @@ index f36687303c..7399c14c5b 100644
 +}
 +
 +#[tokio::test]
-+async fn auth_helper_network_policy_blocks_old_step_transport_and_restores_base_after_deactivation() {
++async fn auth_helper_network_policy_blocks_old_step_transport_and_restores_base_after_deactivation()
++{
 +    use codex_client::HttpTransport;
 +    use codex_http_client::DestinationPolicy;
 +    use codex_http_client::NetworkPolicyController;
@@ -2326,7 +2651,7 @@ index f36687303c..7399c14c5b 100644
  fn test_model_client(session_source: SessionSource) -> ModelClient {
      test_model_client_with_thread_id(ThreadId::new(), session_source)
  }
-@@ -1981,6 +2114,7 @@ async fn bedrock_unauthorized_error_uses_provider_mapping() {
+@@ -1981,6 +2115,7 @@ async fn bedrock_unauthorized_error_uses_provider_mapping() {
                      .to_string(),
              ),
          },
@@ -2334,7 +2659,7 @@ index f36687303c..7399c14c5b 100644
          &mut auth_recovery,
          &mut provider_auth_recovery_attempted,
          &test_session_telemetry(),
-@@ -2078,6 +2212,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
+@@ -2078,6 +2213,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
          let (event_sender, event_receiver) = async_channel::unbounded();
          let result = super::handle_unauthorized(
              unauthorized(),
@@ -2342,7 +2667,7 @@ index f36687303c..7399c14c5b 100644
              &mut auth_recovery,
              &mut provider_auth_recovery_attempted,
              &telemetry,
-@@ -2097,6 +2232,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
+@@ -2097,6 +2233,7 @@ async fn provider_owned_auth_recovery_is_bounded_and_preserves_unauthorized_fail
              );
              super::handle_unauthorized(
                  unauthorized(),
@@ -2442,14 +2767,14 @@ index e3445010d8..ff54682e8e 100644
          auth_credentials_store_mode: config.cli_auth_credentials_store.unwrap_or_default(),
          keyring_backend_kind: resolve_bootstrap_auth_keyring_backend_kind(bootstrap_config)?,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 0049850143..f93980452f 100644
+index 0049850143..3aaf308551 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
 @@ -1170,6 +1170,9 @@ pub struct Config {
      /// When set, restricts the login mechanism users may use.
      pub forced_login_method: Option<ForcedLoginMethod>,
  
-+    /// Personal credential authority command, executed without a shell.
++    /// External ChatGPT credential helper command, executed without a shell.
 +    pub chatgpt_auth_helper: Option<Vec<String>>,
 +
      /// Explicit or feature-derived web search mode.
@@ -2508,13 +2833,13 @@ index 16912fe62c..63774bbe9a 100644
          .await?;
 diff --git a/codex-rs/core/src/session/helper_step.rs b/codex-rs/core/src/session/helper_step.rs
 new file mode 100644
-index 0000000000..b9c8570168
+index 0000000000..5350b8a4cf
 --- /dev/null
 +++ b/codex-rs/core/src/session/helper_step.rs
-@@ -0,0 +1,483 @@
-+//! Personal account admission before any account-dependent step preparation.
+@@ -0,0 +1,482 @@
++//! Auth helper account admission before any account-dependent step preparation.
 +//!
-+//! Managed cloud configuration is deliberately outside this personal adapter.
++//! Auth helper credentials never load a workspace cloud configuration bundle.
 +//! Never replace process-global cloud state asynchronously after starting a request.
 +
 +use super::*;
@@ -2524,7 +2849,6 @@ index 0000000000..b9c8570168
 +use codex_core_plugins::PluginsConfigInput;
 +use codex_core_plugins::remote::RemotePluginCatalogError;
 +use codex_http_client::RouteAwareRequestError;
-+use codex_protocol::account::PlanType;
 +use codex_protocol::config_types::ForcedLoginMethod;
 +use std::time::Duration;
 +use std::time::Instant;
@@ -2538,18 +2862,16 @@ index 0000000000..b9c8570168
 +    pub(super) inherited_environments: Option<TurnEnvironmentSnapshot>,
 +}
 +
-+fn validate_personal_step(config: &Config, auth: &CodexAuth) -> CodexResult<()> {
-+    if !matches!(
-+        auth.account_plan_type(),
-+        Some(PlanType::Free | PlanType::Go | PlanType::Plus | PlanType::Pro | PlanType::ProLite)
-+    ) || config
++fn validate_helper_step(config: &Config, auth: &CodexAuth) -> CodexResult<()> {
++    // Managed configuration loaded for another login must never govern a helper credential.
++    if config
 +        .config_layer_stack
 +        .layers_low_to_high()
 +        .any(|layer| matches!(layer.name, ConfigLayerSource::EnterpriseManaged { .. }))
 +        || has_cloud_requirements(config.config_layer_stack.requirements())
 +    {
 +        return Err(CodexErr::InvalidRequest(
-+            "ChatGPT auth helper supports personal accounts only; managed or unknown account contexts require rotation to be disabled".to_string(),
++            "ChatGPT auth helper credentials cannot run under a workspace's managed cloud configuration; restart Codex or remove chatgpt_auth_helper".to_string(),
 +        ));
 +    }
 +    let requirements = config.config_layer_stack.requirements();
@@ -2578,7 +2900,8 @@ index 0000000000..b9c8570168
 +            })
 +    {
 +        return Err(CodexErr::InvalidRequest(
-+            "ChatGPT auth helper account is not permitted by the current session requirements".to_string(),
++            "ChatGPT auth helper account is not permitted by the current session requirements"
++                .to_string(),
 +        ));
 +    }
 +    Ok(())
@@ -2869,28 +3192,29 @@ index 0000000000..b9c8570168
 +            )
 +        };
 +        let manager = Arc::clone(&self.services.auth_manager);
-+        let helper_auth =
-+            if manager.has_auth_helper() && turn_context.provider.info().requires_openai_auth {
-+                Some(
-+                    manager
-+                        .auth_for_request(Some(&settings.model_info.slug), /*pinned*/ None)
-+                        .or_cancel(cancellation_token)
-+                        .await??
-+                        .ok_or_else(|| {
-+                            CodexErr::InvalidRequest("ChatGPT auth helper is signed out".to_string())
-+                        })?,
-+                )
-+            } else {
-+                None
-+            };
++        let helper_auth = if manager.has_auth_helper()
++            && turn_context.provider.info().requires_openai_auth
++        {
++            Some(
++                manager
++                    .auth_for_request(Some(&settings.model_info.slug), /*pinned*/ None)
++                    .or_cancel(cancellation_token)
++                    .await??
++                    .ok_or_else(|| {
++                        CodexErr::InvalidRequest("ChatGPT auth helper is signed out".to_string())
++                    })?,
++            )
++        } else {
++            None
++        };
 +        let prepare = async {
 +            let mut helper_http_client_factory = None;
 +            if let Some(auth) = &helper_auth {
-+                validate_personal_step(&turn_context.config, auth)?;
++                validate_helper_step(&turn_context.config, auth)?;
 +                {
 +                    let state = self.state.lock().await;
 +                    let current = &state.session_configuration.original_config_do_not_use;
-+                    validate_personal_step(current, auth)?;
++                    validate_helper_step(current, auth)?;
 +                    if current.enforce_residency.value()
 +                        != turn_context.config.enforce_residency.value()
 +                    {
@@ -2961,7 +3285,7 @@ index 0000000000..b9c8570168
 +            if let Some(auth) = &helper_auth {
 +                let state = self.state.lock().await;
 +                let current = &state.session_configuration.original_config_do_not_use;
-+                validate_personal_step(current, auth)?;
++                validate_helper_step(current, auth)?;
 +                if current.enforce_residency.value() != step.turn.config.enforce_residency.value() {
 +                    return Err(CodexErr::InvalidRequest(
 +                        "ChatGPT auth helper residency requirements changed during request preparation"
@@ -2997,28 +3321,43 @@ index 0000000000..b9c8570168
 +mod tests;
 diff --git a/codex-rs/core/src/session/helper_step_tests.rs b/codex-rs/core/src/session/helper_step_tests.rs
 new file mode 100644
-index 0000000000..bce72e55a7
+index 0000000000..5a5a88a3c4
 --- /dev/null
 +++ b/codex-rs/core/src/session/helper_step_tests.rs
-@@ -0,0 +1,327 @@
+@@ -0,0 +1,342 @@
 +use super::*;
 +use codex_config::Sourced;
 +use pretty_assertions::assert_eq;
 +
 +#[tokio::test]
-+async fn personal_step_revalidates_current_workspace_and_login_requirements() {
++async fn helper_step_revalidates_current_workspace_and_login_requirements() {
 +    let (_, turn) = super::super::tests::make_session_and_context().await;
 +    let mut config = (*turn.config).clone();
 +    let auth =
 +        CodexAuth::from_external_chatgpt_tokens("header.e30.synthetic", "account-b", Some("pro"))
 +            .expect("personal test auth");
-+    assert!(validate_personal_step(&config, &auth).is_ok());
++    assert!(validate_helper_step(&config, &auth).is_ok());
 +    config.forced_chatgpt_workspace_id = Some(vec!["account-a".into()]);
-+    assert!(validate_personal_step(&config, &auth).is_err());
++    assert!(validate_helper_step(&config, &auth).is_err());
 +    config.forced_chatgpt_workspace_id = Some(vec!["account-b".into()]);
-+    assert!(validate_personal_step(&config, &auth).is_ok());
++    assert!(validate_helper_step(&config, &auth).is_ok());
 +    config.forced_login_method = Some(ForcedLoginMethod::Api);
-+    assert!(validate_personal_step(&config, &auth).is_err());
++    assert!(validate_helper_step(&config, &auth).is_err());
++}
++
++#[tokio::test]
++async fn helper_step_admits_workspace_plans_without_cloud_requirements() {
++    let (_, turn) = super::super::tests::make_session_and_context().await;
++    let config = (*turn.config).clone();
++    for plan in ["team", "business", "enterprise", "edu"] {
++        let auth = CodexAuth::from_external_chatgpt_tokens(
++            "header.e30.synthetic",
++            "workspace-account",
++            Some(plan),
++        )
++        .expect("workspace test auth");
++        assert!(validate_helper_step(&config, &auth).is_ok(), "{plan}");
++    }
 +}
 +
 +#[test]
@@ -3329,7 +3668,7 @@ index 0000000000..bce72e55a7
 +    assert_eq!(fixture.installed_requests().await, 1);
 +}
 diff --git a/codex-rs/core/src/session/mcp.rs b/codex-rs/core/src/session/mcp.rs
-index 98fa2132a9..ae4a38127b 100644
+index 98fa2132a9..c0bf9c7be7 100644
 --- a/codex-rs/core/src/session/mcp.rs
 +++ b/codex-rs/core/src/session/mcp.rs
 @@ -1,3 +1,6 @@
@@ -3418,20 +3757,27 @@ index 98fa2132a9..ae4a38127b 100644
          let ready_selected_capability_roots =
              Self::ready_selected_capability_roots(selected_capability_roots);
          if self
-@@ -536,6 +557,31 @@ impl Session {
+@@ -536,6 +557,38 @@ impl Session {
              .await;
              self.refresh_mcp_if_dirty().await;
          }
 +        // Keep the refresh publication gate through identity validation and
 +        // binding capture. Existing steps retain their immutable old handles.
 +        let auth = self.services.auth_manager.auth_cached();
-+        let _auth_helper_barrier = if auth.as_ref().and_then(CodexAuth::auth_helper_identity).is_some() {
++        let _auth_helper_barrier = if auth
++            .as_ref()
++            .and_then(CodexAuth::auth_helper_identity)
++            .is_some()
++        {
 +            let guard = self.mcp_refresh.acquire().await.map_err(|_| {
-+                CodexErr::InvalidRequest("ChatGPT auth helper MCP preparation is unavailable".to_string())
++                CodexErr::InvalidRequest(
++                    "ChatGPT auth helper MCP preparation is unavailable".to_string(),
++                )
 +            })?;
 +            if !self.reconcile_mcp_runtime().await {
 +                return Err(CodexErr::InvalidRequest(
-+                    "ChatGPT auth helper MCP preparation did not stabilize; retry this turn".to_string(),
++                    "ChatGPT auth helper MCP preparation did not stabilize; retry this turn"
++                        .to_string(),
 +                ));
 +            }
 +            if !self
@@ -3450,7 +3796,7 @@ index 98fa2132a9..ae4a38127b 100644
          self.wait_for_apps_tool_refresh().await;
          if let Some(binding) = self
              .services
-@@ -547,10 +593,10 @@ impl Session {
+@@ -547,10 +600,10 @@ impl Session {
              )
              .await
          {
@@ -3463,7 +3809,7 @@ index 98fa2132a9..ae4a38127b 100644
      }
  
      fn discovery_sandbox(
-@@ -1029,13 +1075,18 @@ impl Session {
+@@ -1029,13 +1082,18 @@ impl Session {
                  executor_capability_discovery_v2.as_deref(),
              )
              .await;
@@ -3698,7 +4044,7 @@ index 0f6026c3f7..a1443edf03 100644
 +    assert!(refresh.is_pending());
 +}
 diff --git a/codex-rs/core/src/session/mcp_runtime.rs b/codex-rs/core/src/session/mcp_runtime.rs
-index 4225dc7833..00faaae0f8 100644
+index 4225dc7833..4371d83ab5 100644
 --- a/codex-rs/core/src/session/mcp_runtime.rs
 +++ b/codex-rs/core/src/session/mcp_runtime.rs
 @@ -131,7 +131,7 @@ impl Session {
@@ -3733,21 +4079,27 @@ index 4225dc7833..00faaae0f8 100644
      }
  
      /// Freezes the same environment and permission inputs for status reads and runtime publication.
-@@ -349,8 +350,12 @@ impl Session {
+@@ -349,8 +350,18 @@ impl Session {
          mcp_projection: McpRuntimeProjection,
          ready_selected_capability_roots: &[SelectedCapabilityRoot],
          elicitation_reviewer: Option<ElicitationReviewerHandle>,
 -    ) -> McpRuntimeInput {
 +    ) -> anyhow::Result<McpRuntimeInput> {
          let auth = desired.auth.clone();
-+        let auth_manager = match auth.as_ref().filter(|auth| auth.auth_helper_identity().is_some()) {
-+            Some(auth) => self.services.auth_manager.for_request_snapshot(auth.clone())?,
++        let auth_manager = match auth
++            .as_ref()
++            .filter(|auth| auth.auth_helper_identity().is_some())
++        {
++            Some(auth) => self
++                .services
++                .auth_manager
++                .for_request_snapshot(auth.clone())?,
 +            None => Arc::clone(&self.services.auth_manager),
 +        };
          let McpRuntimeProjection {
              mut config,
              plugins_available,
-@@ -366,7 +371,7 @@ impl Session {
+@@ -366,7 +377,7 @@ impl Session {
          let mcp_config = Arc::new(config);
          let runtime_context =
              self.mcp_runtime_context(&desired.environments, &desired.local_process_cwd);
@@ -3756,7 +4108,7 @@ index 4225dc7833..00faaae0f8 100644
              network_policy_metadata: None,
              runtime_auth: desired
                  .config
-@@ -402,9 +407,9 @@ impl Session {
+@@ -402,9 +413,9 @@ impl Session {
              codex_apps_tools_cache_key: connector_runtime_context_key(auth.as_ref()),
              client_mcp_extensions: self.services.client_mcp_extensions.for_mcp_servers(),
              auth,
@@ -3887,7 +4239,7 @@ index f20e289f21..3643b8a11c 100644
              token_budget,
              session_telemetry,
 diff --git a/codex-rs/core/src/session/step_context.rs b/codex-rs/core/src/session/step_context.rs
-index 6041bf0f46..b4def22b33 100644
+index 6041bf0f46..a5caf06d2b 100644
 --- a/codex-rs/core/src/session/step_context.rs
 +++ b/codex-rs/core/src/session/step_context.rs
 @@ -13,6 +13,8 @@ use crate::tools::router::ToolRouter;
@@ -3903,7 +4255,7 @@ index 6041bf0f46..b4def22b33 100644
      pub(crate) preempt: Option<CancellationToken>,
      /// Realtime call activity and instructions captured for this sampling request.
      pub(crate) realtime: RealtimeConversationSnapshot,
-+    /// Exact personal account captured before plugin, MCP and tool preparation.
++    /// Exact helper account captured before plugin, MCP and tool preparation.
 +    pub(crate) helper_auth: Option<CodexAuth>,
 +    /// Content route pinned to the same account snapshot as `helper_auth`.
 +    pub(crate) helper_http_client_factory: Option<HttpClientFactory>,
@@ -3963,7 +4315,7 @@ index 4b5e4c93a9..451421372f 100644
      let configured_servers = codex_mcp::configured_mcp_servers(new_step.mcp.config());
      assert_eq!(
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index f3b2ec7b14..309296a0c6 100644
+index f3b2ec7b14..df1237a717 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
 @@ -2165,6 +2165,18 @@ async fn run_sampling_request(
@@ -4005,13 +4357,16 @@ index f3b2ec7b14..309296a0c6 100644
      const MAX_ANALYTICS_TOOL_CALL_IDS_PER_RESPONSE: usize = 256;
      let mut analytics_tool_call_ids = Vec::new();
      let reasoning_effort = step_context
-@@ -3652,6 +3670,14 @@ async fn try_run_sampling_request(
+@@ -3652,6 +3670,17 @@ async fn try_run_sampling_request(
                  includes_reasoning = included;
              }
              ResponseEvent::RateLimits(snapshot) => {
 +                let model = step_context.settings.model_info.slug.as_str();
 +                if step_context.helper_auth.is_some()
-+                    && codex_login::AuthManager::auth_helper_usage_is_exhausted(Some(model), &snapshot)
++                    && codex_login::AuthManager::auth_helper_usage_is_exhausted(
++                        Some(model),
++                        &snapshot,
++                    )
 +                {
 +                    // A later partial headroom bucket must not erase an
 +                    // already-observed exhausted bucket in this attempt.
@@ -4020,7 +4375,7 @@ index f3b2ec7b14..309296a0c6 100644
                  // Update internal state with latest rate limits, but defer sending until
                  // token usage is available to avoid duplicate TokenCount events.
                  sess.record_rate_limits_info(snapshot).await;
-@@ -3925,6 +3951,15 @@ async fn try_run_sampling_request(
+@@ -3925,6 +3954,15 @@ async fn try_run_sampling_request(
          *unfinished_plan_id = state.plan_item_state.unfinished_id();
      }
  
@@ -4089,7 +4444,7 @@ index 0fb085f522..cf6edd3a2d 100644
      let result = AnyToolResult {
 diff --git a/codex-rs/core/tests/suite/auth_helper_plugin_install.rs b/codex-rs/core/tests/suite/auth_helper_plugin_install.rs
 new file mode 100644
-index 0000000000..a5b4378189
+index 0000000000..57471a5c92
 --- /dev/null
 +++ b/codex-rs/core/tests/suite/auth_helper_plugin_install.rs
 @@ -0,0 +1,194 @@
@@ -4115,11 +4470,11 @@ index 0000000000..a5b4378189
 +use wiremock::matchers::method;
 +use wiremock::matchers::path;
 +
++use super::helper_step::helper_for_profiles;
++use super::helper_step::select_account;
 +use super::request_plugin_install::configure_apps_without_search_tool;
 +use super::request_plugin_install::resolve_install_elicitation;
 +use super::request_plugin_install::start_install_turn;
-+use super::helper_step::helper_for_profiles;
-+use super::helper_step::select_account;
 +
 +#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 +async fn auth_helper_plugin_install_retains_owner_through_dispatch_and_approval() -> Result<()> {
@@ -4620,20 +4975,27 @@ index 0000000000..656984ccdb
 +    Ok(())
 +}
 diff --git a/codex-rs/core/tests/suite/mod.rs b/codex-rs/core/tests/suite/mod.rs
-index 8403ded4a5..f98c409b30 100644
+index 8403ded4a5..7b4aca21ad 100644
 --- a/codex-rs/core/tests/suite/mod.rs
 +++ b/codex-rs/core/tests/suite/mod.rs
-@@ -217,6 +217,10 @@ mod rollout_compression;
- mod rollout_list_find;
- mod runtime_auth;
- mod runtime_auth_denials;
+@@ -103,6 +103,8 @@ mod guardian_cached_score;
+ mod guardian_checkpoint_migration;
+ mod reasoning_replay_metrics;
+ // Uses the same command-approval harness as guardian_review below.
 +#[cfg(unix)]
 +mod auth_helper_plugin_install;
+ mod builtin_model_catalog;
+ mod canonical_plugin_connectors;
+ mod critical_path_runtime;
+@@ -125,6 +127,8 @@ mod guardian_review;
+ mod guardian_review_cancellation;
+ #[cfg(not(target_os = "windows"))]
+ mod guardian_subagent_authorization;
 +#[cfg(unix)]
 +mod helper_step;
- mod safety_buffering;
- mod safety_check_downgrade;
- mod scenarios;
+ #[cfg(not(target_os = "windows"))]
+ mod hooks;
+ #[cfg(not(target_os = "windows"))]
 diff --git a/codex-rs/core/tests/suite/request_plugin_install.rs b/codex-rs/core/tests/suite/request_plugin_install.rs
 index bc28be7c6b..a5554be6c7 100644
 --- a/codex-rs/core/tests/suite/request_plugin_install.rs
@@ -4700,11 +5062,11 @@ index b1956bf2b9..c744a16ab4 100644
          self.state
 diff --git a/codex-rs/login/src/auth/auth_helper.rs b/codex-rs/login/src/auth/auth_helper.rs
 new file mode 100644
-index 0000000000..00afa49684
+index 0000000000..3382c0af60
 --- /dev/null
 +++ b/codex-rs/login/src/auth/auth_helper.rs
-@@ -0,0 +1,492 @@
-+//! Personal, opt-in credential authority. No refresh credential enters this adapter.
+@@ -0,0 +1,565 @@
++//! Opt-in external ChatGPT credential authority. No refresh credential enters this adapter.
 +
 +use super::manager::CodexAuth;
 +use super::manager::ExternalAuth;
@@ -4800,13 +5162,50 @@ index 0000000000..00afa49684
 +}
 +
 +#[derive(Deserialize)]
-+pub(super) struct AuthHelperSnapshot {
++pub(crate) struct AuthHelperSnapshot {
 +    #[serde(flatten)]
 +    pub identity: AuthHelperIdentity,
 +    pub account_id: String,
 +    pub access_token: String,
 +    pub id_token: Option<String>,
 +    pub expires_at: i64,
++    /// `not_applied` declares that the account's workspace managed configuration
++    /// does not apply to this credential.
++    #[serde(default)]
++    pub managed_config: Option<String>,
++    /// Single-line text to show while this credential is in use.
++    #[serde(default)]
++    pub notice: Option<String>,
++}
++
++const MAX_HELPER_TEXT_CHARS: usize = 400;
++
++/// Helper-supplied text the protocol marks as user-facing, flattened to one bounded line.
++pub(crate) fn helper_display_text(text: &str) -> Option<String> {
++    let flattened = text
++        .chars()
++        .map(|c| if c.is_control() { ' ' } else { c })
++        .collect::<String>();
++    let mut line = flattened.split_whitespace().collect::<Vec<_>>().join(" ");
++    if line.chars().count() > MAX_HELPER_TEXT_CHARS {
++        line = line.chars().take(MAX_HELPER_TEXT_CHARS - 1).collect();
++        line.push('…');
++    }
++    (!line.is_empty()).then_some(line)
++}
++
++/// Helper declarations that travel with one credential snapshot.
++#[derive(Clone, Debug, Default, PartialEq, Eq)]
++pub(super) struct AuthHelperDisclosure {
++    pub managed_config_not_applied: bool,
++    pub notice: Option<String>,
++}
++
++/// A successful enrollment; the helper may leave the previous account selected.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct AuthHelperRegistration {
++    pub selected: bool,
++    pub notice: Option<String>,
 +}
 +
 +/// Runs the machine-state helper without a shell or secret-bearing diagnostics.
@@ -4838,11 +5237,10 @@ index 0000000000..00afa49684
 +
 +    fn resolve(&self) -> ExternalAuthFuture<'_, CodexAuth> {
 +        Box::pin(async {
-+            let _update = self
-+                .update_lock
-+                .acquire()
-+                .await
-+                .map_err(|_| io::Error::other("ChatGPT auth helper request auth unavailable"))?;
++            let _update =
++                self.update_lock.acquire().await.map_err(|_| {
++                    io::Error::other("ChatGPT auth helper request auth unavailable")
++                })?;
 +            let current = self
 +                .current
 +                .lock()
@@ -4864,11 +5262,10 @@ index 0000000000..00afa49684
 +
 +    fn refresh(&self, _context: ExternalAuthRefreshContext) -> ExternalAuthFuture<'_, CodexAuth> {
 +        Box::pin(async {
-+            let _update = self
-+                .update_lock
-+                .acquire()
-+                .await
-+                .map_err(|_| io::Error::other("ChatGPT auth helper request auth unavailable"))?;
++            let _update =
++                self.update_lock.acquire().await.map_err(|_| {
++                    io::Error::other("ChatGPT auth helper request auth unavailable")
++                })?;
 +            let current = self
 +                .current
 +                .lock()
@@ -4955,12 +5352,38 @@ index 0000000000..00afa49684
 +        })
 +    }
 +
-+    pub async fn rpc(&self, mut request: Value) -> io::Result<Value> {
++    pub async fn rpc(&self, request: Value) -> io::Result<Value> {
++        self.rpc_with_messages(request, /*surface_any_error_message*/ false)
++            .await
++    }
++
++    /// Enrolls a fresh native login. A refusal surfaces the helper's own message.
++    pub async fn register(&self, auth: Value, select: bool) -> io::Result<AuthHelperRegistration> {
++        let response = self
++            .rpc_with_messages(
++                json!({"op": "register", "select": select, "auth": auth}),
++                /*surface_any_error_message*/ true,
++            )
++            .await?;
++        Ok(AuthHelperRegistration {
++            // Helpers predating the field always honored `select`.
++            selected: response["selected"].as_bool().unwrap_or(select),
++            notice: response["notice"].as_str().and_then(helper_display_text),
++        })
++    }
++
++    async fn rpc_with_messages(
++        &self,
++        mut request: Value,
++        surface_any_error_message: bool,
++    ) -> io::Result<Value> {
 +        request["version"] = json!(1);
 +        let input = serde_json::to_vec(&request)
 +            .map_err(|_| io::Error::other("invalid ChatGPT auth helper request"))?;
 +        if input.len() as u64 > MAX_MESSAGE_BYTES {
-+            return Err(io::Error::other("ChatGPT auth helper request exceeds size limit"));
++            return Err(io::Error::other(
++                "ChatGPT auth helper request exceeds size limit",
++            ));
 +        }
 +        tokio::time::timeout(HELPER_TIMEOUT, async {
 +            let mut command = Command::new(&self.argv[0]);
@@ -4981,10 +5404,9 @@ index 0000000000..00afa49684
 +                .stdin
 +                .take()
 +                .ok_or_else(|| io::Error::other("ChatGPT auth helper process stdin unavailable"))?;
-+            let stdout = child
-+                .stdout
-+                .take()
-+                .ok_or_else(|| io::Error::other("ChatGPT auth helper process stdout unavailable"))?;
++            let stdout = child.stdout.take().ok_or_else(|| {
++                io::Error::other("ChatGPT auth helper process stdout unavailable")
++            })?;
 +            let write = async move {
 +                stdin.write_all(&input).await?;
 +                drop(stdin);
@@ -4997,7 +5419,9 @@ index 0000000000..00afa49684
 +                    .read_to_end(&mut bytes)
 +                    .await?;
 +                if bytes.len() as u64 > MAX_MESSAGE_BYTES {
-+                    return Err(io::Error::other("ChatGPT auth helper response exceeds size limit"));
++                    return Err(io::Error::other(
++                        "ChatGPT auth helper response exceeds size limit",
++                    ));
 +                }
 +                Ok::<_, io::Error>(bytes)
 +            };
@@ -5018,6 +5442,7 @@ index 0000000000..00afa49684
 +                || !status.success()
 +            {
 +                if response.get("version") == Some(&json!(1))
++                    && !surface_any_error_message
 +                    && matches!(
 +                        response["error"]["code"].as_str(),
 +                        Some("signed_out" | "no_accounts")
@@ -5028,7 +5453,17 @@ index 0000000000..00afa49684
 +                        "ChatGPT auth helper is signed out; run codex login",
 +                    ));
 +                }
-+                // Never echo a helper-controlled message, code, stdout or stderr.
++                // Only the envelope message of a user-actionable error is echoed,
++                // never other helper-controlled codes, stdout or stderr.
++                if response.get("version") == Some(&json!(1))
++                    && (surface_any_error_message
++                        || response["error"]["code"].as_str() == Some("user_action_required"))
++                    && let Some(message) = response["error"]["message"]
++                        .as_str()
++                        .and_then(helper_display_text)
++                {
++                    return Err(io::Error::new(io::ErrorKind::PermissionDenied, message));
++                }
 +                return Err(io::Error::other(
 +                    "ChatGPT auth helper unavailable; check the configured chatgpt_auth_helper",
 +                ));
@@ -5198,10 +5633,10 @@ index 0000000000..00afa49684
 +mod tests;
 diff --git a/codex-rs/login/src/auth/auth_helper_tests.rs b/codex-rs/login/src/auth/auth_helper_tests.rs
 new file mode 100644
-index 0000000000..228cdecec7
+index 0000000000..beccf25284
 --- /dev/null
 +++ b/codex-rs/login/src/auth/auth_helper_tests.rs
-@@ -0,0 +1,590 @@
+@@ -0,0 +1,748 @@
 +use super::*;
 +use base64::Engine;
 +use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -5254,12 +5689,14 @@ index 0000000000..228cdecec7
 +    let mut mismatch = snapshot("account-a", 1);
 +    mismatch["account_id"] = json!("account-b");
 +    assert!(
-+        CodexAuth::from_auth_helper_snapshot(serde_json::from_value(mismatch).unwrap(), None).is_err()
++        CodexAuth::from_auth_helper_snapshot(serde_json::from_value(mismatch).unwrap(), None)
++            .is_err()
 +    );
 +    let mut missing = snapshot("account-a", 1);
 +    missing["id_token"] = Value::Null;
 +    assert!(
-+        CodexAuth::from_auth_helper_snapshot(serde_json::from_value(missing).unwrap(), None).is_err()
++        CodexAuth::from_auth_helper_snapshot(serde_json::from_value(missing).unwrap(), None)
++            .is_err()
 +    );
 +}
 +
@@ -5332,7 +5769,10 @@ index 0000000000..228cdecec7
 +    let expected = auth("account-a", 2);
 +    let authority = helper(json!({"version": 1, "ok": true, "snapshot": snapshot("account-a", 2)}));
 +    let refreshed = authority.refresh_snapshot(&rejected).await.unwrap();
-+    assert_eq!(refreshed.auth_helper_identity(), expected.auth_helper_identity());
++    assert_eq!(
++        refreshed.auth_helper_identity(),
++        expected.auth_helper_identity()
++    );
 +    let wrong_owner =
 +        helper(json!({"version": 1, "ok": true, "snapshot": snapshot("account-b", 2)}));
 +    assert!(wrong_owner.refresh_snapshot(&rejected).await.is_err());
@@ -5364,7 +5804,10 @@ index 0000000000..228cdecec7
 +                .await
 +                .unwrap()
 +                .unwrap();
-+            assert_eq!(actual.auth_helper_identity(), refreshed.auth_helper_identity());
++            assert_eq!(
++                actual.auth_helper_identity(),
++                refreshed.auth_helper_identity()
++            );
 +            assert!(
 +                manager
 +                    .auth_for_request(None, Some(&auth("account-b", 2)))
@@ -5483,21 +5926,173 @@ index 0000000000..228cdecec7
 +    assert!(!home.path().join("auth.json").exists());
 +}
 +
++fn plan_snapshot(plan: &str) -> Value {
++    let claims = json!({"https://api.openai.com/auth": {
++        "chatgpt_account_id":"account-a", "chatgpt_user_id":"user-a", "chatgpt_plan_type":plan
++    }});
++    let mut value = snapshot("account-a", 1);
++    value["id_token"] = json!(format!(
++        "e30.{}.signature",
++        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap())
++    ));
++    value
++}
++
++fn snapshot_auth(value: Value) -> std::io::Result<CodexAuth> {
++    CodexAuth::from_auth_helper_snapshot(serde_json::from_value(value).unwrap(), None)
++}
++
 +#[test]
-+fn rotation_rejects_managed_and_unknown_plans() {
-+    for plan in ["business", "enterprise", "edu", "future-plan"] {
-+        let claims = json!({"https://api.openai.com/auth": {
-+            "chatgpt_account_id":"account-a", "chatgpt_user_id":"user-a", "chatgpt_plan_type":plan
-+        }});
-+        let mut value = snapshot("account-a", 1);
-+        value["id_token"] = json!(format!(
-+            "e30.{}.signature",
-+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap())
-+        ));
-+        assert!(
-+            CodexAuth::from_auth_helper_snapshot(serde_json::from_value(value).unwrap(), None).is_err()
-+        );
++fn plans_without_managed_config_are_admitted_without_a_declaration() {
++    for plan in [
++        "free",
++        "plus",
++        "pro",
++        "promax",
++        "team",
++        "self_serve_business_prolite",
++        "self_serve_business_usage_based",
++    ] {
++        let auth = snapshot_auth(plan_snapshot(plan)).unwrap_or_else(|err| panic!("{plan}: {err}"));
++        assert!(!auth.auth_helper_managed_config_not_applied(), "{plan}");
++        assert_eq!(auth.get_account_id().as_deref(), Some("account-a"));
 +    }
++}
++
++#[test]
++fn managed_config_plans_require_the_not_applied_declaration() {
++    for plan in [
++        "business",
++        "ent26",
++        "enterprise",
++        "hc",
++        "edu",
++        "sci",
++        "future-plan",
++    ] {
++        let refused = snapshot_auth(plan_snapshot(plan)).expect_err(plan);
++        assert_eq!(
++            refused.kind(),
++            std::io::ErrorKind::PermissionDenied,
++            "{plan}"
++        );
++
++        let mut declared = plan_snapshot(plan);
++        declared["managed_config"] = json!("not_applied");
++        let auth = snapshot_auth(declared).unwrap_or_else(|err| panic!("{plan}: {err}"));
++        assert!(auth.auth_helper_managed_config_not_applied(), "{plan}");
++        assert_eq!(auth.get_account_id().as_deref(), Some("account-a"));
++    }
++    let mut unsupported = plan_snapshot("business");
++    unsupported["managed_config"] = json!("applied");
++    assert!(snapshot_auth(unsupported).is_err());
++}
++
++#[test]
++fn fedramp_accounts_are_refused_even_when_declared() {
++    let claims = json!({"https://api.openai.com/auth": {
++        "chatgpt_account_id":"account-a", "chatgpt_user_id":"user-a",
++        "chatgpt_plan_type":"enterprise", "chatgpt_account_is_fedramp": true
++    }});
++    let mut value = snapshot("account-a", 1);
++    value["id_token"] = json!(format!(
++        "e30.{}.signature",
++        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap())
++    ));
++    value["managed_config"] = json!("not_applied");
++    assert!(snapshot_auth(value).is_err());
++}
++
++#[test]
++fn helper_notice_is_flattened_to_one_bounded_line() {
++    let mut value = plan_snapshot("business");
++    value["managed_config"] = json!("not_applied");
++    value["notice"] = json!("Organization account:\n\u{1b}[31mpolicies\tnot applied.");
++    let auth = snapshot_auth(value).unwrap();
++    assert_eq!(
++        auth.auth_helper_notice(),
++        Some("Organization account: [31mpolicies not applied.")
++    );
++    assert_eq!(
++        snapshot_auth(plan_snapshot("pro"))
++            .unwrap()
++            .auth_helper_notice(),
++        None
++    );
++    let long = helper_display_text(&"x".repeat(1000)).unwrap();
++    assert_eq!(long.chars().count(), 400);
++    assert_eq!(helper_display_text(" \n\t "), None);
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn user_action_required_surfaces_the_helper_message_and_other_codes_stay_hidden() {
++    let message = "Run the helper once to review this account, then retry.";
++    let refused = helper(json!({"version": 1, "ok": false, "error": {
++        "code": "user_action_required", "message": message,
++    }}))
++    .acquire(/*model*/ None, /*pinned*/ None)
++    .await
++    .unwrap_err();
++    assert_eq!(refused.kind(), std::io::ErrorKind::PermissionDenied);
++    assert_eq!(refused.to_string(), message);
++
++    let hidden = helper(json!({"version": 1, "ok": false, "error": {
++        "code": "io_error", "message": "helper-internal detail",
++    }}))
++    .acquire(/*model*/ None, /*pinned*/ None)
++    .await
++    .unwrap_err();
++    assert!(!hidden.to_string().contains("helper-internal detail"));
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn register_surfaces_refusals_and_reports_unselected_enrollment() {
++    let refusal = "Unknown plans cannot enroll.";
++    let refused = helper(json!({"version": 1, "ok": false, "error": {
++        "code": "invalid_request", "message": refusal,
++    }}))
++    .register(json!({"account_id": "account-a"}), /*select*/ true)
++    .await
++    .unwrap_err();
++    assert_eq!(refused.to_string(), refusal);
++    // Enrollment refusals keep their own text even for codes acquire maps to signed-out.
++    let signed_out = helper(json!({"version": 1, "ok": false, "error": {
++        "code": "no_accounts", "message": "This helper accepts no new accounts.",
++    }}))
++    .register(json!({"account_id": "account-a"}), /*select*/ true)
++    .await
++    .unwrap_err();
++    assert_eq!(signed_out.kind(), std::io::ErrorKind::PermissionDenied);
++    assert_eq!(
++        signed_out.to_string(),
++        "This helper accepts no new accounts."
++    );
++
++    let unselected = helper(json!({"version": 1, "ok": true, "account_key": "workspace",
++        "selected": false, "notice": "Enrolled without selecting it."}))
++    .register(json!({"account_id": "account-a"}), /*select*/ true)
++    .await
++    .unwrap();
++    assert_eq!(
++        unselected,
++        AuthHelperRegistration {
++            selected: false,
++            notice: Some("Enrolled without selecting it.".to_string()),
++        }
++    );
++    let legacy = helper(json!({"version": 1, "ok": true, "account_key": "personal"}))
++        .register(json!({"account_id": "account-a"}), /*select*/ true)
++        .await
++        .unwrap();
++    assert_eq!(
++        legacy,
++        AuthHelperRegistration {
++            selected: true,
++            notice: None,
++        }
++    );
 +}
 +
 +#[test]
@@ -5540,9 +6135,7 @@ index 0000000000..228cdecec7
 +        } else {
 +            json!({"version":1,"ok":false,"error":{"code":"busy"}})
 +        };
-+        let result = manager
-+            .logout_with_auth_helper(helper(response).argv)
-+            .await;
++        let result = manager.logout_with_auth_helper(helper(response).argv).await;
 +        if available {
 +            assert!(result.unwrap());
 +            assert!(!path.exists());
@@ -5938,7 +6531,7 @@ index 9d8af7f09a..b88fb7bc69 100644
      std::env::var("CODEX_SANDBOX").as_deref() == Ok("seatbelt")
  }
 diff --git a/codex-rs/login/src/auth/manager.rs b/codex-rs/login/src/auth/manager.rs
-index 4e8f825ab2..88f2831fb3 100644
+index 4e8f825ab2..f9f91596a8 100644
 --- a/codex-rs/login/src/auth/manager.rs
 +++ b/codex-rs/login/src/auth/manager.rs
 @@ -10,6 +10,8 @@ pub use account_grant::AccountOAuthGrantLease;
@@ -5950,27 +6543,29 @@ index 4e8f825ab2..88f2831fb3 100644
  
  use chrono::Utc;
  use http::StatusCode;
-@@ -60,6 +62,11 @@ use super::change_state::same_login;
- use super::change_state::same_owner;
- use super::external_bearer::BearerTokenRefresher;
- use super::revoke::revoke_auth_tokens;
-+use super::auth_helper::RequestSnapshotAuth;
-+use super::auth_helper::ChatgptAuthHelper;
+@@ -54,6 +56,12 @@ use super::agent_identity::register_managed_chatgpt_agent_identity;
+ use super::agent_identity::require_agent_identity_authapi_base_url;
+ use super::agent_identity::verified_record_from_jwt;
+ use super::api_key::is_fedramp_api_key;
++use super::auth_helper::AuthHelperDisclosure;
 +use super::auth_helper::AuthHelperIdentity;
 +use super::auth_helper::AuthHelperSnapshot;
++use super::auth_helper::ChatgptAuthHelper;
++use super::auth_helper::RequestSnapshotAuth;
 +use super::auth_helper::SnapshotStorage;
- use super::workload_identity::WorkloadIdentityExternalAuth;
- use super::workload_identity::WorkloadIdentitySessionError;
- use crate::auth::AuthHeaders;
-@@ -216,6 +223,7 @@ impl Debug for ApiKeyAuth {
+ use super::change_state::AuthChangeState;
+ use super::change_state::AuthOwner;
+ use super::change_state::same_login;
+@@ -216,6 +224,8 @@ impl Debug for ApiKeyAuth {
  pub struct ChatgptAuth {
      state: ChatgptAuthState,
      storage: Arc<dyn AuthStorageBackend>,
 +    helper_identity: Option<AuthHelperIdentity>,
++    helper_disclosure: AuthHelperDisclosure,
  }
  
  #[derive(Debug, Clone)]
-@@ -245,6 +253,10 @@ pub const REVOKE_TOKEN_URL_OVERRIDE_ENV_VAR: &str = "CODEX_REVOKE_TOKEN_URL_OVER
+@@ -245,6 +255,10 @@ pub const REVOKE_TOKEN_URL_OVERRIDE_ENV_VAR: &str = "CODEX_REVOKE_TOKEN_URL_OVER
  pub const CLIENT_ID_OVERRIDE_ENV_VAR: &str = "CODEX_APP_SERVER_LOGIN_CLIENT_ID";
  static NEXT_DUMMY_AUTH_ID: AtomicU64 = AtomicU64::new(1);
  
@@ -5981,7 +6576,7 @@ index 4e8f825ab2..88f2831fb3 100644
  #[derive(Debug, Error)]
  pub enum RefreshTokenError {
      #[error("{0}")]
-@@ -302,6 +314,15 @@ pub struct ExternalAuthRefreshContext {
+@@ -302,6 +316,15 @@ pub struct ExternalAuthRefreshContext {
  ///
  /// Implementations own the current auth value and any source-specific refresh mechanism.
  pub trait ExternalAuth: Send + Sync {
@@ -5989,7 +6584,7 @@ index 4e8f825ab2..88f2831fb3 100644
 +    fn is_request_bound(&self) -> bool {
 +        false
 +    }
-+    /// Exposes the personal, snapshot-bound credential authority when configured.
++    /// Exposes the snapshot-bound external credential authority when configured.
 +    fn auth_helper(&self) -> Option<&ChatgptAuthHelper> {
 +        None
 +    }
@@ -5997,7 +6592,7 @@ index 4e8f825ab2..88f2831fb3 100644
      /// Returns the provider's current auth value.
      fn resolve(&self) -> ExternalAuthFuture<'_, CodexAuth>;
  
-@@ -487,7 +508,11 @@ impl CodexAuth {
+@@ -487,7 +510,12 @@ impl CodexAuth {
                      storage_mode,
                      keyring_backend_kind,
                  );
@@ -6006,11 +6601,12 @@ index 4e8f825ab2..88f2831fb3 100644
 +                    state,
 +                    storage,
 +                    helper_identity: None,
++                    helper_disclosure: AuthHelperDisclosure::default(),
 +                }))
              }
              AuthMode::ChatgptAuthTokens => Ok(Self::ChatgptAuthTokens(ChatgptAuthTokens { state })),
              AuthMode::ApiKey => unreachable!("api key mode is handled above"),
-@@ -923,7 +948,11 @@ impl CodexAuth {
+@@ -923,7 +951,12 @@ impl CodexAuth {
              AuthCredentialsStoreMode::Ephemeral,
              AuthKeyringBackendKind::default(),
          );
@@ -6019,11 +6615,12 @@ index 4e8f825ab2..88f2831fb3 100644
 +            state,
 +            storage,
 +            helper_identity: None,
++            helper_disclosure: AuthHelperDisclosure::default(),
 +        })
      }
  
      /// Constructs in-memory ChatGPT auth from externally managed tokens.
-@@ -950,6 +979,114 @@ impl CodexAuth {
+@@ -950,6 +983,165 @@ impl CodexAuth {
              workload_identity: None,
          })
      }
@@ -6036,24 +6633,71 @@ index 4e8f825ab2..88f2831fb3 100644
 +        }
 +    }
 +
-+    pub(super) fn from_auth_helper_snapshot(
++    /// Whether the auth helper declared this account's workspace managed configuration
++    /// as not applied; such credentials never load a cloud configuration bundle.
++    pub fn auth_helper_managed_config_not_applied(&self) -> bool {
++        match self {
++            Self::Chatgpt(auth) => auth.helper_disclosure.managed_config_not_applied,
++            _ => false,
++        }
++    }
++
++    /// Text the auth helper asked to show while this credential is in use.
++    pub fn auth_helper_notice(&self) -> Option<&str> {
++        match self {
++            Self::Chatgpt(auth) => auth.helper_disclosure.notice.as_deref(),
++            _ => None,
++        }
++    }
++
++    pub(crate) fn from_auth_helper_snapshot(
 +        snapshot: AuthHelperSnapshot,
 +        previous: Option<&Self>,
 +    ) -> std::io::Result<Self> {
 +        let id_token = snapshot.id_token.as_deref().ok_or_else(|| {
-+            std::io::Error::other("ChatGPT auth helper requires an identity token; re-enroll this account")
++            std::io::Error::other(
++                "ChatGPT auth helper requires an identity token; re-enroll this account",
++            )
 +        })?;
 +        let id_token = parse_chatgpt_jwt_claims(id_token)
 +            .map_err(|_| std::io::Error::other("ChatGPT auth helper identity token is invalid"))?;
-+        if !matches!(
-+            id_token.get_chatgpt_plan_type_raw().as_deref(),
-+            Some("free" | "go" | "plus" | "pro" | "prolite")
-+        ) || id_token.chatgpt_account_is_fedramp
-+        {
++        // FedRAMP accounts need a routing edge this transport does not provide.
++        if id_token.chatgpt_account_is_fedramp {
 +            return Err(std::io::Error::other(
-+                "ChatGPT auth helper supports known personal ChatGPT plans only",
++                "The ChatGPT auth helper cannot serve FedRAMP accounts",
 +            ));
 +        }
++        let managed_config_not_applied = match snapshot.managed_config.as_deref() {
++            None => false,
++            Some("not_applied") => true,
++            Some(_) => {
++                return Err(std::io::Error::other(
++                    "The ChatGPT auth helper returned an unsupported managed_config declaration",
++                ));
++            }
++        };
++        let plan = id_token
++            .chatgpt_plan_type
++            .clone()
++            .map(AccountPlanType::from)
++            .unwrap_or(AccountPlanType::Unknown);
++        // Auth helper credentials never load a workspace's cloud configuration bundle,
++        // so a plan that requires one is admitted only when the helper declares that.
++        if (plan == AccountPlanType::Unknown || plan.requires_managed_config())
++            && !managed_config_not_applied
++        {
++            return Err(std::io::Error::new(
++                std::io::ErrorKind::PermissionDenied,
++                "This account's workspace managed configuration cannot be applied to ChatGPT auth helper credentials, and the helper did not declare it as not applied",
++            ));
++        }
++        let disclosure = AuthHelperDisclosure {
++            managed_config_not_applied,
++            notice: snapshot
++                .notice
++                .as_deref()
++                .and_then(super::auth_helper::helper_display_text),
++        };
 +        if id_token.chatgpt_account_id.as_deref() != Some(snapshot.account_id.as_str())
 +            || id_token
 +                .chatgpt_user_id
@@ -6083,7 +6727,10 @@ index 4e8f825ab2..88f2831fb3 100644
 +                Self::Chatgpt(prev) => Some(prev),
 +                _ => None,
 +            })
-+            .filter(|prev| prev.helper_identity.as_ref() == Some(&snapshot.identity));
++            .filter(|prev| {
++                prev.helper_identity.as_ref() == Some(&snapshot.identity)
++                    && prev.helper_disclosure == disclosure
++            });
 +        let previous_auth_dot_json = unchanged_previous
 +            .and_then(|prev| prev.state.auth_dot_json.lock().ok())
 +            .and_then(|guard| guard.clone());
@@ -6133,12 +6780,13 @@ index 4e8f825ab2..88f2831fb3 100644
 +            },
 +            storage,
 +            helper_identity: Some(snapshot.identity),
++            helper_disclosure: disclosure,
 +        }))
 +    }
  }
  
  impl ManagedChatGptAgentIdentityBinding {
-@@ -1283,6 +1420,7 @@ pub fn load_auth_dot_json(
+@@ -1283,6 +1475,7 @@ pub fn load_auth_dot_json(
  
  #[derive(Debug, Clone, PartialEq, Eq)]
  pub struct AuthConfig {
@@ -6146,7 +6794,7 @@ index 4e8f825ab2..88f2831fb3 100644
      pub codex_home: PathBuf,
      pub auth_credentials_store_mode: AuthCredentialsStoreMode,
      pub keyring_backend_kind: AuthKeyringBackendKind,
-@@ -1331,8 +1469,12 @@ impl AuthConfig {
+@@ -1331,8 +1524,12 @@ impl AuthConfig {
          &self,
          enable_codex_api_key_env: bool,
      ) -> std::io::Result<Option<CodexAuth>> {
@@ -6161,7 +6809,7 @@ index 4e8f825ab2..88f2831fb3 100644
      }
  
      /// Applies the mode filter to the selected source before hydrating its credentials.
-@@ -1341,7 +1483,51 @@ impl AuthConfig {
+@@ -1341,7 +1538,51 @@ impl AuthConfig {
          &self,
          enable_codex_api_key_env: bool,
          allowed_auth_modes: Option<&[AuthMode]>,
@@ -6213,7 +6861,7 @@ index 4e8f825ab2..88f2831fb3 100644
          let allowed_login_methods = self.allowed_login_methods();
          let workspaces = self.effective_chatgpt_workspaces();
          let agent_identity_authapi_base_url =
-@@ -1945,7 +2131,8 @@ impl AuthDotJson {
+@@ -1945,7 +2186,8 @@ impl AuthDotJson {
          })
      }
  
@@ -6223,7 +6871,7 @@ index 4e8f825ab2..88f2831fb3 100644
          if let Some(mode) = self.auth_mode {
              return mode;
          }
-@@ -2225,6 +2412,13 @@ impl UnauthorizedRecovery {
+@@ -2225,6 +2467,13 @@ impl UnauthorizedRecovery {
      }
  }
  
@@ -6237,7 +6885,7 @@ index 4e8f825ab2..88f2831fb3 100644
  /// Central manager providing a single source of truth for stored
  /// authentication data. It loads once (or on preference change) and then
  /// hands out cloned `CodexAuth` values so the rest of the program has a
-@@ -2239,6 +2433,8 @@ pub struct AuthManager {
+@@ -2239,6 +2488,8 @@ pub struct AuthManager {
      auth_change_tx: watch::Sender<u64>,
      auth_change_state_tx: watch::Sender<AuthChangeState>,
      workspace_routing_resolver: OnceLock<Weak<dyn WorkspaceRoutingResolver>>,
@@ -6246,11 +6894,11 @@ index 4e8f825ab2..88f2831fb3 100644
      enable_codex_api_key_env: bool,
      auth_credentials_store_mode: AuthCredentialsStoreMode,
      keyring_backend_kind: AuthKeyringBackendKind,
-@@ -2267,6 +2463,11 @@ pub struct AuthManager {
+@@ -2267,6 +2518,11 @@ pub struct AuthManager {
  /// `codex_core::config::Config`, but this trait keeps `codex-login` independent
  /// from `codex-core`.
  pub trait AuthManagerConfig {
-+    /// Returns the opt-in personal credential authority command.
++    /// Returns the opt-in external ChatGPT credential authority command.
 +    fn chatgpt_auth_helper(&self) -> Option<Vec<String>> {
 +        None
 +    }
@@ -6258,7 +6906,7 @@ index 4e8f825ab2..88f2831fb3 100644
      /// Returns the Codex home directory used for auth storage.
      fn codex_home(&self) -> PathBuf;
  
-@@ -2332,6 +2533,127 @@ fn default_agent_identity_authapi_base_url() -> Option<String> {
+@@ -2332,6 +2588,127 @@ fn default_agent_identity_authapi_base_url() -> Option<String> {
  }
  
  impl AuthManager {
@@ -6359,7 +7007,7 @@ index 4e8f825ab2..88f2831fb3 100644
 +            .with_network_policy(policy.for_current_account()))
 +    }
 +
-+    /// Restores the admitted personal account's policy before any account-dependent I/O.
++    /// Restores the admitted helper account's policy before any account-dependent I/O.
 +    pub async fn refresh_application_network_policy_for_request(
 +        &self,
 +        auth: &CodexAuth,
@@ -6386,7 +7034,7 @@ index 4e8f825ab2..88f2831fb3 100644
      /// Returns the application policy associated with this account owner.
      pub fn application_network_policy(&self) -> codex_http_client::NetworkPolicy {
          self.auth_route_config.application_network_policy().clone()
-@@ -2359,6 +2681,7 @@ impl AuthManager {
+@@ -2359,6 +2736,7 @@ impl AuthManager {
      ) -> Self {
          Self::new_from_auth_config(
              AuthConfig {
@@ -6394,7 +7042,7 @@ index 4e8f825ab2..88f2831fb3 100644
                  codex_home,
                  auth_credentials_store_mode,
                  keyring_backend_kind,
-@@ -2380,11 +2703,16 @@ impl AuthManager {
+@@ -2380,11 +2758,16 @@ impl AuthManager {
          allowed_auth_modes: Option<Vec<AuthMode>>,
      ) -> Self {
          let managed_auth = auth_config
@@ -6412,7 +7060,7 @@ index 4e8f825ab2..88f2831fb3 100644
              codex_home,
              auth_credentials_store_mode,
              keyring_backend_kind,
-@@ -2406,6 +2734,7 @@ impl AuthManager {
+@@ -2406,6 +2789,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -6420,7 +7068,7 @@ index 4e8f825ab2..88f2831fb3 100644
              enable_codex_api_key_env,
              auth_credentials_store_mode,
              keyring_backend_kind,
-@@ -2486,6 +2815,7 @@ impl AuthManager {
+@@ -2486,6 +2870,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -6428,7 +7076,7 @@ index 4e8f825ab2..88f2831fb3 100644
              enable_codex_api_key_env: false,
              auth_credentials_store_mode: if external_auth.is_some() {
                  AuthCredentialsStoreMode::Ephemeral
-@@ -2523,6 +2853,7 @@ impl AuthManager {
+@@ -2523,6 +2908,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -6436,7 +7084,7 @@ index 4e8f825ab2..88f2831fb3 100644
              enable_codex_api_key_env: false,
              auth_credentials_store_mode: AuthCredentialsStoreMode::File,
              keyring_backend_kind: AuthKeyringBackendKind::default(),
-@@ -2560,6 +2891,7 @@ impl AuthManager {
+@@ -2560,6 +2946,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -6444,7 +7092,7 @@ index 4e8f825ab2..88f2831fb3 100644
              enable_codex_api_key_env: false,
              auth_credentials_store_mode: AuthCredentialsStoreMode::File,
              keyring_backend_kind: AuthKeyringBackendKind::default(),
-@@ -2604,6 +2936,7 @@ impl AuthManager {
+@@ -2604,6 +2991,7 @@ impl AuthManager {
              auth_change_tx,
              auth_change_state_tx: watch::channel(AuthChangeState::default()).0,
              workspace_routing_resolver: OnceLock::new(),
@@ -6452,7 +7100,7 @@ index 4e8f825ab2..88f2831fb3 100644
              enable_codex_api_key_env: false,
              auth_credentials_store_mode: AuthCredentialsStoreMode::File,
              keyring_backend_kind: AuthKeyringBackendKind::default(),
-@@ -2630,6 +2963,9 @@ impl AuthManager {
+@@ -2630,6 +3018,9 @@ impl AuthManager {
  
      /// Current cached auth (clone) without attempting a refresh.
      pub fn auth_cached(&self) -> Option<CodexAuth> {
@@ -6462,7 +7110,7 @@ index 4e8f825ab2..88f2831fb3 100644
          self.inner
              .read()
              .ok()
-@@ -2701,6 +3037,15 @@ impl AuthManager {
+@@ -2701,6 +3092,15 @@ impl AuthManager {
      /// a guarded reload and then refreshes only if the on-disk auth is unchanged.
      #[instrument(level = "trace", skip_all)]
      pub async fn auth(&self) -> Option<CodexAuth> {
@@ -6478,7 +7126,7 @@ index 4e8f825ab2..88f2831fb3 100644
          if self.has_external_auth() {
              self.reload_inner().await.ok()?;
              return self.auth_cached();
-@@ -2719,7 +3064,12 @@ impl AuthManager {
+@@ -2719,7 +3119,12 @@ impl AuthManager {
      /// Refreshes auth, then captures credentials and their account-bound factory together.
      /// The auth read lock prevents an identity change between the two snapshots.
      pub async fn auth_with_http_client_factory(&self) -> Option<(CodexAuth, HttpClientFactory)> {
@@ -6492,7 +7140,7 @@ index 4e8f825ab2..88f2831fb3 100644
          let cached = self.inner.read().ok()?;
          Some((cached.auth.clone()?, self.http_client_factory()))
      }
-@@ -2732,6 +3082,17 @@ impl AuthManager {
+@@ -2732,6 +3137,17 @@ impl AuthManager {
          let Some(auth) = self.auth().await else {
              return Ok(None);
          };
@@ -6510,7 +7158,7 @@ index 4e8f825ab2..88f2831fb3 100644
          if policy == AgentIdentityAuthPolicy::ChatGptAuth && matches!(auth, CodexAuth::Chatgpt(_)) {
              let _bootstrap_permit = self
                  .agent_identity_lock
-@@ -2740,7 +3101,7 @@ impl AuthManager {
+@@ -2740,7 +3156,7 @@ impl AuthManager {
                  .map_err(std::io::Error::other)?;
              let effective_chatgpt_workspaces = self.effective_chatgpt_workspaces();
              let cooldown_key = ManagedChatGptAgentIdentityBinding::from_auth(
@@ -6519,7 +7167,7 @@ index 4e8f825ab2..88f2831fb3 100644
                  effective_chatgpt_workspaces.clone(),
              )
              .and_then(|binding| {
-@@ -3228,11 +3589,20 @@ impl AuthManager {
+@@ -3228,11 +3644,20 @@ impl AuthManager {
          &self,
          external_auth: Arc<dyn ExternalAuth>,
      ) -> Result<(), RefreshTokenError> {
@@ -6541,7 +7189,7 @@ index 4e8f825ab2..88f2831fb3 100644
          self.install_external_auth(external_auth).await
      }
  
-@@ -3253,7 +3623,11 @@ impl AuthManager {
+@@ -3253,7 +3678,11 @@ impl AuthManager {
      }
  
      pub fn clear_external_auth(&self) {
@@ -6554,11 +7202,11 @@ index 4e8f825ab2..88f2831fb3 100644
              return;
          }
          if let Ok(mut external_auth) = self.external_auth.write()
-@@ -3309,6 +3683,12 @@ impl AuthManager {
+@@ -3309,6 +3738,12 @@ impl AuthManager {
          self.external_auth_provider().is_some()
      }
  
-+    /// Whether first-party requests are owned by the personal credential authority.
++    /// Whether first-party requests are owned by the external credential authority.
 +    pub fn has_auth_helper(&self) -> bool {
 +        self.external_auth_provider()
 +            .is_some_and(|auth| auth.auth_helper().is_some())
@@ -6567,7 +7215,7 @@ index 4e8f825ab2..88f2831fb3 100644
      pub fn is_workload_identity_selected(&self) -> bool {
          self.workload_identity_selected
      }
-@@ -3410,6 +3790,13 @@ impl AuthManager {
+@@ -3410,6 +3845,13 @@ impl AuthManager {
          allowed_auth_modes: Option<Vec<AuthMode>>,
      ) -> Result<Arc<Self>, AuthManagerInitializationError> {
          let external_auth = WorkloadIdentityExternalAuth::from_process_config(&auth_config)?;
@@ -6581,7 +7229,7 @@ index 4e8f825ab2..88f2831fb3 100644
          let mut manager =
              Self::new_from_auth_config(auth_config, enable_codex_api_key_env, allowed_auth_modes)
                  .await;
-@@ -3420,9 +3807,222 @@ impl AuthManager {
+@@ -3420,9 +3862,222 @@ impl AuthManager {
                  .install_external_auth(Arc::new(external_auth))
                  .await?;
          }
@@ -6804,7 +7452,7 @@ index 4e8f825ab2..88f2831fb3 100644
      pub fn unauthorized_recovery(self: &Arc<Self>) -> UnauthorizedRecovery {
          UnauthorizedRecovery::new(Arc::clone(self))
      }
-@@ -3593,12 +4193,42 @@ impl AuthManager {
+@@ -3593,12 +4248,42 @@ impl AuthManager {
          result
      }
  
@@ -6851,7 +7499,7 @@ index 4e8f825ab2..88f2831fb3 100644
          let removed = logout_all_stores(
              &self.codex_home,
              self.auth_credentials_store_mode,
-@@ -3613,6 +4243,9 @@ impl AuthManager {
+@@ -3613,6 +4298,9 @@ impl AuthManager {
  
      pub async fn logout_with_revoke(&self) -> std::io::Result<bool> {
          self.ensure_logout_allowed()?;
@@ -6861,7 +7509,7 @@ index 4e8f825ab2..88f2831fb3 100644
          let auth_dot_json = self
              .auth_cached()
              .and_then(|auth| auth.get_current_auth_json());
-@@ -3633,6 +4266,14 @@ impl AuthManager {
+@@ -3633,6 +4321,14 @@ impl AuthManager {
      }
  
      fn ensure_logout_allowed(&self) -> std::io::Result<()> {
@@ -6876,7 +7524,7 @@ index 4e8f825ab2..88f2831fb3 100644
          if self.workload_identity_selected {
              return Err(std::io::Error::new(
                  std::io::ErrorKind::PermissionDenied,
-@@ -3658,6 +4299,9 @@ impl AuthManager {
+@@ -3658,6 +4354,9 @@ impl AuthManager {
      }
  
      fn proactive_refresh_reason(auth: &CodexAuth) -> Option<RefreshReason> {
@@ -6886,7 +7534,7 @@ index 4e8f825ab2..88f2831fb3 100644
          let chatgpt_auth = match auth {
              CodexAuth::Chatgpt(chatgpt_auth) => chatgpt_auth,
              _ => return None,
-@@ -3747,6 +4391,11 @@ impl AuthManager {
+@@ -3747,6 +4446,11 @@ impl AuthManager {
          tokens: TokenData,
          reason: RefreshReason,
      ) -> Result<(), RefreshTokenError> {
@@ -6898,7 +7546,7 @@ index 4e8f825ab2..88f2831fb3 100644
          let endpoint = refresh_token_endpoint(tokens.oauth_provenance.as_ref());
          let client_id = tokens
              .oauth_provenance
-@@ -3819,6 +4468,7 @@ impl AuthManager {
+@@ -3819,6 +4523,7 @@ impl AuthManager {
  
  fn auth_config_from(config: &impl AuthManagerConfig) -> AuthConfig {
      AuthConfig {
@@ -6908,10 +7556,10 @@ index 4e8f825ab2..88f2831fb3 100644
          keyring_backend_kind: config.auth_keyring_backend_kind(),
 diff --git a/codex-rs/login/src/auth/manager/application_network_refresh_tests.rs b/codex-rs/login/src/auth/manager/application_network_refresh_tests.rs
 new file mode 100644
-index 0000000000..eefb2713a9
+index 0000000000..b0e0c1704b
 --- /dev/null
 +++ b/codex-rs/login/src/auth/manager/application_network_refresh_tests.rs
-@@ -0,0 +1,352 @@
+@@ -0,0 +1,355 @@
 +use super::*;
 +use base64::Engine;
 +use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -7039,7 +7687,10 @@ index 0000000000..eefb2713a9
 +            .await
 +            .expect("refresh callback should start")
 +            .expect("refresh callback should report its request");
-+    assert_eq!(callback_auth.auth_helper_identity(), auth.auth_helper_identity());
++    assert_eq!(
++        callback_auth.auth_helper_identity(),
++        auth.auth_helper_identity()
++    );
 +    assert_eq!(callback_auth.get_account_id(), Some("account-a".into()));
 +    assert_eq!(callback_revision, policy.revision());
 +    assert!(!policy.is_available());
@@ -7277,24 +7928,27 @@ index f2298a59cf..067e4db4fe 100644
          auth_credentials_store_mode: AuthCredentialsStoreMode::File,
          keyring_backend_kind: AuthKeyringBackendKind::default(),
 diff --git a/codex-rs/login/src/auth/mod.rs b/codex-rs/login/src/auth/mod.rs
-index 7ea499ff3c..d622d97610 100644
+index 7ea499ff3c..815ec60c40 100644
 --- a/codex-rs/login/src/auth/mod.rs
 +++ b/codex-rs/login/src/auth/mod.rs
-@@ -16,6 +16,7 @@ mod workload_identity;
+@@ -13,12 +13,17 @@ mod storage;
+ mod util;
+ mod workload_identity;
+ 
++mod auth_helper;
  mod external_bearer;
  mod manager;
  mod revoke;
-+mod auth_helper;
  
  pub use api_key::is_fedramp_api_key;
  pub use auth_headers::AuthHeaders;
-@@ -29,4 +30,6 @@ pub use change_state::RequestAuthChange;
- pub use error::RefreshTokenFailedError;
- pub use error::RefreshTokenFailedReason;
- pub use manager::*;
-+pub use auth_helper::ChatgptAuthHelper;
 +pub use auth_helper::AuthHelperIdentity;
- pub use workload_identity::is_workload_identity_selected;
++pub use auth_helper::AuthHelperRegistration;
++pub use auth_helper::ChatgptAuthHelper;
++pub(crate) use auth_helper::helper_display_text as auth_helper_display_text;
+ pub use bedrock_access_keys::BedrockAccessKeysAuth;
+ pub use bedrock_access_keys::login_with_bedrock_access_keys;
+ pub use bedrock_api_key::BedrockApiKeyAuth;
 diff --git a/codex-rs/login/src/auth/workload_identity_tests.rs b/codex-rs/login/src/auth/workload_identity_tests.rs
 index adcfc458ce..188af2424a 100644
 --- a/codex-rs/login/src/auth/workload_identity_tests.rs
@@ -7307,6 +7961,24 @@ index adcfc458ce..188af2424a 100644
              },
              /*enable_codex_api_key_env*/ false,
          )
+diff --git a/codex-rs/login/src/device_code_auth.rs b/codex-rs/login/src/device_code_auth.rs
+index 14a8e57c2c..c875b231ec 100644
+--- a/codex-rs/login/src/device_code_auth.rs
++++ b/codex-rs/login/src/device_code_auth.rs
+@@ -223,7 +223,12 @@ pub async fn complete_device_code_login(
+         return Err(io::Error::new(io::ErrorKind::PermissionDenied, message));
+     }
+ 
+-    crate::server::persist_tokens_async(&opts, /*api_key*/ None, &tokens).await
++    if let Some(notice) =
++        crate::server::persist_tokens_async(&opts, /*api_key*/ None, &tokens).await?
++    {
++        eprintln!("{notice}");
++    }
++    Ok(())
+ }
+ 
+ pub async fn run_device_code_login(opts: ServerOptions) -> std::io::Result<()> {
 diff --git a/codex-rs/login/src/outbound_proxy.rs b/codex-rs/login/src/outbound_proxy.rs
 index 02e6b47baf..a2db414de8 100644
 --- a/codex-rs/login/src/outbound_proxy.rs
@@ -7325,7 +7997,7 @@ index 02e6b47baf..a2db414de8 100644
          if self.local_bootstrap_factory.is_none() {
              return self.http_client_factory.clone();
 diff --git a/codex-rs/login/src/server.rs b/codex-rs/login/src/server.rs
-index 98295d8cf8..22d035491e 100644
+index 98295d8cf8..2bdc7b3988 100644
 --- a/codex-rs/login/src/server.rs
 +++ b/codex-rs/login/src/server.rs
 @@ -87,6 +87,7 @@ static LOGIN_ERROR_PAGE_TEMPLATE: LazyLock<Template> = LazyLock::new(|| {
@@ -7344,43 +8016,126 @@ index 98295d8cf8..22d035491e 100644
              codex_home,
              client_id,
              issuer: DEFAULT_ISSUER.to_string(),
-@@ -845,6 +847,49 @@ pub(crate) async fn persist_tokens_async(
+@@ -448,17 +450,20 @@ async fn process_request(
+                         obtain_api_key(&client, &opts.issuer, &opts.client_id, &tokens.id_token)
+                             .await
+                             .ok();
+-                    if let Err(err) = persist_tokens_async(opts, api_key.clone(), &tokens).await {
+-                        eprintln!("Persist error: {err}");
+-                        return login_error_response(
+-                            "Sign-in completed but credentials could not be saved locally.",
+-                            io::ErrorKind::Other,
+-                            Some("persist_failed"),
+-                            Some(&err.to_string()),
+-                        );
+-                    }
+-
+-                    let redirect = compose_success_url(
++                    let helper_notice =
++                        match persist_tokens_async(opts, api_key.clone(), &tokens).await {
++                            Ok(notice) => notice,
++                            Err(err) => {
++                                eprintln!("Persist error: {err}");
++                                return login_error_response(
++                                    "Sign-in completed but credentials could not be saved locally.",
++                                    io::ErrorKind::Other,
++                                    Some("persist_failed"),
++                                    Some(&err.to_string()),
++                                );
++                            }
++                        };
++                    let mut redirect = compose_success_url(
+                         actual_port,
+                         &opts.issuer,
+                         &tokens.id_token,
+@@ -466,6 +471,10 @@ async fn process_request(
+                         opts.codex_streamlined_login,
+                         &opts.login_success_page,
+                     );
++                    if let Some(notice) = helper_notice {
++                        eprintln!("{notice}");
++                        redirect = with_auth_helper_notice(redirect, actual_port, &notice);
++                    }
+                     let url = match &redirect {
+                         LoginSuccessRedirect::Local(url) | LoginSuccessRedirect::Hosted(url) => url,
+                     };
+@@ -509,6 +518,14 @@ async fn process_request(
+             } else {
+                 include_str!("assets/success_legacy.html")
+             };
++            let helper_notice = parsed_url
++                .query_pairs()
++                .find(|(key, _)| key == AUTH_HELPER_NOTICE_QUERY_KEY)
++                .and_then(|(_, notice)| crate::auth::auth_helper_display_text(&notice));
++            let body = match helper_notice {
++                Some(notice) => success_page_with_auth_helper_notice(body, &notice),
++                None => body.to_string(),
++            };
+             HandledRequest::ResponseAndExit {
+                 headers: match Header::from_bytes(
+                     &b"Content-Type"[..],
+@@ -517,7 +534,7 @@ async fn process_request(
+                     Ok(header) => vec![header],
+                     Err(_) => Vec::new(),
+                 },
+-                body: body.as_bytes().to_vec(),
++                body: body.into_bytes(),
+                 result: Ok(()),
+             }
+         }
+@@ -832,11 +849,13 @@ async fn send_code_exchange_request(
+ }
+ 
+ /// Persists exchanged credentials using the configured local auth store.
++///
++/// Returns a notice the configured auth helper asked to show after enrollment.
+ pub(crate) async fn persist_tokens_async(
+     opts: &ServerOptions,
+     api_key: Option<String>,
+     exchanged: &ExchangedTokens,
+-) -> io::Result<()> {
++) -> io::Result<Option<String>> {
+     // Reuse existing synchronous logic but run it off the async runtime.
+     let codex_home = opts.codex_home.clone();
+     let auth_credentials_store_mode = opts.cli_auth_credentials_store_mode;
+@@ -845,6 +864,50 @@ pub(crate) async fn persist_tokens_async(
      let access_token = exchanged.access_token.clone();
      let refresh_token = exchanged.refresh_token.clone();
      let workspace_login = opts.workspace_login.clone();
 +    if let Some(argv) = &opts.chatgpt_auth_helper {
 +        let identity = parse_chatgpt_jwt_claims(&id_token)
 +            .map_err(|_| io::Error::other("ChatGPT auth helper login identity is invalid"))?;
-+        if !matches!(
-+            identity.get_chatgpt_plan_type_raw().as_deref(),
-+            Some("free" | "go" | "plus" | "pro" | "prolite")
-+        ) || identity.chatgpt_account_is_fedramp
-+        {
++        // FedRAMP accounts need a routing edge the auth helper transport does not provide.
++        // Which plans may enroll is the helper's decision.
++        if identity.chatgpt_account_is_fedramp {
 +            return Err(io::Error::other(
-+                "ChatGPT auth helper enrolls known personal ChatGPT plans only; disable rotation for managed login",
++                "The ChatGPT auth helper cannot enroll FedRAMP accounts",
 +            ));
 +        }
 +        let account_id = identity
 +            .chatgpt_account_id
 +            .ok_or_else(|| io::Error::other("ChatGPT auth helper login is missing its account"))?;
-+        crate::auth::ChatgptAuthHelper::new(argv.to_vec())?
-+            .rpc(serde_json::json!({
-+                "op": "register", "select": true,
-+                "auth": { "id_token": id_token, "access_token": access_token,
-+                    "refresh_token": refresh_token, "account_id": account_id },
-+            }))
-+            .await?;
-+        if crate::auth::load_auth_dot_json(
-+            &codex_home,
-+            auth_credentials_store_mode,
-+            keyring_backend_kind,
-+        )?
-+        .is_some_and(|stored| {
-+            !matches!(
-+                stored.resolved_mode(),
-+                AuthMode::Chatgpt | AuthMode::ChatgptAuthTokens
++        let registration = crate::auth::ChatgptAuthHelper::new(argv.to_vec())?
++            .register(
++                serde_json::json!({ "id_token": id_token, "access_token": access_token,
++                    "refresh_token": refresh_token, "account_id": account_id }),
++                /*select*/ true,
 +            )
-+        }) {
++            .await?;
++        // An enrollment the helper did not select leaves the previous login in use.
++        if registration.selected
++            && crate::auth::load_auth_dot_json(
++                &codex_home,
++                auth_credentials_store_mode,
++                keyring_backend_kind,
++            )?
++            .is_some_and(|stored| {
++                !matches!(
++                    stored.resolved_mode(),
++                    AuthMode::Chatgpt | AuthMode::ChatgptAuthTokens
++                )
++            })
++        {
 +            // Explicit ChatGPT login replaces a previous API-key/PAT login only
 +            // after the new credential authority has acknowledged registration.
 +            crate::auth::logout(
@@ -7389,13 +8144,78 @@ index 98295d8cf8..22d035491e 100644
 +                keyring_backend_kind,
 +            )?;
 +        }
-+        return Ok(());
++        return Ok(registration.notice);
 +    }
      let provenance = AccountOAuthProvenance {
          issuer: opts.issuer.clone(),
          client_id: opts.client_id.clone(),
+@@ -893,7 +956,8 @@ pub(crate) async fn persist_tokens_async(
+ 
+     persist_task
+         .await
+-        .map_err(|e| io::Error::other(format!("persist task failed: {e}")))?
++        .map_err(|e| io::Error::other(format!("persist task failed: {e}")))??;
++    Ok(None)
+ }
+ 
+ /// Validates the ID token against an optional workspace restriction.
+@@ -935,6 +999,37 @@ pub(crate) fn ensure_workspace_account_allowed(
+ }
+ 
+ /// Builds a terminal callback response for login failures.
++const AUTH_HELPER_NOTICE_QUERY_KEY: &str = "auth_helper_notice";
++
++/// Carries the auth helper's enrollment notice to the local success page, keeping its
++/// other parameters. The hosted success page cannot show it, so the local page replaces it.
++fn with_auth_helper_notice(
++    redirect: LoginSuccessRedirect,
++    port: u16,
++    notice: &str,
++) -> LoginSuccessRedirect {
++    let url = match redirect {
++        LoginSuccessRedirect::Local(url) => url,
++        LoginSuccessRedirect::Hosted(_) => format!("http://127.0.0.1:{port}/success"),
++    };
++    let Ok(mut parsed) = url::Url::parse(&url) else {
++        return LoginSuccessRedirect::Local(url);
++    };
++    parsed
++        .query_pairs_mut()
++        .append_pair(AUTH_HELPER_NOTICE_QUERY_KEY, notice);
++    LoginSuccessRedirect::Local(parsed.into())
++}
++
++/// Adds the auth helper's enrollment notice to the local success page.
++fn success_page_with_auth_helper_notice(page: &str, notice: &str) -> String {
++    let notice = format!(
++        "<p id=\"auth-helper-notice\" style=\"max-width:40rem;margin:1.5rem auto;text-align:center\">{}</p></body>",
++        html_escape(notice)
++    );
++    page.replacen("</body>", &notice, 1)
++}
++
+ fn login_error_response(
+     message: &str,
+     kind: io::ErrorKind,
+diff --git a/codex-rs/login/src/test_support.rs b/codex-rs/login/src/test_support.rs
+index 09d6964d9b..6690890582 100644
+--- a/codex-rs/login/src/test_support.rs
++++ b/codex-rs/login/src/test_support.rs
+@@ -42,6 +42,12 @@ pub async fn auth_manager_with_agent_identity() -> std::io::Result<Arc<AuthManag
+     )))
+ }
+ 
++/// Builds credentials exactly as the external ChatGPT auth helper adapter does from a snapshot.
++pub fn auth_helper_snapshot_auth(snapshot: serde_json::Value) -> std::io::Result<CodexAuth> {
++    let snapshot = serde_json::from_value(snapshot).map_err(std::io::Error::other)?;
++    CodexAuth::from_auth_helper_snapshot(snapshot, /*previous*/ None)
++}
++
+ /// Returns auth routing that preserves the transport's built-in proxy behavior.
+ pub fn transport_default_auth_route_config() -> AuthRouteConfig {
+     AuthRouteConfig::from_http_client_factory(HttpClientFactory::new(
 diff --git a/codex-rs/login/tests/suite/login_server_e2e.rs b/codex-rs/login/tests/suite/login_server_e2e.rs
-index 13195803df..62cf23b86c 100644
+index 13195803df..3471032be9 100644
 --- a/codex-rs/login/tests/suite/login_server_e2e.rs
 +++ b/codex-rs/login/tests/suite/login_server_e2e.rs
 @@ -139,6 +139,7 @@ async fn end_to_end_login_flow_persists_auth_json() -> Result<()> {
@@ -7470,6 +8290,213 @@ index 13195803df..62cf23b86c 100644
          codex_home: second_codex_home,
          cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
          auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
+@@ -742,3 +751,206 @@ async fn cancels_previous_login_server_when_port_is_in_use() -> Result<()> {
+         .expect_err("second login server should report cancellation");
+     Ok(())
+ }
++
++/// Serves one token exchange whose identity token carries `auth_claims`.
++#[cfg(unix)]
++fn start_mock_issuer_with_auth_claims(
++    auth_claims: serde_json::Value,
++) -> (SocketAddr, thread::JoinHandle<()>) {
++    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
++    let addr = listener.local_addr().unwrap();
++    let server = tiny_http::Server::from_listener(listener, None).unwrap();
++    let handle = thread::spawn(move || {
++        while let Ok(req) = server.recv() {
++            if !req.url().starts_with("/oauth/token") {
++                let _ = req
++                    .respond(tiny_http::Response::from_string("not found").with_status_code(404));
++                continue;
++            }
++            let b64 = |b: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b);
++            let payload = serde_json::json!({
++                "email": "user@example.com",
++                "https://api.openai.com/auth": auth_claims,
++            });
++            let id_token = format!(
++                "{}.{}.{}",
++                b64(br#"{"alg":"none","typ":"JWT"}"#),
++                b64(&serde_json::to_vec(&payload).unwrap()),
++                b64(b"sig")
++            );
++            let tokens = serde_json::json!({
++                "id_token": id_token,
++                "access_token": "access-123",
++                "refresh_token": "refresh-123",
++            });
++            let mut resp = tiny_http::Response::from_data(serde_json::to_vec(&tokens).unwrap());
++            resp.add_header(
++                tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
++                    .expect("header bytes should be valid"),
++            );
++            let _ = req.respond(resp);
++        }
++    });
++    (addr, handle)
++}
++
++/// Runs one browser login through a synthetic auth helper that records its request.
++#[cfg(unix)]
++async fn auth_helper_login(
++    auth_claims: serde_json::Value,
++    helper_response: serde_json::Value,
++    existing_auth: Option<serde_json::Value>,
++) -> Result<(
++    codex_http_client::HttpResponse,
++    Option<String>,
++    io::Result<LoginCallbackResult>,
++    tempfile::TempDir,
++)> {
++    let (issuer_addr, _issuer) = start_mock_issuer_with_auth_claims(auth_claims);
++    let tmp = tempdir()?;
++    let codex_home = tmp.path().to_path_buf();
++    let response_path = codex_home.join("helper-response.json");
++    std::fs::write(&response_path, serde_json::to_vec(&helper_response)?)?;
++    if let Some(existing_auth) = existing_auth {
++        std::fs::write(
++            codex_home.join("auth.json"),
++            serde_json::to_vec(&existing_auth)?,
++        )?;
++    }
++    let helper = vec![
++        "/bin/sh".to_string(),
++        "-c".to_string(),
++        r#"IFS= read -r request; printf '%s' "$request" > "$2"; cat "$1""#.to_string(),
++        "auth-helper-test".to_string(),
++        response_path.display().to_string(),
++        codex_home.join("helper-request.json").display().to_string(),
++    ];
++    let opts = ServerOptions {
++        chatgpt_auth_helper: Some(helper),
++        codex_home: codex_home.clone(),
++        cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
++        auth_route_config: codex_login::test_support::transport_default_auth_route_config(),
++        client_id: codex_login::CLIENT_ID.to_string(),
++        issuer: format!("http://{}:{}", issuer_addr.ip(), issuer_addr.port()),
++        port: 0,
++        open_browser: false,
++        force_state: Some("helper_state".to_string()),
++        workspace_login: None,
++        forced_chatgpt_workspace_id: None,
++        codex_streamlined_login: false,
++        auth_keyring_backend_kind: AuthKeyringBackendKind::Direct,
++        login_success_page: LoginSuccessPage::Local,
++    };
++    let server = run_login_server(opts)?;
++    let port = server.actual_port;
++    let client = HttpClientBuilder::new()
++        .without_redirects()
++        .build_direct()?;
++    let mut response = client
++        .get(format!(
++            "http://127.0.0.1:{port}/auth/callback?code=abc&state=helper_state"
++        ))
++        .send()
++        .await?;
++    let mut location = None;
++    if response.status() == 302 {
++        let target = response.headers()["location"].to_str()?.to_string();
++        response = client.get(&target).send().await?;
++        location = Some(target);
++    }
++    let result = server.block_until_done_with_callback_result().await;
++    Ok((response, location, result, tmp))
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn auth_helper_login_forwards_workspace_plans_and_shows_the_enrollment_notice() -> Result<()>
++{
++    skip_if_no_network!(Ok(()));
++    let notice = "Enrolled work without selecting it; switch to it with your helper.";
++    let (response, location, result, home) = auth_helper_login(
++        serde_json::json!({
++            "chatgpt_plan_type": "business",
++            "chatgpt_account_id": "workspace-account",
++            "chatgpt_user_id": "workspace-user",
++        }),
++        serde_json::json!({"version": 1, "ok": true, "account_key": "work",
++            "selected": false, "notice": notice}),
++        Some(serde_json::json!({"auth_mode": "apikey", "OPENAI_API_KEY": "sk-existing"})),
++    )
++    .await?;
++    assert!(response.status().is_success());
++    let page = response.text().await?;
++    assert!(page.contains(notice), "{page}");
++    // The notice rides along with the normal success-page parameters.
++    let location = Url::parse(&location.expect("success redirect"))?;
++    let query = location
++        .query_pairs()
++        .collect::<std::collections::HashMap<_, _>>();
++    assert_eq!(location.path(), "/success");
++    assert_eq!(
++        query.get("auth_helper_notice").map(|v| v.as_ref()),
++        Some(notice)
++    );
++    assert!(query.contains_key("needs_setup"), "{location}");
++    result?;
++    let request: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
++        home.path().join("helper-request.json"),
++    )?)?;
++    assert_eq!(request["op"], "register");
++    assert_eq!(request["select"], true);
++    assert_eq!(request["auth"]["account_id"], "workspace-account");
++    // An enrollment the helper left unselected keeps the previous API-key login.
++    assert_eq!(
++        serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(
++            home.path().join("auth.json")
++        )?)?,
++        serde_json::json!({"auth_mode": "apikey", "OPENAI_API_KEY": "sk-existing"})
++    );
++    Ok(())
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn auth_helper_login_refuses_fedramp_before_calling_the_helper() -> Result<()> {
++    skip_if_no_network!(Ok(()));
++    let (response, _location, result, home) = auth_helper_login(
++        serde_json::json!({
++            "chatgpt_plan_type": "enterprise",
++            "chatgpt_account_id": "fedramp-account",
++            "chatgpt_user_id": "fedramp-user",
++            "chatgpt_account_is_fedramp": true,
++        }),
++        serde_json::json!({"version": 1, "ok": true, "account_key": "must-not-enroll"}),
++        /*existing_auth*/ None,
++    )
++    .await?;
++    let page = response.text().await?;
++    assert!(page.contains("FedRAMP"), "{page}");
++    assert!(result.is_err());
++    assert!(!home.path().join("helper-request.json").exists());
++    Ok(())
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn auth_helper_login_refusal_shows_the_helper_message() -> Result<()> {
++    skip_if_no_network!(Ok(()));
++    let refusal = "Unknown plans and FedRAMP workspaces are excluded from enrollment.";
++    let (response, _location, result, home) = auth_helper_login(
++        serde_json::json!({
++            "chatgpt_plan_type": "future-plan",
++            "chatgpt_account_id": "future-account",
++            "chatgpt_user_id": "future-user",
++        }),
++        serde_json::json!({"version": 1, "ok": false,
++            "error": {"code": "invalid_request", "message": refusal}}),
++        /*existing_auth*/ None,
++    )
++    .await?;
++    let page = response.text().await?;
++    assert!(page.contains(refusal), "{page}");
++    assert!(result.is_err());
++    assert!(home.path().join("helper-request.json").exists());
++    Ok(())
++}
 diff --git a/codex-rs/model-provider/src/auth.rs b/codex-rs/model-provider/src/auth.rs
 index 78c2497907..a294a4e95c 100644
 --- a/codex-rs/model-provider/src/auth.rs
@@ -7537,16 +8564,17 @@ index daf061505e..2acabd38bb 100644
      fn account_state(&self) -> ProviderAccountResult;
  
 diff --git a/codex-rs/model-provider/src/request_setup.rs b/codex-rs/model-provider/src/request_setup.rs
-index 2fc3ce4a8d..4a1e1c2504 100644
+index 2fc3ce4a8d..342e1a061e 100644
 --- a/codex-rs/model-provider/src/request_setup.rs
 +++ b/codex-rs/model-provider/src/request_setup.rs
-@@ -19,6 +19,9 @@ use codex_login::AuthOwner;
+@@ -18,7 +18,10 @@ use codex_login::AuthManager;
+ use codex_login::AuthOwner;
  use codex_login::CodexAuth;
  use codex_login::default_client::ClientRedirectPolicy;
- use codex_login::default_client::create_client_for_route;
-+use codex_login::default_client::create_client_for_route_with_residency;
 +use codex_login::default_client::RESIDENCY_HEADER_NAME;
 +use codex_login::default_client::ResidencyRequirement;
+ use codex_login::default_client::create_client_for_route;
++use codex_login::default_client::create_client_for_route_with_residency;
  use codex_model_provider_info::GatewayOAuthConfig;
  use codex_model_provider_info::ModelProviderInfo;
  use codex_protocol::error::Result;
@@ -7590,6 +8618,65 @@ index 2fc3ce4a8d..4a1e1c2504 100644
          .map_err(std::io::Error::from)?;
          Ok(ReqwestTransport::from_http_client(client))
      }
+diff --git a/codex-rs/protocol/src/account.rs b/codex-rs/protocol/src/account.rs
+index efc4f3b13a..06df7fd447 100644
+--- a/codex-rs/protocol/src/account.rs
++++ b/codex-rs/protocol/src/account.rs
+@@ -91,6 +91,13 @@ impl PlanType {
+             || self.is_education_like()
+             || matches!(self, Self::Enterprise | Self::Sci | Self::SciPlus)
+     }
++
++    /// Whether the workspace administrator's cloud configuration bundle applies to this plan.
++    pub fn requires_managed_config(self) -> bool {
++        self.is_business_like()
++            || self.is_education_like()
++            || matches!(self, Self::Enterprise | Self::Sci | Self::SciPlus)
++    }
+ }
+ 
+ impl From<AuthPlanType> for PlanType {
+@@ -242,6 +249,40 @@ mod tests {
+         assert_eq!(PlanType::Pro.is_workspace_account(), false);
+     }
+ 
++    #[test]
++    fn managed_config_applies_to_every_workspace_plan_except_team_like_plans() {
++        let managed = [
++            PlanType::Business,
++            PlanType::Ent26,
++            PlanType::EnterpriseCbpAutomation,
++            PlanType::EnterpriseCbpUsageBased,
++            PlanType::Enterprise,
++            PlanType::Edu,
++            PlanType::EduPlus,
++            PlanType::EduPro,
++            PlanType::Sci,
++            PlanType::SciPlus,
++        ];
++        for plan in managed {
++            assert!(plan.requires_managed_config(), "{plan:?}");
++        }
++        let unmanaged = [
++            PlanType::Free,
++            PlanType::Go,
++            PlanType::Plus,
++            PlanType::Pro,
++            PlanType::ProLite,
++            PlanType::ProMax,
++            PlanType::Team,
++            PlanType::SelfServeBusinessProLite,
++            PlanType::SelfServeBusinessUsageBased,
++            PlanType::Unknown,
++        ];
++        for plan in unmanaged {
++            assert!(!plan.requires_managed_config(), "{plan:?}");
++        }
++    }
++
+     #[test]
+     fn auth_plan_type_converts_to_account_plan_type() {
+         assert_eq!(
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
 index d6b3187c4b..c473e02356 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
@@ -7602,3 +8689,420 @@ index d6b3187c4b..c473e02356 100644
          web_search_mode: Constrained::allow_any(WebSearchMode::Disabled),
          web_search_config: None,
          experimental_request_user_input_enabled: true,
+diff --git a/codex-rs/tui/src/app/account_status.rs b/codex-rs/tui/src/app/account_status.rs
+index 944950586a..500cbf8a75 100644
+--- a/codex-rs/tui/src/app/account_status.rs
++++ b/codex-rs/tui/src/app/account_status.rs
+@@ -6,6 +6,8 @@ use crate::app_event::AppEvent;
+ use crate::app_server_session::AppServerSession;
+ use codex_app_server_protocol::Account;
+ use codex_app_server_protocol::ClientRequest;
++use codex_app_server_protocol::GetAccountCredentialNoticeParams;
++use codex_app_server_protocol::GetAccountCredentialNoticeResponse;
+ use codex_app_server_protocol::GetAccountParams;
+ use codex_app_server_protocol::GetAccountResponse;
+ use codex_app_server_protocol::RequestId;
+@@ -13,6 +15,37 @@ use std::time::Duration;
+ use uuid::Uuid;
+ 
+ impl App {
++    /// Reads the credential helper's notice for the current account without blocking input.
++    /// Servers without the experimental method simply show no notice.
++    pub(super) fn refresh_credential_notice(&self, app_server: &AppServerSession) {
++        let generation = self.chat_widget.credential_notice_generation();
++        let request_handle = app_server.request_handle();
++        let app_event_tx = self.app_event_tx.clone();
++        tokio::spawn(async move {
++            let request_id = Uuid::new_v4();
++            let result = tokio::time::timeout(
++                Duration::from_secs(/*secs*/ 30),
++                request_handle.request_typed::<GetAccountCredentialNoticeResponse>(
++                    ClientRequest::GetAccountCredentialNotice {
++                        request_id: RequestId::String(format!(
++                            "account-credential-notice-{request_id}"
++                        )),
++                        params: GetAccountCredentialNoticeParams {},
++                    },
++                ),
++            )
++            .await;
++            let notice = match result {
++                Ok(Ok(response)) => response.notice,
++                Ok(Err(_)) | Err(_) => {
++                    tracing::debug!("credential notice unavailable for the current account");
++                    None
++                }
++            };
++            app_event_tx.send(AppEvent::AccountCredentialNoticeLoaded { generation, notice });
++        });
++    }
++
+     pub(super) fn refresh_account_email(&mut self, app_server: &AppServerSession) {
+         let request_id = Uuid::new_v4();
+         self.account_email_request_id = Some(request_id);
+diff --git a/codex-rs/tui/src/app/app_server_events.rs b/codex-rs/tui/src/app/app_server_events.rs
+index ec755c0641..8185945b0e 100644
+--- a/codex-rs/tui/src/app/app_server_events.rs
++++ b/codex-rs/tui/src/app/app_server_events.rs
+@@ -292,6 +292,12 @@ impl App {
+             return;
+         }
+         self.handle_agent_picker_visibility_notification(app_server_client, &notification);
++        if matches!(&notification, ServerNotification::TurnCompleted(_))
++            && self.chat_widget.has_chatgpt_account()
++        {
++            // A same-account credential refresh can change its notice without an account update.
++            self.refresh_credential_notice(app_server_client);
++        }
+ 
+         if let ServerNotification::ThreadStarted(started) = &notification
+             && let SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+@@ -450,6 +456,7 @@ impl App {
+                     has_codex_backend_auth,
+                 );
+                 if self.chat_widget.has_chatgpt_account() {
++                    self.refresh_credential_notice(app_server_client);
+                     self.refresh_account_email(app_server_client);
+                     crate::security_setup::prefetch(
+                         &self.config,
+diff --git a/codex-rs/tui/src/app/backend_selection.rs b/codex-rs/tui/src/app/backend_selection.rs
+index bd9f2ee8b8..66b293224a 100644
+--- a/codex-rs/tui/src/app/backend_selection.rs
++++ b/codex-rs/tui/src/app/backend_selection.rs
+@@ -557,6 +557,9 @@ impl App {
+             bootstrap.has_chatgpt_account,
+             matches!(bootstrap.auth_mode, Some(TelemetryAuthMode::Chatgpt)),
+         );
++        if self.chat_widget.has_chatgpt_account() {
++            self.refresh_credential_notice(destination);
++        }
+     }
+ 
+     pub(super) async fn cancel_cloud_inventory_refresh(&mut self, session: &AppServerSession) {
+diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
+index 8759183f4c..ddf7367b39 100644
+--- a/codex-rs/tui/src/app/event_dispatch.rs
++++ b/codex-rs/tui/src/app/event_dispatch.rs
+@@ -1767,6 +1767,9 @@ impl App {
+                         elicitation_target: None,
+                     });
+             }
++            AppEvent::AccountCredentialNoticeLoaded { generation, notice } => {
++                self.chat_widget.on_credential_notice_loaded(generation, notice);
++            }
+             AppEvent::AccountEmailLoaded { request_id, email, workspace, plan_type } => {
+                 if self.account_email_request_id == Some(request_id) {
+                     self.account_email_request_id = None;
+diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
+index c31cf3bde2..a6ae153c2b 100644
+--- a/codex-rs/tui/src/app/reconnect.rs
++++ b/codex-rs/tui/src/app/reconnect.rs
+@@ -670,6 +670,7 @@ impl App {
+             matches!(bootstrap.auth_mode, Some(TelemetryAuthMode::Chatgpt)),
+         );
+         if self.chat_widget.has_chatgpt_account() {
++            self.refresh_credential_notice(app_server);
+             crate::security_setup::prefetch(
+                 &self.config,
+                 app_server,
+diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
+index c31d25d9a6..25a683de9d 100644
+--- a/codex-rs/tui/src/app/startup.rs
++++ b/codex-rs/tui/src/app/startup.rs
+@@ -1325,6 +1325,7 @@ See the Codex keymap documentation for supported actions and examples."
+         // already has data and available reset credits can be surfaced, without
+         // delaying the initial frame render.
+         if requires_openai_auth && has_chatgpt_account {
++            app.refresh_credential_notice(&app_server);
+             crate::security_setup::prefetch(
+                 &app.config,
+                 &app_server,
+diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
+index 3fbcd34487..e2287fee62 100644
+--- a/codex-rs/tui/src/app_event.rs
++++ b/codex-rs/tui/src/app_event.rs
+@@ -357,6 +357,12 @@ impl CapturedSideWork {
+ #[derive(Debug, IntoStaticStr)]
+ pub(crate) enum AppEvent {
+     StatuslineRead(crate::chatwidget::StatuslineReadEvent),
++    /// The credential helper's notice for the account active when the read started.
++    AccountCredentialNoticeLoaded {
++        generation: u64,
++        notice: Option<String>,
++    },
++
+     AccountEmailLoaded {
+         request_id: uuid::Uuid,
+         email: Option<String>,
+diff --git a/codex-rs/tui/src/bottom_pane/chat_composer.rs b/codex-rs/tui/src/bottom_pane/chat_composer.rs
+index 7d2181769e..e000a67d1b 100644
+--- a/codex-rs/tui/src/bottom_pane/chat_composer.rs
++++ b/codex-rs/tui/src/bottom_pane/chat_composer.rs
+@@ -830,6 +830,7 @@ impl ChatComposer {
+                 status_line_command_lines: None,
+                 status_line_enabled: false,
+                 side_conversation_context_label: None,
++                credential_notice: None,
+                 active_agent_label: None,
+                 external_editor_key: default_keymap
+                     .primary_hint(KeymapContext::Global, "open_external_editor"),
+diff --git a/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs b/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
+index 070a02304d..95fb20443a 100644
+--- a/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
++++ b/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
+@@ -446,6 +446,8 @@ pub(super) struct FooterState {
+     pub(super) status_line_command_lines: Option<Vec<Line<'static>>>,
+     pub(super) status_line_enabled: bool,
+     pub(super) side_conversation_context_label: Option<String>,
++    /// Credential helper notice shown while the current account is in use.
++    pub(super) credential_notice: Option<String>,
+     pub(super) active_agent_label: Option<String>,
+     pub(super) external_editor_key: Option<ShortcutHint>,
+     pub(super) show_transcript_key: Option<ShortcutHint>,
+diff --git a/codex-rs/tui/src/bottom_pane/chat_composer/passive_hints.rs b/codex-rs/tui/src/bottom_pane/chat_composer/passive_hints.rs
+index 51ce6f3fec..cb36c1e9d8 100644
+--- a/codex-rs/tui/src/bottom_pane/chat_composer/passive_hints.rs
++++ b/codex-rs/tui/src/bottom_pane/chat_composer/passive_hints.rs
+@@ -26,6 +26,7 @@ enum Kind {
+     Plan,
+     Goal,
+     Ide,
++    Credential,
+     Context,
+     Warning,
+ }
+@@ -144,6 +145,7 @@ impl Hints {
+             (Plan, Some(1)),
+             (Warning, Some(1)),
+             (Ide, Some(1)),
++            (Credential, Some(1)),
+             (Action, Some(1)),
+             (Warning, Some(2)),
+             (Agents, None),
+@@ -176,8 +178,8 @@ impl Hints {
+             }
+         }
+         for kind in [
+-            Action, Side, Shell, Vim, Plan, Goal, Ide, Warning, Context, SideNav, AgentName,
+-            Agents, Shortcuts,
++            Action, Side, Shell, Vim, Plan, Goal, Credential, Ide, Warning, Context, SideNav,
++            AgentName, Agents, Shortcuts,
+         ] {
+             if !overflow[kind.row(two)] {
+                 continue;
+@@ -232,6 +234,22 @@ impl Hints {
+     }
+ }
+ 
++const CREDENTIAL_NOTICE_SHORT_CHARS: usize = 32;
++
++/// The full notice, then a shortened form that narrow footers can still fit.
++fn credential_notice_lines(notice: &str) -> Vec<Line<'static>> {
++    let full = Line::from(notice.to_string().yellow());
++    if notice.chars().count() <= CREDENTIAL_NOTICE_SHORT_CHARS {
++        return vec![full];
++    }
++    let mut short = notice
++        .chars()
++        .take(CREDENTIAL_NOTICE_SHORT_CHARS - 1)
++        .collect::<String>();
++    short.push('…');
++    vec![full, Line::from(short.yellow())]
++}
++
+ fn shortcut(key: key_hint::ShortcutHint, action: &'static str) -> Line<'static> {
+     let mut line = Line::from(key.spans());
+     line.push_span(action.set_style(crate::style::secondary_text_style()));
+@@ -278,6 +296,9 @@ impl ChatComposer {
+                 goal_status_indicator_line(self.footer.goal_status_indicator.as_ref()),
+             );
+         }
++        if let Some(notice) = &self.footer.credential_notice {
++            hints.add(Credential, credential_notice_lines(notice));
++        }
+         if self.footer.ide_context_active {
+             hints.add(
+                 Ide,
+diff --git a/codex-rs/tui/src/bottom_pane/chat_composer/status_surface.rs b/codex-rs/tui/src/bottom_pane/chat_composer/status_surface.rs
+index 0010c7af28..1e9ae8ca4e 100644
+--- a/codex-rs/tui/src/bottom_pane/chat_composer/status_surface.rs
++++ b/codex-rs/tui/src/bottom_pane/chat_composer/status_surface.rs
+@@ -61,6 +61,14 @@ impl ChatComposer {
+         true
+     }
+ 
++    pub(crate) fn set_credential_notice(&mut self, notice: Option<String>) -> bool {
++        if self.footer.credential_notice == notice {
++            return false;
++        }
++        self.footer.credential_notice = notice;
++        true
++    }
++
+     pub(crate) fn set_side_conversation_context_label(&mut self, label: Option<String>) -> bool {
+         if self.footer.side_conversation_context_label == label {
+             return false;
+diff --git a/codex-rs/tui/src/bottom_pane/chat_composer/status_surface_tests.rs b/codex-rs/tui/src/bottom_pane/chat_composer/status_surface_tests.rs
+index 0466015f8d..7c6be909ba 100644
+--- a/codex-rs/tui/src/bottom_pane/chat_composer/status_surface_tests.rs
++++ b/codex-rs/tui/src/bottom_pane/chat_composer/status_surface_tests.rs
+@@ -856,6 +856,28 @@ fn footer_layout_in_fullscreen_and_scrollback() {
+     insta::assert_snapshot!(frames.join("\n---\n"));
+ }
+ 
++#[test]
++fn credential_notice_stays_in_the_passive_footer_and_shortens_when_narrow() {
++    let mut composer = composer();
++    composer.set_status_line_enabled(/*enabled*/ false);
++    let notice = "Organization account work: workspace admin policies not applied.";
++    assert!(composer.set_credential_notice(Some(notice.to_string())));
++    assert!(!composer.set_credential_notice(Some(notice.to_string())));
++    let (text, _) = render(&composer, /*width*/ 120, /*footer*/ None);
++    assert!(text.lines().last().unwrap().contains(notice), "{text}");
++    let (text, _) = render(&composer, /*width*/ 48, /*footer*/ None);
++    assert!(
++        text.lines()
++            .last()
++            .unwrap()
++            .contains("Organization account work: work…"),
++        "{text}"
++    );
++    assert!(composer.set_credential_notice(/*notice*/ None));
++    let (text, _) = render(&composer, /*width*/ 120, /*footer*/ None);
++    assert!(!text.contains("Organization account"), "{text}");
++}
++
+ #[test]
+ fn active_side_action_keeps_plan_expanded_on_the_other_row() {
+     let mut composer = composer();
+diff --git a/codex-rs/tui/src/bottom_pane/mod.rs b/codex-rs/tui/src/bottom_pane/mod.rs
+index 47d095c61d..55ba9c6ab0 100644
+--- a/codex-rs/tui/src/bottom_pane/mod.rs
++++ b/codex-rs/tui/src/bottom_pane/mod.rs
+@@ -2710,6 +2710,13 @@ impl BottomPane {
+             self.request_redraw();
+         }
+     }
++
++    /// Shows the credential helper's notice in the passive footer while its account is active.
++    pub(crate) fn set_credential_notice(&mut self, notice: Option<String>) {
++        if self.composer.set_credential_notice(notice) {
++            self.request_redraw();
++        }
++    }
+ }
+ 
+ struct ChatComposerPresentation<'a> {
+diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
+index 450a2c7af5..ea0686e21a 100644
+--- a/codex-rs/tui/src/chatwidget.rs
++++ b/codex-rs/tui/src/chatwidget.rs
+@@ -626,6 +626,9 @@ pub(crate) struct ChatWidget {
+     backend_banner_notice_model: Option<String>,
+     // Remember the account's Reserve entry notice across chats and transient banner refreshes.
+     luna_reserve_notice_account_id: Option<String>,
++    // The credential helper's notice for the current account; the generation rejects stale reads.
++    credential_notice: Option<String>,
++    credential_notice_generation: u64,
+     pub(crate) warning_display_state: WarningDisplayState,
+     pub(crate) composer_images: Option<crate::transcript_image::composer::ComposerImages>,
+     pub(crate) rendered_selection: std::cell::RefCell<crate::rendered_selection::RenderedSelection>,
+diff --git a/codex-rs/tui/src/chatwidget/backend_banners.rs b/codex-rs/tui/src/chatwidget/backend_banners.rs
+index 1bff1eaf56..207c623d7e 100644
+--- a/codex-rs/tui/src/chatwidget/backend_banners.rs
++++ b/codex-rs/tui/src/chatwidget/backend_banners.rs
+@@ -297,6 +297,8 @@ impl ChatWidget {
+         previous.observe_backend_banner_view();
+         self.backend_banner_state = std::mem::take(&mut previous.backend_banner_state);
+         self.luna_reserve_notice_account_id = previous.luna_reserve_notice_account_id.take();
++        self.credential_notice_generation = previous.credential_notice_generation;
++        self.set_credential_notice(previous.credential_notice.take());
+         self.backend_banner_state.dismissed |= self.reserve_notice_already_shown();
+         // The task list can use a different local provider from the chat whose quota it inherits.
+         self.inherited_quota_provider = Some(previous.quota_provider_id().to_owned());
+diff --git a/codex-rs/tui/src/chatwidget/constructor.rs b/codex-rs/tui/src/chatwidget/constructor.rs
+index ff97b0f3ba..a570e2fc88 100644
+--- a/codex-rs/tui/src/chatwidget/constructor.rs
++++ b/codex-rs/tui/src/chatwidget/constructor.rs
+@@ -196,6 +196,8 @@ impl ChatWidget {
+             automatic_model_switch_state: backend_banners::AutomaticModelSwitchState::default(),
+             backend_banner_notice_model: None,
+             luna_reserve_notice_account_id: None,
++            credential_notice: None,
++            credential_notice_generation: 0,
+             warning_display_state: WarningDisplayState::default(),
+             composer_images: None,
+             rendered_selection: Default::default(),
+diff --git a/codex-rs/tui/src/chatwidget/settings.rs b/codex-rs/tui/src/chatwidget/settings.rs
+index 59dc81e1ca..a31eb98410 100644
+--- a/codex-rs/tui/src/chatwidget/settings.rs
++++ b/codex-rs/tui/src/chatwidget/settings.rs
+@@ -237,6 +237,28 @@ impl ChatWidget {
+         }
+     }
+ 
++    /// Identifies the account a credential notice read belongs to.
++    pub(crate) fn credential_notice_generation(&self) -> u64 {
++        self.credential_notice_generation
++    }
++
++    /// Applies a credential notice read unless the account changed after it started.
++    pub(crate) fn on_credential_notice_loaded(&mut self, generation: u64, notice: Option<String>) {
++        if generation == self.credential_notice_generation {
++            self.set_credential_notice(notice);
++        }
++    }
++
++    #[cfg(test)]
++    pub(crate) fn credential_notice(&self) -> Option<&str> {
++        self.credential_notice.as_deref()
++    }
++
++    pub(super) fn set_credential_notice(&mut self, notice: Option<String>) {
++        self.credential_notice = notice.clone();
++        self.bottom_pane.set_credential_notice(notice);
++    }
++
+     pub(crate) fn current_plan_type(&self) -> Option<PlanType> {
+         self.plan_type
+     }
+@@ -267,6 +289,8 @@ impl ChatWidget {
+         self.clear_pending_rate_limit_reset_requests();
+         self.clear_backend_banner();
+         self.luna_reserve_notice_account_id = None;
++        self.credential_notice_generation = self.credential_notice_generation.wrapping_add(1);
++        self.set_credential_notice(/*notice*/ None);
+         self.automatic_model_switch_state = backend_banners::AutomaticModelSwitchState::default();
+         self.input_queue.rate_limit_recovery_pending = false;
+         self.add_credits_nudge_email_in_flight = None;
+diff --git a/codex-rs/tui/src/chatwidget/tests/backend_banners_tests.rs b/codex-rs/tui/src/chatwidget/tests/backend_banners_tests.rs
+index 1f6b4d0fcc..9f35a7fbe7 100644
+--- a/codex-rs/tui/src/chatwidget/tests/backend_banners_tests.rs
++++ b/codex-rs/tui/src/chatwidget/tests/backend_banners_tests.rs
+@@ -436,3 +436,26 @@ async fn backend_banner_changed_remedy_keeps_fallback_until_applicable_replaceme
+         );
+     }
+ }
++
++#[tokio::test]
++async fn credential_notice_is_scoped_to_the_account_that_requested_it() {
++    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
++    let first = chat.credential_notice_generation();
++    chat.on_credential_notice_loaded(first, Some("Workspace policies not applied.".into()));
++    assert_eq!(
++        chat.credential_notice(),
++        Some("Workspace policies not applied.")
++    );
++
++    chat.update_account_state(
++        /*status_account_display*/ None, /*plan_type*/ None,
++        /*has_chatgpt_account*/ true, /*has_codex_backend_auth*/ true,
++    );
++    assert_eq!(chat.credential_notice(), None);
++    // A read that started for the previous account must not label the new one.
++    chat.on_credential_notice_loaded(first, Some("Workspace policies not applied.".into()));
++    assert_eq!(chat.credential_notice(), None);
++    let second = chat.credential_notice_generation();
++    chat.on_credential_notice_loaded(second, Some("Second account notice.".into()));
++    assert_eq!(chat.credential_notice(), Some("Second account notice."));
++}
