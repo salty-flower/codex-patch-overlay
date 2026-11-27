@@ -55,7 +55,8 @@ Normal command completion removes the per-process alias directory; upstream's `-
 
 ## Personal account switching
 
-Account switching is opt-in through `codex_rotate_helper`.
+Account switching is opt-in through `chatgpt_auth_helper`.
+The key was named `codex_rotate_helper` through `codex-0.171.0-patch.1`; the old name is now ignored as an unknown key and no longer enables the helper.
 The `codex-rotate` helper is a separate dependency, included in neither the release tarballs nor this Nix overlay.
 Its maintained source currently lives in the private machine-state repository; obtain access or supply a compatible version-1 helper separately.
 With access to a machine-state checkout, build its exported `codex-rotate` flake package on `aarch64-darwin` or `x86_64-linux`:
@@ -73,7 +74,7 @@ Create a helper settings file, for example `/absolute/path/codex-rotate.json`:
 Add this top-level key to your Codex `config.toml`, using the installed helper's absolute executable path:
 
 ```toml
-codex_rotate_helper = ["/absolute/path/bin/codex-rotate", "--config", "/absolute/path/codex-rotate.json", "rpc"]
+chatgpt_auth_helper = ["/absolute/path/bin/codex-rotate", "--config", "/absolute/path/codex-rotate.json", "rpc"]
 ```
 
 Run the patched `codex login` or `codex login --device-auth` to enroll and select a fresh account directly through the helper.

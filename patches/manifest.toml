@@ -91,9 +91,9 @@ owner = "local"
 notes = "Detect silent Responses WebSocket loss with correlated protocol Ping/Pong probes: a 15-second heartbeat, one end-to-end five-second budget covering queueing, Ping write and Pong response, an immediate probe before reuse, and a sleep-aware wall/monotonic clock comparison that requires fresh post-resume evidence. Mismatched, late, or pre-suspend Pong frames cannot satisfy another probe; explicit successful probes advance the heartbeat schedule, and data frames received during a probe retain their order. Failed pumps are treated as closed; core invalidation clears socket-bound incremental continuation state before reconnecting with full local context. In-flight liveness recovery is surfaced on the first retry without logging credentials or request headers."
 
 [[patches]]
-name = "codex-rotate"
+name = "chatgpt-auth-helper"
 enabled = true
-file = "patches/codex-rotate.patch"
+file = "patches/chatgpt-auth-helper.patch"
 upstream_base = "rust-v0.172.0"
 upstream_sha = "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
 source_hash = "sha256-MDLBCNRb/1DNPZWegnF2yFDQU4IdSsgQcYOh0JV3EN8="

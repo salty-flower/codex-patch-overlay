@@ -248,4 +248,4 @@ jobs:
           set -euo pipefail
           cargo nextest run --no-fail-fast --test-threads 1 --test all \
             -p codex-core -p codex-app-server -p codex-login \
-            -E 'test(rotate_) or test(account_rotate) or test(login_server) or test(responses_websocket_blackholed_reuse_reconnects_with_full_context)'
+            -E 'test(auth_helper) or test(helper_step) or test(login_server) or test(responses_websocket_blackholed_reuse_reconnects_with_full_context)'
