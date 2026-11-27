@@ -1,11 +1,11 @@
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index a83022f433..572f25b5b0 100644
+index 766afaa4fc..af3f6f1298 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -1348,6 +1348,13 @@ impl App {
+@@ -1332,6 +1332,13 @@ impl App {
              _ => {}
          }
-
+ 
 +        if matches!(&event, TuiEvent::Resume) {
 +            // Tokio's monotonic timer does not advance while the machine sleeps;
 +            // force a wall-clock reconciliation so deadlines missed during suspend
@@ -17,10 +17,10 @@ index a83022f433..572f25b5b0 100644
              event,
              TuiEvent::Draw | TuiEvent::Resume | TuiEvent::Resize(_) | TuiEvent::FocusGained
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index d63fffd5ff..c75ba18827 100644
+index 1f85a4ed0c..d2efa46b0b 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -3915,6 +3915,30 @@ impl App {
+@@ -3927,6 +3927,30 @@ impl App {
                  self.chat_widget
                      .submit_user_message_with_mode(text, collaboration_mode);
              }
@@ -52,13 +52,13 @@ index d63fffd5ff..c75ba18827 100644
                  self.chat_widget.handle_manage_skills_closed();
              }
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 24592bfe7d..98f4689af1 100644
+index e49a439619..788aede5a3 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -1855,6 +1855,20 @@ pub(crate) enum AppEvent {
+@@ -1859,6 +1859,20 @@ pub(crate) enum AppEvent {
          collaboration_mode: CollaborationModeMask,
      },
-
+ 
 +    /// A scheduled follow-up prompt reached its due time.
 +    ScheduledQueueDue {
 +        thread_id: ThreadId,
@@ -75,9 +75,9 @@ index 24592bfe7d..98f4689af1 100644
 +
      /// Open the approval popup.
      FullScreenApprovalRequest(ApprovalRequest),
-
+ 
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 22205141b8..ca36d5df14 100644
+index bbc8ca19fd..0baed77aff 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
 @@ -284,6 +284,7 @@ mod provider_error;
@@ -96,7 +96,7 @@ index 22205141b8..ca36d5df14 100644
  mod skills;
  mod slash_command_args;
  mod slash_dispatch;
-@@ -725,6 +727,8 @@ pub(crate) struct ChatWidget {
+@@ -726,6 +728,8 @@ pub(crate) struct ChatWidget {
      input_queue: InputQueueState,
      /// Hold this conversation's queued input until its reply stream is usable.
      pub(crate) thread_stream_disconnected: bool,
@@ -106,10 +106,10 @@ index 22205141b8..ca36d5df14 100644
      safety_buffering_source: UserMessageSource,
      /// Main chat-surface bindings resolved from `tui.keymap.chat`.
 diff --git a/codex-rs/tui/src/chatwidget/constructor.rs b/codex-rs/tui/src/chatwidget/constructor.rs
-index f27e7c4801..24ed71d2f0 100644
+index 1e4a4cd4ab..90b05b1569 100644
 --- a/codex-rs/tui/src/chatwidget/constructor.rs
 +++ b/codex-rs/tui/src/chatwidget/constructor.rs
-@@ -263,6 +263,8 @@ impl ChatWidget {
+@@ -269,6 +269,8 @@ impl ChatWidget {
              interrupted_turn_notice_mode: InterruptedTurnNoticeMode::Default,
              input_queue: InputQueueState::default(),
              thread_stream_disconnected: false,
@@ -149,7 +149,7 @@ index 7762f9884d..76eea79c9d 100644
 @@ -358,6 +366,81 @@ impl ChatWidget {
          submitted_follow_up
      }
-
+ 
 +    pub(super) fn schedule_user_message_at(
 +        &mut self,
 +        user_message: UserMessage,
@@ -230,7 +230,7 @@ index 7762f9884d..76eea79c9d 100644
              || self.input_queue.user_turn_pending_start
 @@ -376,7 +459,7 @@ impl ChatWidget {
      }
-
+ 
      /// Rebuild and update the bottom-pane pending-input preview.
 -    pub(super) fn refresh_pending_input_preview(&mut self) {
 +    pub(crate) fn refresh_pending_input_preview(&mut self) {
@@ -245,7 +245,7 @@ index 7762f9884d..76eea79c9d 100644
 +        // scheduler drops removed/replaced item identities before its next wake.
 +        self.sync_scheduled_queue();
      }
-
+ 
      pub(crate) fn submit_user_message_with_mode(
 diff --git a/codex-rs/tui/src/chatwidget/input_queue.rs b/codex-rs/tui/src/chatwidget/input_queue.rs
 index 68ceb8c1f0..d7d82290b8 100644
@@ -253,19 +253,19 @@ index 68ceb8c1f0..d7d82290b8 100644
 +++ b/codex-rs/tui/src/chatwidget/input_queue.rs
 @@ -4,6 +4,10 @@
  //! apply UI/protocol effects around a focused reducer-style state bag.
-
+ 
  use std::collections::VecDeque;
 +use std::time::Instant;
 +
 +use chrono::DateTime;
 +use chrono::Local;
-
+ 
  use super::MessageDelivery;
  use super::PendingSteer;
 @@ -100,16 +104,48 @@ impl InputQueueState {
          self.rate_limit_recovery_pending = false;
      }
-
+ 
 +    pub(super) fn pop_next_ready_queued_user_message(
 +        &mut self,
 +        now: Instant,
@@ -316,7 +316,7 @@ index 68ceb8c1f0..d7d82290b8 100644
 @@ -136,6 +172,24 @@ impl InputQueueState {
      }
  }
-
+ 
 +fn format_countdown(target: DateTime<Local>, now: DateTime<Local>) -> String {
 +    let remaining = target.signed_duration_since(now);
 +    let total_secs = remaining.num_seconds();
@@ -341,7 +341,7 @@ index 68ceb8c1f0..d7d82290b8 100644
 @@ -174,6 +228,99 @@ mod tests {
          );
      }
-
+ 
 +    #[test]
 +    fn next_ready_queued_message_waits_for_scheduled_time() {
 +        let mut state = InputQueueState::default();
@@ -445,7 +445,7 @@ index 1e6b4705a1..100e3b8f90 100644
 @@ -256,21 +256,14 @@ impl ChatWidget {
          }
      }
-
+ 
 -    pub(super) fn pop_next_queued_user_message(
 +    pub(super) fn pop_next_ready_queued_user_message(
          &mut self,
@@ -1053,7 +1053,7 @@ index 0000000000..ad99fcdaf6
 +    }
 +}
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index f985b03356..ef8619571d 100644
+index b4fd5e2232..f6e5cd671c 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 @@ -16,6 +16,7 @@ use crate::bottom_pane::slash_commands::SlashCommandItem;
@@ -1061,7 +1061,7 @@ index f985b03356..ef8619571d 100644
  use crate::goal_display::GOAL_USAGE;
  use crate::goal_files::GoalDraft;
 +use chrono::Local;
-
+ 
  #[derive(Clone, Copy, Debug, PartialEq, Eq)]
  enum SlashCommandDispatchSource {
 @@ -38,6 +39,8 @@ const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str =
@@ -1071,7 +1071,7 @@ index f985b03356..ef8619571d 100644
 +const SCHEDULE_USAGE: &str = "Usage:\n  /later <delay> <prompt>\n  /later HH:MM[:SS] <prompt>\n  /later YYYY-MM-DD HH:MM[:SS] <prompt>\n\
 +     Delay: 10m, 1h30m, 90s, 1h2m3s (bare number = minutes)";
  const USAGE_CHATGPT_LOGIN_REQUIRED: &str = "Sign in with ChatGPT to use /usage.";
-
+ 
  impl ChatWidget {
 @@ -367,6 +370,9 @@ impl ChatWidget {
                      self.defer_input_until_settings_applied();
@@ -1083,7 +1083,7 @@ index f985b03356..ef8619571d 100644
              SlashCommand::Rename => {
                  self.session_telemetry
                      .counter("codex.thread.rename", /*inc*/ 1, &[]);
-@@ -981,6 +987,29 @@ impl ChatWidget {
+@@ -983,6 +989,29 @@ impl ChatWidget {
                      Some(trimmed.to_string()),
                  );
              }
@@ -1113,7 +1113,7 @@ index f985b03356..ef8619571d 100644
              SlashCommand::Plan if !trimmed.is_empty() => {
                  let plan_available = self.apply_plan_slash_command();
                  let mut user_message = self.prepared_inline_user_message(
-@@ -1349,6 +1378,7 @@ impl ChatWidget {
+@@ -1351,6 +1380,7 @@ impl ChatWidget {
              | SlashCommand::Diff
              | SlashCommand::App
              | SlashCommand::Rename
@@ -1122,7 +1122,7 @@ index f985b03356..ef8619571d 100644
              | SlashCommand::Recap
              | SlashCommand::TestApproval => QueueDrain::Continue,
 diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index f9de576cda..f3b2844761 100644
+index 7efdd8b90e..e9d7c46d81 100644
 --- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 @@ -454,6 +454,10 @@ async fn parent_owned_thread_preserves_queued_input_before_draining() {
@@ -1163,7 +1163,7 @@ index 9963b63b0c..086308fe35 100644
 +
 +use chrono::DateTime;
 +use chrono::Local;
-
+ 
  use crate::bottom_pane::LocalImageAttachment;
  use crate::bottom_pane::MentionBinding;
 @@ -84,6 +88,11 @@ pub(super) struct QueuedUserMessage {
@@ -1176,7 +1176,7 @@ index 9963b63b0c..086308fe35 100644
 +    /// Stable identity used by the owned scheduler and editable queue actions.
 +    pub(super) schedule_id: Option<uuid::Uuid>,
  }
-
+ 
  impl QueuedUserMessage {
 @@ -102,12 +111,43 @@ impl QueuedUserMessage {
              delivery: MessageDelivery::Unsent,
@@ -1188,7 +1188,7 @@ index 9963b63b0c..086308fe35 100644
 +            schedule_id: None,
          }
      }
-
+ 
 +    pub(super) fn scheduled_for(mut self, not_before: Instant) -> Self {
 +        self.not_before = Some(not_before);
 +        self
@@ -1220,7 +1220,7 @@ index 9963b63b0c..086308fe35 100644
 +                .is_some_and(|target| wall_now >= target)
 +    }
  }
-
+ 
  impl From<UserMessage> for QueuedUserMessage {
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
 index 443f26d8eb..a62477bcf9 100644

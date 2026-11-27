@@ -1,8 +1,8 @@
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index eb511b87ab..77bffe3124 100644
+index eb1afb6029..d6d751d04f 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -841,6 +841,40 @@ pub struct TuiNotificationSettings {
+@@ -854,6 +854,40 @@ pub struct TuiNotificationSettings {
      /// regardless of focus. Defaults to `unfocused`.
      #[serde(default, rename = "notification_condition")]
      pub condition: NotificationCondition,
@@ -41,13 +41,13 @@ index eb511b87ab..77bffe3124 100644
 +        }
 +    }
  }
-
+ 
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index b99d4360b0..8969395cfd 100644
+index 83704a7df6..83c6a036ce 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -5730,6 +5730,18 @@
+@@ -5796,6 +5796,18 @@
            "default": "auto",
            "description": "Notification method to use for terminal notifications. Defaults to `auto`."
          },
@@ -66,7 +66,7 @@ index b99d4360b0..8969395cfd 100644
          "notifications": {
            "allOf": [
              {
-@@ -7056,6 +7068,25 @@
+@@ -7140,6 +7152,25 @@
        },
        "type": "object"
      },
@@ -93,11 +93,11 @@ index b99d4360b0..8969395cfd 100644
        "additionalProperties": false,
        "description": "Pager context keybindings for transcript and static overlays.",
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 96b86fce61..c02b59004e 100644
+index b05be8aaa0..8ce48be31a 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -14437,3 +14437,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
-
+@@ -14490,3 +14490,37 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
+ 
      Ok(())
  }
 +
@@ -135,10 +135,10 @@ index 96b86fce61..c02b59004e 100644
 +    assert_eq!(sound.command, None);
 +}
 diff --git a/codex-rs/tui/src/app/agents_overview.rs b/codex-rs/tui/src/app/agents_overview.rs
-index 0db25eff23..977e1932f9 100644
+index 5cbf8cf457..ab14b00fac 100644
 --- a/codex-rs/tui/src/app/agents_overview.rs
 +++ b/codex-rs/tui/src/app/agents_overview.rs
-@@ -1056,6 +1056,7 @@ impl App {
+@@ -1065,6 +1065,7 @@ impl App {
              tui.set_notification_settings(
                  self.local_settings.tui.notification_settings.method,
                  self.local_settings.tui.notification_settings.condition,
@@ -171,10 +171,10 @@ index 50e03c80d2..06aac494bc 100644
      app.chat_widget.open_config_panel();
      app.chat_widget.handle_key_event(KeyCode::Right.into());
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 03adb8aa61..cd0bf27a0a 100644
+index f3c9709580..dbd6917b75 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -2067,6 +2067,7 @@ impl App {
+@@ -2107,6 +2107,7 @@ impl App {
          tui.set_notification_settings(
              self.local_settings.tui.notification_settings.method,
              self.local_settings.tui.notification_settings.condition,
@@ -183,7 +183,7 @@ index 03adb8aa61..cd0bf27a0a 100644
          self.file_search
              .update_search_dir(self.config.cwd.to_path_buf());
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index a5664d2c22..6957714733 100644
+index d1fb8e0ac1..c31d25d9a6 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
 @@ -353,6 +353,7 @@ impl App {
@@ -192,13 +192,13 @@ index a5664d2c22..6957714733 100644
              local_settings.tui.notification_settings.condition,
 +            local_settings.tui.notification_settings.sound.clone(),
          );
-
+ 
          let harness_overrides = startup_try!(normalize_harness_overrides_for_cwd(
 diff --git a/codex-rs/tui/src/app/working_directory.rs b/codex-rs/tui/src/app/working_directory.rs
-index 7a3a7966fb..d4fc487777 100644
+index 5fcb614a8a..fe027d62af 100644
 --- a/codex-rs/tui/src/app/working_directory.rs
 +++ b/codex-rs/tui/src/app/working_directory.rs
-@@ -588,7 +588,7 @@ impl App {
+@@ -593,7 +593,7 @@ impl App {
          self.file_search
              .update_search_dir(self.config.cwd.to_path_buf());
          let notify = &self.local_settings.tui.notification_settings;
@@ -215,9 +215,9 @@ index 260c026ab7..19e4bc14ce 100644
  mod bel;
  mod osc;
 +mod sound;
-
+ 
  use std::io;
-
+ 
  use bel::BelBackend;
  use codex_config::types::NotificationMethod;
 +use codex_config::types::TuiNotificationSoundConfig;
@@ -227,13 +227,13 @@ index 260c026ab7..19e4bc14ce 100644
  use osc::OscBackend;
  use osc::OscProtocol;
 +use sound::play_notification_sound;
-
+ 
  #[derive(Debug)]
  pub enum DesktopNotificationBackend {
 @@ -51,10 +54,29 @@ impl DesktopNotificationBackend {
      }
  }
-
+ 
 +pub fn notify_with_sound(
 +    backend: &mut DesktopNotificationBackend,
 +    message: &str,
@@ -252,7 +252,7 @@ index 260c026ab7..19e4bc14ce 100644
  pub fn detect_backend(method: NotificationMethod) -> DesktopNotificationBackend {
      DesktopNotificationBackend::for_method(method)
  }
-
+ 
 +fn should_play_notification_sound(method: NotificationMethod) -> bool {
 +    method != NotificationMethod::Bel
 +}
@@ -271,7 +271,7 @@ index 260c026ab7..19e4bc14ce 100644
 @@ -97,6 +120,19 @@ mod tests {
          }
      }
-
+ 
 +    #[test]
 +    fn skips_extra_sound_for_bel_notifications() {
 +        assert_eq!(
@@ -814,7 +814,7 @@ index 6bd03f234f..0d4ec15055 100644
  use codex_config::types::NotificationCondition;
  use codex_config::types::NotificationMethod;
 +use codex_config::types::TuiNotificationSoundConfig;
-
+ 
  mod alternate_screen;
  mod event_stream;
 @@ -755,6 +757,7 @@ pub struct Tui {
@@ -843,11 +843,11 @@ index 6bd03f234f..0d4ec15055 100644
          self.notification_condition = condition;
 +        self.notification_sound = sound;
      }
-
+ 
      pub(crate) fn set_notification_condition(&mut self, condition: NotificationCondition) {
 @@ -1127,7 +1133,7 @@ impl Tui {
          };
-
+ 
          let message = message.as_ref().to_string();
 -        match backend.notify(&message) {
 +        match notify_with_sound(backend, &message, &self.notification_sound) {

@@ -3,9 +3,9 @@ index 2bf87d342b..731ed42173 100644
 --- a/codex-rs/tui/src/bottom_pane/request_user_input/render_tests.rs
 +++ b/codex-rs/tui/src/bottom_pane/request_user_input/render_tests.rs
 @@ -30,8 +30,12 @@ fn halfwidth_sound_marks_are_truncated_and_rendered_at_a_grapheme_boundary() {
-
+ 
      Paragraph::new(lines.to_vec()).render(area, &mut buf);
-
+ 
 +    // Rust versions differ in whether Debug escapes these combining marks.
 +    let debug_lines = format!("{lines:#?}")
 +        .replace('\u{ff9e}', "\\u{ff9e}")
@@ -44,13 +44,13 @@ index 1efcc1a62e..5729003a85 100644
      ]),
  ]
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 67707e691f..55403b6b3f 100644
+index 450a2c7af5..18471b9cc1 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1850,6 +1850,13 @@ impl ChatWidget {
+@@ -1852,6 +1852,13 @@ impl ChatWidget {
          self.bottom_pane.is_task_running()
      }
-
+ 
 +    #[cfg(test)]
 +    pub(crate) fn freeze_status_timer_for_snapshot_for_test(&mut self) {
 +        self.bottom_pane.set_status_timer_origin(Some(
@@ -62,7 +62,7 @@ index 67707e691f..55403b6b3f 100644
          let enabled = self.bottom_pane.toggle_vim_enabled();
          let message = if enabled {
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-index 838363ffc2..b94fb36ef7 100644
+index f2cabb6d07..bfb15172b2 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 @@ -643,7 +643,7 @@ async fn exec_end_without_begin_does_not_flush_unrelated_running_exploring_cell(
@@ -93,26 +93,26 @@ index 838363ffc2..b94fb36ef7 100644
      assert_chatwidget_snapshot!(
          "unified_exec_unknown_end_with_active_exploring_cell",
 diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-index 917f1ad904..126bcb1e23 100644
+index fdc8c4758b..7ad71ba20d 100644
 --- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-@@ -5886,6 +5886,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5889,6 +5889,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          ),
      );
      reveal_running_hooks(&mut chat);
 +    chat.freeze_status_timer_for_snapshot_for_test();
      let exec_and_hook_running = hook_status_frame(&chat, /*width*/ 80);
-
+ 
      end_exec(&mut chat, begin, "done", "", /*exit_code*/ 0);
-@@ -5893,6 +5894,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5896,6 +5897,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          .iter()
          .map(|lines| lines_to_single_string(lines))
          .collect::<String>();
 +    chat.freeze_status_timer_for_snapshot_for_test();
      let hook_running_after_exec = hook_status_frame(&chat, /*width*/ 80);
-
+ 
      handle_hook_completed(
-@@ -5905,6 +5907,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5908,6 +5910,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          ),
      );
      assert!(drain_insert_history(&mut rx).is_empty());
@@ -120,11 +120,11 @@ index 917f1ad904..126bcb1e23 100644
      let quiet_hook_completed = hook_status_frame(&chat, /*width*/ 80);
      expire_quiet_hook_linger(&mut chat);
      assert!(chat.active_hook_cell.is_none());
-@@ -5914,6 +5917,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
+@@ -5917,6 +5920,7 @@ async fn running_hook_does_not_displace_active_exec_cell() {
          format!(
              "exec running:\n{exec_running}\nexec and hook running:\n{exec_and_hook_running}\nhistory after exec:\n{history_after_exec}\nhook running after exec:\n{hook_running_after_exec}\nquiet hook completed:\n{quiet_hook_completed}"
          )
 +        .replace('◦', "•")
      );
  }
-
+ 

@@ -1,8 +1,8 @@
 diff --git a/codex-rs/codex-api/src/common.rs b/codex-rs/codex-api/src/common.rs
-index 4e62543456..bbcdd24859 100644
+index f0967efebd..0760ad6b89 100644
 --- a/codex-rs/codex-api/src/common.rs
 +++ b/codex-rs/codex-api/src/common.rs
-@@ -125,6 +125,10 @@ pub enum ResponseEvent {
+@@ -208,6 +208,10 @@ pub enum ResponseEvent {
      /// Emitted when the server includes `OpenAI-Model` on the stream response.
      /// This can differ from the requested model when backend safety routing applies.
      ServerModel(String),
@@ -14,10 +14,10 @@ index 4e62543456..bbcdd24859 100644
      ModelVerifications(Vec<ModelVerification>),
      /// Emitted when the server includes moderation metadata for first-party turn presentation.
 diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-index 56781f2fe9..e0faa6022e 100644
+index 4ba33be0d2..c5a3b78dcb 100644
 --- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 +++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-@@ -1296,6 +1296,7 @@ async fn run_websocket_response_stream(
+@@ -1320,6 +1320,7 @@ async fn run_websocket_response_stream(
                      continue;
                  }
                  let model = event.response_model();
@@ -25,7 +25,7 @@ index 56781f2fe9..e0faa6022e 100644
                  // Preserve terminal usage before any accompanying notification can block.
                  let event = match process_responses_event(event) {
                      Ok(Some(event @ ResponseEvent::Completed { .. })) => {
-@@ -1312,6 +1313,11 @@ async fn run_websocket_response_stream(
+@@ -1336,6 +1337,11 @@ async fn run_websocket_response_stream(
                          .await;
                      last_server_model = Some(model);
                  }
@@ -38,13 +38,13 @@ index 56781f2fe9..e0faa6022e 100644
                      let _ = tx_event.send(Ok(metadata_event)).await;
                  }
 diff --git a/codex-rs/codex-api/src/sse/responses.rs b/codex-rs/codex-api/src/sse/responses.rs
-index eafc92dd69..93ead1c23e 100644
+index 5cf63ecd7d..a03e680ab4 100644
 --- a/codex-rs/codex-api/src/sse/responses.rs
 +++ b/codex-rs/codex-api/src/sse/responses.rs
 @@ -213,6 +213,22 @@ impl ResponsesStreamEvent {
          }
      }
-
+ 
 +    /// Returns `response.model` from a `response.created` event.
 +    ///
 +    /// The body names the model that served the request even when no `OpenAI-Model` header
@@ -64,7 +64,7 @@ index eafc92dd69..93ead1c23e 100644
      pub(crate) fn turn_state(&self) -> Option<String> {
          if self.kind() != "response.metadata" {
              return None;
-@@ -685,6 +701,14 @@ async fn process_sse_with_treatment(
+@@ -680,6 +696,14 @@ async fn process_sse_with_treatment(
              }
              last_server_model = Some(model);
          }
@@ -79,19 +79,19 @@ index eafc92dd69..93ead1c23e 100644
          for metadata_event in metadata_events {
              if tx_event.send(Ok(metadata_event)).await.is_err() {
                  return;
-@@ -1677,7 +1701,7 @@ mod tests {
+@@ -1712,7 +1736,7 @@ mod tests {
      }
-
+ 
      #[tokio::test]
 -    async fn process_sse_ignores_response_model_field_in_payload() {
 +    async fn process_sse_reports_body_model_separately_from_server_model() {
          let events = run_sse(vec![
              json!({
                  "type": "response.created",
-@@ -1696,10 +1720,16 @@ mod tests {
+@@ -1731,10 +1755,16 @@ mod tests {
          ])
          .await;
-
+ 
 -        assert_eq!(events.len(), 2);
 -        assert_matches!(&events[0], ResponseEvent::Created { .. });
 +        // The body model never becomes a header-backed `ServerModel`, and only
@@ -121,13 +121,13 @@ index 3750c82674..159da0e4be 100644
              | ResponseEvent::TurnModerationMetadata(_)
              | ResponseEvent::GuardianAssessment(_)
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 40ae712248..da80a6b292 100644
+index 0bbe95859a..4b130a83c2 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -4865,6 +4865,34 @@ impl Session {
+@@ -4968,6 +4968,34 @@ impl Session {
          true
      }
-
+ 
 +    /// Warns when the response body names a model other than the requested one.
 +    ///
 +    /// The server can substitute the model without sending an `OpenAI-Model` header, notably on
@@ -160,10 +160,10 @@ index 40ae712248..da80a6b292 100644
          self: &Arc<Self>,
          turn_context: &Arc<TurnContext>,
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index bdaf044948..3290312268 100644
+index c17d1af223..e42931681a 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -3558,6 +3558,19 @@ async fn try_run_sampling_request(
+@@ -3631,6 +3631,19 @@ async fn try_run_sampling_request(
                          .store(true, Ordering::Relaxed);
                  }
              }
@@ -184,10 +184,10 @@ index bdaf044948..3290312268 100644
                  if !turn_context
                      .model_verification_emitted
 diff --git a/codex-rs/core/src/turn_timing.rs b/codex-rs/core/src/turn_timing.rs
-index f666d7fcc7..f6a416ea11 100644
+index 12b3a4c1ce..cf979f69bc 100644
 --- a/codex-rs/core/src/turn_timing.rs
 +++ b/codex-rs/core/src/turn_timing.rs
-@@ -528,6 +528,7 @@ fn response_event_records_turn_ttft(event: &ResponseEvent) -> bool {
+@@ -536,6 +536,7 @@ fn response_event_records_turn_ttft(event: &ResponseEvent) -> bool {
          | ResponseEvent::ReasoningContentDelta { .. } => true,
          ResponseEvent::Created { .. }
          | ResponseEvent::ServerModel(_)
@@ -202,7 +202,7 @@ index 30485660d3..a4e9ff4bbc 100644
 @@ -284,6 +284,104 @@ async fn openai_model_header_mismatch_only_emits_one_warning_per_turn() -> Resul
      Ok(())
  }
-
+ 
 +fn response_created_with_model(id: &str, model: &str) -> serde_json::Value {
 +    serde_json::json!({
 +        "type": "response.created",
@@ -305,10 +305,10 @@ index 30485660d3..a4e9ff4bbc 100644
  async fn openai_model_header_casing_only_mismatch_does_not_warn() -> Result<()> {
      skip_if_no_network!(Ok(()));
 diff --git a/codex-rs/otel/src/events/session_telemetry.rs b/codex-rs/otel/src/events/session_telemetry.rs
-index 61d6248a6e..77e58443c0 100644
+index 14ad832dc6..278bd48fea 100644
 --- a/codex-rs/otel/src/events/session_telemetry.rs
 +++ b/codex-rs/otel/src/events/session_telemetry.rs
-@@ -1462,6 +1462,7 @@ impl SessionTelemetry {
+@@ -1478,6 +1478,7 @@ impl SessionTelemetry {
                  "reasoning_summary_part_added".into()
              }
              ResponseEvent::ServerModel(_) => "server_model".into(),

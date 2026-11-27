@@ -1,8 +1,8 @@
 diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-index 4ced74352d..56781f2fe9 100644
+index af2786b659..4ba33be0d2 100644
 --- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
 +++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
-@@ -35,7 +35,10 @@ use serde_json::map::Map as JsonMap;
+@@ -36,7 +36,10 @@ use serde_json::map::Map as JsonMap;
  use std::future::Future;
  use std::sync::Arc;
  use std::sync::OnceLock;
@@ -13,8 +13,8 @@ index 4ced74352d..56781f2fe9 100644
  use tokio::sync::Mutex;
  use tokio::sync::mpsc;
  use tokio::sync::oneshot;
-@@ -74,6 +77,10 @@ enum WsCommand {
-         message: Message,
+@@ -81,6 +84,10 @@ enum WsCommand {
+         request: WsRequestText,
          tx_result: oneshot::Sender<Result<(), WsError>>,
      },
 +    Probe {
@@ -22,12 +22,12 @@ index 4ced74352d..56781f2fe9 100644
 +        tx_result: oneshot::Sender<Result<(), String>>,
 +    },
  }
-
+ 
  /// Send large Responses turns as one text message with backpressure between frames.
-@@ -106,68 +113,227 @@ async fn send_message(
+@@ -113,74 +120,236 @@ async fn send_message(
      Ok(())
  }
-
+ 
 +enum WsPumpEvent {
 +    Command(Option<WsCommand>),
 +    Message(Option<Result<Message, WsError>>),
@@ -93,7 +93,7 @@ index 4ced74352d..56781f2fe9 100644
 +    {
          let (tx_command, mut rx_command) = mpsc::channel::<WsCommand>(32);
          let (tx_message, rx_message) = mpsc::unbounded_channel::<Result<Message, WsError>>();
-
+ 
          let pump_task = tokio::spawn(async move {
              let mut inner = inner;
 +            let mut pending_probe: Option<PendingProbe> = None;
@@ -140,6 +140,21 @@ index 4ced74352d..56781f2fe9 100644
 +                        Err(err) => {
 +                            let _ = tx_message.send(Err(err));
                              break;
+-                        };
+-                        match command {
+-                            WsCommand::Send { request, tx_result } => {
+-                                let send = send_message(&mut inner, Message::Text(request.text));
+-                                // Tungstenite traces frame payloads from inside this future.
+-                                let result = if request.private {
+-                                    send.with_subscriber(tracing::Dispatch::none()).await
+-                                } else {
+-                                    send.await
+-                                };
+-                                let should_break = result.is_err();
+-                                let _ = tx_result.send(result);
+-                                if should_break {
+-                                    break;
+-                                }
 +                        }
 +                    }
 +                    next_heartbeat = Instant::now() + liveness.heartbeat_interval;
@@ -161,23 +176,23 @@ index 4ced74352d..56781f2fe9 100644
 +                }
 +
 +                match event {
-+                    WsPumpEvent::Command(Some(WsCommand::Send { message, tx_result })) => {
++                    WsPumpEvent::Command(Some(WsCommand::Send { request, tx_result })) => {
++                        let send = async {
++                            let send = send_message(&mut inner, Message::Text(request.text));
++                            // Tungstenite traces frame payloads from inside this future.
++                            if request.private {
++                                send.with_subscriber(tracing::Dispatch::none()).await
++                            } else {
++                                send.await
+                             }
++                        };
 +                        let result = if let Some(probe) = pending_probe.as_ref() {
-+                            tokio::time::timeout_at(probe.deadline, send_message(&mut inner, message))
++                            tokio::time::timeout_at(probe.deadline, send)
 +                                .await
 +                                .unwrap_or_else(|_| Err(liveness_timeout_error()))
 +                        } else {
-+                            send_message(&mut inner, message).await
-                         };
--                        match command {
--                            WsCommand::Send { message, tx_result } => {
--                                let result = send_message(&mut inner, message).await;
--                                let should_break = result.is_err();
--                                let _ = tx_result.send(result);
--                                if should_break {
--                                    break;
--                                }
--                            }
++                            send.await
++                        };
 +                        let should_break = result.is_err();
 +                        let _ = tx_result.send(result);
 +                        if should_break {
@@ -279,7 +294,7 @@ index 4ced74352d..56781f2fe9 100644
                  }
              }
          });
-
+ 
          Self {
 -            max_message_bytes,
 -            routing_affinity,
@@ -288,10 +303,10 @@ index 4ced74352d..56781f2fe9 100644
              tx_command,
              rx_message,
              pump_task,
-@@ -195,11 +361,125 @@ impl WsStream {
+@@ -208,11 +377,125 @@ impl WsStream {
              .await
      }
-
+ 
 +    fn command_sender(&self) -> mpsc::Sender<WsCommand> {
 +        self.tx_command.clone()
 +    }
@@ -304,7 +319,7 @@ index 4ced74352d..56781f2fe9 100644
          self.rx_message.recv().await
      }
  }
-
+ 
 +async fn probe_liveness(tx_command: &mpsc::Sender<WsCommand>) -> Result<(), ApiError> {
 +    probe_liveness_with_timeout(tx_command, DEFAULT_LIVENESS_PROBE_TIMEOUT).await
 +}
@@ -414,7 +429,7 @@ index 4ced74352d..56781f2fe9 100644
  impl Drop for WsStream {
      fn drop(&mut self) {
          self.pump_task.abort();
-@@ -281,7 +561,18 @@ impl ResponsesWebsocketConnection {
+@@ -294,7 +577,18 @@ impl ResponsesWebsocketConnection {
              .lock()
              .await
              .as_ref()
@@ -432,9 +447,9 @@ index 4ced74352d..56781f2fe9 100644
 +            .ok_or_else(|| ApiError::Stream("websocket connection is closed".to_string()))?;
 +        probe_liveness(&tx_command).await
      }
-
+ 
      pub async fn stream_request(
-@@ -1158,6 +1449,7 @@ mod tests {
+@@ -1179,6 +1473,7 @@ mod tests {
      use super::*;
      use crate::common::ResponseCreateWsRequest;
      use crate::common::ResponsesApiRequest;
@@ -442,7 +457,7 @@ index 4ced74352d..56781f2fe9 100644
      use codex_protocol::ResponseItemId;
      use codex_protocol::models::ContentItem;
      use codex_protocol::models::ResponseItem;
-@@ -1168,6 +1460,61 @@ mod tests {
+@@ -1189,6 +1484,61 @@ mod tests {
      use serde_json::value::to_raw_value;
      use std::collections::HashMap;
      use std::sync::Arc;
@@ -501,13 +516,13 @@ index 4ced74352d..56781f2fe9 100644
 +            resume_gap: Duration::from_secs(2),
 +        }
 +    }
-
+ 
      #[test]
      fn direct_serialization_preserves_websocket_request_payload() {
-@@ -1299,6 +1646,389 @@ mod tests {
+@@ -1320,6 +1670,389 @@ mod tests {
          assert!(config.extensions.permessage_deflate.is_some());
      }
-
+ 
 +    #[tokio::test]
 +    async fn liveness_probe_ignores_mismatched_pong_and_preserves_data_frames() {
 +        let (mut client, mut server) = websocket_pair(test_liveness_config()).await;
@@ -895,10 +910,10 @@ index 4ced74352d..56781f2fe9 100644
      fn parse_wrapped_websocket_error_event_maps_to_transport_http() {
          let payload = json!({
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index 21060f212d..8bb56feb75 100644
+index 9fa408ad5a..324f307a10 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
-@@ -1916,7 +1916,14 @@ impl ModelClientSession {
+@@ -2014,7 +2014,14 @@ impl ModelClientSession {
                  Some("other")
              }
              Some(conn) if conn.is_closed().await => Some("connection_closed"),
@@ -915,18 +930,18 @@ index 21060f212d..8bb56feb75 100644
          let needs_new = self.websocket_session.connection.is_none() || reset_reason.is_some();
          // Resolving an external auth provider can change ownership during client setup.
 diff --git a/codex-rs/core/src/responses_retry.rs b/codex-rs/core/src/responses_retry.rs
-index 79238cb0c7..a9c9093aae 100644
+index a0919ac407..8c5cb3489e 100644
 --- a/codex-rs/core/src/responses_retry.rs
 +++ b/codex-rs/core/src/responses_retry.rs
 @@ -22,6 +22,7 @@ use tracing::warn;
-
+ 
  const INITIAL_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(5);
  const MAX_CONNECTION_RETRY_DELAY: Duration = Duration::from_secs(60);
 +const WEBSOCKET_LIVENESS_TIMEOUT_MESSAGE: &str = "websocket liveness probe timed out";
-
+ 
  #[derive(Debug, Clone, Copy)]
  pub(crate) enum ResponsesStreamRequest {
-@@ -164,7 +165,12 @@ pub(crate) async fn handle_response_stream_error(
+@@ -165,7 +166,12 @@ pub(crate) async fn handle_response_stream_error(
          // transient reconnect messages. In debug builds, keep full visibility for diagnosis.
          let report_error = retry_count > 1
              || cfg!(debug_assertions)
@@ -971,7 +986,7 @@ index 6dac409e52..a9ca643e0a 100644
 @@ -1516,6 +1525,101 @@ pub async fn start_websocket_server_with_headers(
      }
  }
-
+ 
 +/// Serves one response, silently blackholes that retained socket, then accepts a recovery socket.
 +///
 +/// Unlike `close_after_requests = false`, this fixture keeps accepting connections while the
@@ -1071,7 +1086,7 @@ index 6dac409e52..a9ca643e0a 100644
      match message {
          Message::Text(text) => serde_json::from_str(&text).ok(),
 diff --git a/codex-rs/core/tests/suite/client_websockets.rs b/codex-rs/core/tests/suite/client_websockets.rs
-index 2dbdeb47c5..102a97f115 100755
+index e8d7df41ed..076cfd58c0 100755
 --- a/codex-rs/core/tests/suite/client_websockets.rs
 +++ b/codex-rs/core/tests/suite/client_websockets.rs
 @@ -64,6 +64,7 @@ use core_test_support::responses::WebSocketTestServer;
@@ -1085,7 +1100,7 @@ index 2dbdeb47c5..102a97f115 100755
 @@ -2373,6 +2374,50 @@ async fn responses_websocket_uses_previous_response_id_when_prefix_after_complet
      server.shutdown().await;
  }
-
+ 
 +#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 +async fn responses_websocket_blackholed_reuse_reconnects_with_full_context() {
 +    skip_if_no_network!();
